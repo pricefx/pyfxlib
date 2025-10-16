@@ -1,0 +1,25 @@
+[build-system]
+requires = ["poetry_core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "pyfx"
+version = "0.1.0"
+description = "python utilities for working with Pricefx"
+authors = ["Pricefx Pricing Science Team"]
+
+[tool.poetry.dependencies]
+python = "3.12.*"
+requests = { version = "2.*" }
+poetry-core = ">=1.0.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^19.10b0"
+flake8 = "*"
+flake8-black = "*"
+flake8-import-order = "*"
+flake8-docstrings = "*"
+httpretty = "^1.0.2"
+mypy = "*"
+pep8-naming = "*"
+pytest = "*"

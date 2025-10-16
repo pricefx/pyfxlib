@@ -1,0 +1,37 @@
+variables:
+  POETRY_VIRTUALENVS_CREATE: "false"
+
+stages:
+  - build
+  - deploy
+
+.python-cache:
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  cache:
+    key: pip
+    paths:
+      - $PIP_CACHE_DIR
+
+.mr-master-only:
+  except:
+    - tags
+  only:
+    refs:
+      - merge_requests
+      - master
+
+project:
+  extends:
+    - .python-cache
+    - .mr-master-only
+  image: python:3.12
+  stage: build
+  services:
+  - docker:19.03.0-dind
+  script:
+    - pip install poetry
+    - poetry install
+    - poetry run flake8
+    - poetry run flake8 --config .flake8-tests tests
+    - poetry run mypy .
