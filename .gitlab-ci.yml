@@ -1,37 +1,135 @@
-variables:
-  POETRY_VIRTUALENVS_CREATE: "false"
-
 stages:
-  - build
+  - test
+  - package
   - deploy
 
-.python-cache:
-  variables:
-    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  cache:
-    key: pip
-    paths:
-      - $PIP_CACHE_DIR
+variables:
+  BACKEND_TARGET_TAG: "15-0-stable"
+  POETRY_VERSION: "2.0.1"
 
-.mr-master-only:
-  except:
-    - tags
-  only:
-    refs:
-      - merge_requests
-      - master
+.scheduled:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == "main"
+      variables:
+        IMAGE_TAG: "latest"
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH =~ /^v[0-9]+$/
+      variables:
+        IMAGE_TAG: $CI_COMMIT_BRANCH
+  allow_failure: false
 
-project:
+.mr-main-release-only:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH =~ /^v[0-9]+$/)
+      variables:
+        IMAGE_TAG: "${CI_COMMIT_SHA}"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables:
+        IMAGE_TAG: "${CI_COMMIT_REF_SLUG}"
+
+.it-tests:
   extends:
-    - .python-cache
-    - .mr-master-only
-  image: python:3.12
-  stage: build
+    - .mr-main-release-only
   services:
-  - docker:19.03.0-dind
+    - name: cregistry.pricefx.eu/engineering/remote-integrationtest:latest
+      alias: pricefx
+      variables:
+        HEALTHCHECK_TCP_PORT: "2000"
+  image: python:3.12
+  stage: test
+  interruptible: true
+  variables:
+    # this must be declared here for it to be visible to the service
+    MY_CI_REGISTRY_PASSWORD: ${CI_REGISTRY_PASSWORD}
+    PFX_BASE_URL: "http://pricefx:2000"
+    PFX_SERVER_TAG: ${BACKEND_TARGET_TAG}
   script:
-    - pip install poetry
+    - pip install poetry==${POETRY_VERSION}
     - poetry install
-    - poetry run flake8
+    # even though HEALTHCHECK_TCP_PORT is setup, compose seems to listen on the port before the service is really ready, so we need to wait here
+    - timeout 300 bash -c "until curl --output /dev/null --silent $PFX_BASE_URL; do sleep 1; done"
+    - poetry run pytest tests/integration -m "${MARKER_SELECTOR}"
+
+integration-tests:
+  extends:
+    - .it-tests
+  variables:
+    MARKER_SELECTOR: "not extended"
+
+integration-tests-extended:
+  extends:
+    - .it-tests
+  variables:
+    MARKER_SELECTOR: "extended"
+
+tests:
+  extends:
+    - .mr-main-release-only
+  image: python:3.12
+  stage: test
+  interruptible: true
+  script:
+    - pip install poetry==${POETRY_VERSION}
+    - poetry check --lock
+    - poetry install
+    - poetry run flake8 pyfx2
     - poetry run flake8 --config .flake8-tests tests
-    - poetry run mypy .
+    - poetry run mypy pyfx2
+    - poetry run pytest tests/unit
+
+package:
+  image: python:3.12
+  stage: package
+  interruptible: true
+  script:
+    - pip install poetry==${POETRY_VERSION}
+    - poetry version $PACKAGE_VERSION # if defined, will replace version with $PACKAGE_VERSION
+    - poetry version $(poetry version --short)$PACKAGE_VERSION_LOCAL # if defined, will replace vX with vX+branchname
+    - poetry install
+    - poetry build -f wheel
+  artifacts:
+    paths:
+      - dist/
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables:
+        PACKAGE_VERSION_LOCAL: "+${CI_COMMIT_REF_SLUG}"
+
+publish-package:
+  stage: deploy
+  image: python:3.12
+  script:
+    - pip install poetry==${POETRY_VERSION}
+    - poetry config repositories.pyfx2 ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi
+    - poetry config http-basic.pyfx2 gitlab-ci-token ${CI_JOB_TOKEN}
+    - poetry version $PACKAGE_VERSION # if defined, will replace version with $PACKAGE_VERSION
+    - poetry version $(poetry version --short)$PACKAGE_VERSION_LOCAL # if defined, will replace vX with vX+branchname
+    - poetry publish --repository pyfx2
+  allow_failure: true
+  needs:
+    - package
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+      variables:
+        PACKAGE_VERSION_LOCAL: "+${CI_COMMIT_REF_SLUG}"
+
+######## DEPLOY DOCUMENTATION WEB #########
+
+# TODO: agree with tech-ops about the the name to share with:
+#       https://gitlab.pricefx.eu/builds/pricefx-builds/blob/master/bin%2Fbuilds-hook.sh
+# (Once agreed) DO NOT CHANGE NAME as the script above relies on it
+package-pyfx-docs:
+  stage: deploy
+  image: python:3.12
+  extends:
+    - .mr-main-release-only
+  interruptible: true
+  artifacts:
+    paths:
+      - "./**/*.html"
+  script:
+    - pip install poetry==${POETRY_VERSION}
+    - poetry check --lock
+    - poetry install --extras="datascience neural"
+    - poetry run pdoc3 --html --config show_source_code=False -o html --force pyfx2

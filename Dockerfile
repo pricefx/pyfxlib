@@ -7,7 +7,7 @@ RUN pip install poetry requests graphviz sacred imbalanced-learn
 
 COPY pyproject.toml .
 COPY poetry.lock .
-COPY pyfx ./pyfx
+COPY pyfx2 ./pyfx
 
 USER $NB_UID
 

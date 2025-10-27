@@ -2,24 +2,47 @@
 requires = ["poetry_core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
+[tool.black]
+line-length = 100
+
 [tool.poetry]
-name = "pyfx"
+name = "pyfx2"
 version = "0.1.0"
-description = "python utilities for working with Pricefx"
-authors = ["Pricefx Pricing Science Team"]
+description = "Python utilities for working with Pricefx"
+authors = ["Pricefx"]
+include = ["pyfx/py.typed"]
+
+[tool.pytest.ini_options]
+markers = [
+    "extended: marks extended tests, taking sometime quite a long time (deselect with '-m \"not extended\"')",
+]
 
 [tool.poetry.dependencies]
 python = "3.12.*"
 requests = { version = "2.*" }
 poetry-core = ">=1.0.0"
 
+fastavro = { version = "1.9.*" }
+filelock = { version = "3.*" } # if not there poetry removes filelock (behavior obtained after adding sentence-transformers)
+jsonschema = { version = "4.23.*" }
+numpy = { version = "1.26.*" } #Numpy not update to 2.X due to tensorflow
+pandas = { version = "2.2.*" }
+requests-toolbelt = { version = "1.0.*" }
+SecretStorage = { version = "3.3.*", platform = "linux" }
+setuptools = { version = "80.*" }
+
 [tool.poetry.group.dev.dependencies]
-black = "^19.10b0"
+black = "*"
 flake8 = "*"
 flake8-black = "*"
 flake8-import-order = "*"
 flake8-docstrings = "*"
 httpretty = "^1.0.2"
 mypy = "*"
+pdoc3 = "0.10.*"
 pep8-naming = "*"
 pytest = "*"
+types-requests = "2.*"
+docker = "6.0.*"
+pyc-wheel = "1.2.*"
+types-jsonschema = "4.21.*"
