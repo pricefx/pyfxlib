@@ -186,7 +186,7 @@ def test_model_object_should_be_able_to_create_and_read_owned_tables(
 
 
 _VALID_DATAFRAME_CONTENT = [
-    ([1, 2, 3, 4], lambda x: x, pd.Int64Dtype),
+    ([1, 2, 3, 4], lambda x: x, pd.Int64Dtype()),
     (
         [
             # pfx csv are only seconds precision
@@ -198,9 +198,9 @@ _VALID_DATAFRAME_CONTENT = [
         lambda x: pd.to_datetime(x, utc=True),
         pd.DatetimeTZDtype(tz="UTC"),
     ),
-    (["foo", "bar", None, "spam"], lambda x: x, pd.StringDtype),
+    (["foo", "bar", None, "spam"], lambda x: x, pd.StringDtype()),
     ([3.14, 12.42, None, 42.12], lambda x: x, np.float64),
-    ([True, False, None, False], lambda x: x, pd.BooleanDtype),
+    ([True, False, None, False], lambda x: x, pd.BooleanDtype()),
 ]
 
 
