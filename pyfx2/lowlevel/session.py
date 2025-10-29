@@ -453,7 +453,7 @@ class PfxAuthUserPass(PfxAuthMethod):
         self._credential = base64.urlsafe_b64encode(
             bytes(f"{partition}/{user}:{passwd_provider()}", "utf-8")
         )
-        self.pfxtoken = None
+        self.pfxtoken: Optional[str] = None
 
     def _refresh_token(self, session: Session, response: Response) -> None:
         if "X-PriceFx-jwt" in response.cookies:

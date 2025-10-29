@@ -5,13 +5,13 @@ from configparser import ConfigParser
 from tempfile import TemporaryDirectory
 from typing import List
 
-import pytest
-
 from pyfx2.lowlevel.configuration import (
     CONNECTIONDISPATCH_CONFIG_SECTION,
     LOCALCONNECTION_CONFIG_SECTION,
     spec,
 )
+
+import pytest
 
 
 @pytest.fixture

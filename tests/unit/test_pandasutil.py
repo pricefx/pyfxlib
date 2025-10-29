@@ -6,10 +6,11 @@ import fastavro
 
 import pandas as pd
 
-import pytest
-
 from pyfx2.lowlevel.avro import AvroStream
 from pyfx2.lowlevel.pandasutil import to_field_collection_spec
+
+import pytest
+
 
 UNSUPPORTED_DATA = [
     [[1, 2]],

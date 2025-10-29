@@ -346,7 +346,7 @@ def _column_type(column: pd.Series) -> Optional[_ColumnType]:
         return _ColumnType({"type": "long", "logicalType": "timestamp-millis"}, "DATETIME")
     if dtype == np.uint64:
         return _ColumnType({"type": "long", "unsigned": True}, "INTEGER")
-    if pd.api.types.is_int64_dtype(dtype):
+    if dtype == np.int64:
         return _ColumnType("long", "INTEGER")
     if pd.api.types.is_signed_integer_dtype(dtype):
         return _ColumnType("int", "INTEGER")

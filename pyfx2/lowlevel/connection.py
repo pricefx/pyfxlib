@@ -17,12 +17,12 @@ from enum import Enum, unique
 from pathlib import Path
 from typing import Any, Dict, Generator, IO, Iterator, List, Optional, Tuple
 
-from pyfx2.lowlevel.avro import AvroStream
-from pyfx2.lowlevel.session import PfxSession
-
 from requests.exceptions import HTTPError
 
 from requests_toolbelt import MultipartEncoder
+
+from pyfx2.lowlevel.avro import AvroStream
+from pyfx2.lowlevel.session import PfxSession
 
 LOGGER = logging.getLogger(__name__)
 

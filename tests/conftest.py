@@ -1,12 +1,12 @@
 from typing import Any, Callable, Dict, Optional
 
-from requests import Response
-from requests.exceptions import Timeout
-
 from pyfx2.lowlevel.session import (
     PfxSession,
     RetryPfxSession,
 )
+
+from requests import Response
+from requests.exceptions import Timeout
 
 
 class RaisingExceptionSession(RetryPfxSession):

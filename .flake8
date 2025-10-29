@@ -1,4 +1,4 @@
 [flake8]
 max-line-length = 100
-application-import-names = pyfx
-ignore = D105,D107,D401,W503
+application-import-names = pyfx2
+ignore = D105,D107,D401,W503,E203
