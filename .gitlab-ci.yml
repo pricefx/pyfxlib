@@ -71,9 +71,9 @@ tests:
     - pip install poetry==${POETRY_VERSION}
     - poetry check --lock
     - poetry install
-    - poetry run flake8 pyfx2
+    - poetry run flake8 pyfx
     - poetry run flake8 --config .flake8-tests tests
-    - poetry run mypy pyfx2
+    - poetry run mypy pyfx
     - poetry run pytest tests/unit
 
 package:
@@ -100,11 +100,11 @@ publish-package:
   image: python:3.12
   script:
     - pip install poetry==${POETRY_VERSION}
-    - poetry config repositories.pyfx2 ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi
-    - poetry config http-basic.pyfx2 gitlab-ci-token ${CI_JOB_TOKEN}
+    - poetry config repositories.pyfx ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi
+    - poetry config http-basic.pyfx gitlab-ci-token ${CI_JOB_TOKEN}
     - poetry version $PACKAGE_VERSION # if defined, will replace version with $PACKAGE_VERSION
     - poetry version $(poetry version --short)$PACKAGE_VERSION_LOCAL # if defined, will replace vX with vX+branchname
-    - poetry publish --repository pyfx2
+    - poetry publish --repository pyfx
   allow_failure: true
   needs:
     - package
@@ -132,4 +132,4 @@ package-pyfx-docs:
     - pip install poetry==${POETRY_VERSION}
     - poetry check --lock
     - poetry install --extras="datascience neural"
-    - poetry run pdoc3 --html --config show_source_code=False -o html --force pyfx2
+    - poetry run pdoc3 --html --config show_source_code=False -o html --force pyfx

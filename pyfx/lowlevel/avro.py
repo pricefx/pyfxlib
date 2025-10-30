@@ -10,7 +10,7 @@ import numpy as np
 
 import pandas as pd
 
-from pyfx2.lowlevel.pandasutil import (
+from pyfx.lowlevel.pandasutil import (
     _column_dtype,
     to_avro_type,
 )

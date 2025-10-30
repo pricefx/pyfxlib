@@ -5,26 +5,19 @@ from typing import Any, Dict
 
 import pandas as pd
 
-from pyfx2._testtooling.conftest import (
-    _auth,
-    _conn,
-    _model_object,
-    _pfx_base_url,
-    _remote,
-    _session,
-)
-from pyfx2._testtooling.helpers import (
+import pytest
+
+from requests import HTTPError
+
+from pyfx._testtooling.conftest import _auth, _conn, _model_object, _pfx_base_url, _remote, _session
+from pyfx._testtooling.helpers import (
     _IntegrationRemote,
     _calculation_results_as_dict,
     _csv_stream_to_dataframe,
 )
-from pyfx2.lowlevel.avro import AvroStream
-from pyfx2.lowlevel.connection import Connection
-from pyfx2.lowlevel.connection import JobStatus
-
-import pytest
-
-from requests import HTTPError
+from pyfx.lowlevel.avro import AvroStream
+from pyfx.lowlevel.connection import Connection
+from pyfx.lowlevel.connection import JobStatus
 
 __all__ = ["_auth", "_conn", "_model_object", "_pfx_base_url", "_remote", "_session"]
 

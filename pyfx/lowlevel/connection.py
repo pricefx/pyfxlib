@@ -1,7 +1,7 @@
 """Interacting with a Pricefx platform directly.
 
 This platform defines a low-level wrapper to interact with the Pricefx platform.
-For a higher level API, see the `pyfx2.api.domain` package.
+For a higher level API, see the `pyfx.api.domain` package.
 
 """
 
@@ -21,8 +21,8 @@ from requests.exceptions import HTTPError
 
 from requests_toolbelt import MultipartEncoder
 
-from pyfx2.lowlevel.avro import AvroStream
-from pyfx2.lowlevel.session import PfxSession
+from pyfx.lowlevel.avro import AvroStream
+from pyfx.lowlevel.session import PfxSession
 
 LOGGER = logging.getLogger(__name__)
 

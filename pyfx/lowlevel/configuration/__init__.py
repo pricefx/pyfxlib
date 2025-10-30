@@ -7,15 +7,15 @@ from configparser import ConfigParser
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-from pyfx2.api.domain import DMModel, Model, ModelObject, PlatformJob
-from pyfx2.lowlevel.configuration import spec
-from pyfx2.lowlevel.connection import (
+from pyfx.api.domain import DMModel, Model, ModelObject, PlatformJob
+from pyfx.lowlevel.configuration import spec
+from pyfx.lowlevel.connection import (
     Connection,
     ConnectionComposed,
     ConnectionLocal,
     ConnectionRemote,
 )
-from pyfx2.lowlevel.session import (
+from pyfx.lowlevel.session import (
     PasswordProviderCommand,
     PasswordProviderLinuxSecretStore,
     PasswordProviderPrompt,

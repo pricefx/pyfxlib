@@ -11,10 +11,10 @@ from typing import Any, Dict, Generic, IO, Iterator, List, Optional, TypeVar, Un
 
 import pandas as pd
 
-from pyfx2.lowlevel import pandasutil, session
-from pyfx2.lowlevel.avro import AvroStream
-from pyfx2.lowlevel.connection import Connection, ConnectionRemote, JobStatus
-from pyfx2.lowlevel.session import retry
+from pyfx.lowlevel import pandasutil, session
+from pyfx.lowlevel.avro import AvroStream
+from pyfx.lowlevel.connection import Connection, ConnectionRemote, JobStatus
+from pyfx.lowlevel.session import retry
 
 
 class PlatformJob:

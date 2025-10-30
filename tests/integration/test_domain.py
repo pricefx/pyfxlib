@@ -6,7 +6,9 @@ import numpy as np
 
 import pandas as pd
 
-from pyfx2._testtooling.conftest import (
+import pytest
+
+from pyfx._testtooling.conftest import (
     _RaisingExceptionSession,
     _auth,
     _conn,
@@ -21,17 +23,15 @@ from pyfx2._testtooling.conftest import (
     _retry_and_raising_session,
     _session,
 )
-from pyfx2._testtooling.helpers import (
+from pyfx._testtooling.helpers import (
     _IntegrationRemote,
     _calculation_results_as_dict,
     _csv_stream_to_dataframe,
 )
-from pyfx2.api.domain import Instance, ModelObject, PlatformJob
-from pyfx2.lowlevel.avro import AvroStream
-from pyfx2.lowlevel.connection import Connection
-from pyfx2.lowlevel.pandasutil import FieldSpecs
-
-import pytest
+from pyfx.api.domain import Instance, ModelObject, PlatformJob
+from pyfx.lowlevel.avro import AvroStream
+from pyfx.lowlevel.connection import Connection
+from pyfx.lowlevel.pandasutil import FieldSpecs
 
 __all__ = [
     "_auth",

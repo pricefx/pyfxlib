@@ -8,10 +8,10 @@ from _pytest.fixtures import fixture
 from requests import HTTPError, Response
 from requests.exceptions import Timeout
 
-from pyfx2._testtooling.helpers import _IntegrationRemote
-from pyfx2.api.domain import Instance
-from pyfx2.lowlevel.connection import Connection
-from pyfx2.lowlevel.session import (
+from pyfx._testtooling.helpers import _IntegrationRemote
+from pyfx.api.domain import Instance
+from pyfx.lowlevel.connection import Connection
+from pyfx.lowlevel.session import (
     PfxAuthUserPass,
     PfxSession,
     RetryPfxSession,

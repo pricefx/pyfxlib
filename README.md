@@ -22,7 +22,7 @@ The `./devkit/check-all.sh` offers a convenient method to run all tests at once.
 You can generate an HTML version of the python engine documentation and API by running (after installing the project):
 
 ```
-poetry run pdoc3 --html --config show_source_code=False -o html --force ./pyfx2
+poetry run pdoc3 --html --config show_source_code=False -o html --force ./pyfx
 ```
 
 ## Release process

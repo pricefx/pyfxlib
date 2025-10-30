@@ -6,7 +6,7 @@ build-backend = "poetry.core.masonry.api"
 line-length = 100
 
 [tool.poetry]
-name = "pyfx2"
+name = "pyfx"
 version = "0.1.0"
 description = "Python utilities for working with Pricefx"
 authors = ["Pricefx"]
