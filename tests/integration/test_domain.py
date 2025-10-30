@@ -6,6 +6,26 @@ import numpy as np
 
 import pandas as pd
 
+from pyfx2._testtooling.conftest import (
+    _RaisingExceptionSession,
+    _auth,
+    _conn,
+    _connection_with_raising_session,
+    _instance,
+    _job_jst,
+    _model_object,
+    _pfx_base_url,
+    _raising_auth,
+    _raising_remote,
+    _remote,
+    _retry_and_raising_session,
+    _session,
+)
+from pyfx2._testtooling.helpers import (
+    _IntegrationRemote,
+    _calculation_results_as_dict,
+    _csv_stream_to_dataframe,
+)
 from pyfx2.api.domain import Instance, ModelObject, PlatformJob
 from pyfx2.lowlevel.avro import AvroStream
 from pyfx2.lowlevel.connection import Connection
@@ -13,12 +33,20 @@ from pyfx2.lowlevel.pandasutil import FieldSpecs
 
 import pytest
 
-from tests.conftest import RaisingExceptionSession
-from tests.helpers import (
-    IntegrationRemote,
-    calculation_results_as_dict,
-    csv_stream_to_dataframe,
-)
+__all__ = [
+    "_auth",
+    "_conn",
+    "_connection_with_raising_session",
+    "_instance",
+    "_job_jst",
+    "_model_object",
+    "_pfx_base_url",
+    "_raising_auth",
+    "_raising_remote",
+    "_remote",
+    "_retry_and_raising_session",
+    "_session",
+]
 
 
 @pytest.mark.parametrize(
@@ -30,19 +58,19 @@ from tests.helpers import (
     ],
 )
 def test_platform_job_should_be_able_to_update_the_state_of_the_corresponding_jst(
-    conn: Connection,
-    job_jst: Dict[str, Any],
+    _conn: Connection,
+    _job_jst: Dict[str, Any],
     msg: Optional[str],
     results: Optional[Dict[str, Any]],
 ):
     # given a PlatformJob
-    job = PlatformJob(conn, job_jst["id"])
+    job = PlatformJob(_conn, _job_jst["id"])
 
     # when updating its status
     job.update_status(42, msg, results)
 
     # then the underlying jst is updated
-    jst = conn.get_object(f"{job_jst['id']}.JST")
+    jst = _conn.get_object(f"{_job_jst['id']}.JST")
     assert jst is not None
 
     assert "progress" in jst
@@ -58,28 +86,28 @@ def test_platform_job_should_be_able_to_update_the_state_of_the_corresponding_js
     if results is None:
         assert "calculationResults" not in jst
     else:
-        assert results == calculation_results_as_dict(jst["calculationResults"])
+        assert results == _calculation_results_as_dict(jst["calculationResults"])
 
 
 def test_platform_job_should_be_able_to_update_progress_messages_to_the_corresponding_jst(
-    conn: Connection,
-    job_jst: Dict[str, Any],
+    _conn: Connection,
+    _job_jst: Dict[str, Any],
 ):
     def assert_jst_has_progress_and_messages(progress: int, messages: List[str]):
         # then the underlying jst is updated
-        jst = conn.get_object(f"{job_jst['id']}.JST")
+        jst = _conn.get_object(f"{_job_jst['id']}.JST")
         assert jst is not None
 
         assert "progress" in jst
         assert jst["progress"] == f"{progress}%"
 
-        jst = conn.get_object(f"{job_jst['id']}.JST")
+        jst = _conn.get_object(f"{_job_jst['id']}.JST")
         assert jst is not None
         assert "messages" in jst
         assert json.loads(jst["messages"]) == messages
 
     # given a PlatformJob
-    job = PlatformJob(conn, job_jst["id"])
+    job = PlatformJob(_conn, _job_jst["id"])
     first_update = (42, "first message")
     second_update = (90, "second message")
 
@@ -97,20 +125,20 @@ def test_platform_job_should_be_able_to_update_progress_messages_to_the_correspo
 
 
 def test_platform_job_should_be_able_to_set_results_to_the_corresponding_jst(
-    conn: Connection,
-    job_jst: Dict[str, Any],
+    _conn: Connection,
+    _job_jst: Dict[str, Any],
 ):
     def assert_jst_has_result(result: Dict[str, Any]):
         # then the underlying jst is updated
-        jst = conn.get_object(
-            f"{job_jst['id']}.JST",
+        jst = _conn.get_object(
+            f"{_job_jst['id']}.JST",
         )
         assert jst is not None
         assert "calculationResults" in jst
-        assert result == calculation_results_as_dict(jst["calculationResults"])
+        assert result == _calculation_results_as_dict(jst["calculationResults"])
 
     # given a PlatformJob
-    job = PlatformJob(conn, job_jst["id"])
+    job = PlatformJob(_conn, _job_jst["id"])
     first_results = {"foo": 42, "bar": "baz"}
     second_results = {"spam": 12, "eggs": "sausage"}
 
@@ -128,10 +156,10 @@ def test_platform_job_should_be_able_to_set_results_to_the_corresponding_jst(
 
 
 def test_model_object_should_be_able_to_create_and_read_owned_tables(
-    conn: Connection, model_object: Dict[str, Any], tmp_path
+    _conn: Connection, _model_object: Dict[str, Any], tmp_path
 ):
     # given an instance without any model tables
-    mo = ModelObject.from_conn(conn, model_object["typedId"])
+    mo = ModelObject.from_conn(_conn, _model_object["typedId"])
     assert mo is not None
     assert len(list(mo.tables())) == 0
 
@@ -171,7 +199,7 @@ def test_model_object_should_be_able_to_create_and_read_owned_tables(
     assert mo.tables().get(typedid).typedid == typedid
 
     # and its is possible to fetch its content as a csv stream
-    downloaded_df = csv_stream_to_dataframe(table.stream(128))
+    downloaded_df = _csv_stream_to_dataframe(table.stream(128))
     assert (dataframe[list(data.keys())] == downloaded_df[list(data.keys())]).all().all()
 
     # and it is possible to fetch its content into a file
@@ -209,10 +237,10 @@ _VALID_DATAFRAME_CONTENT = [
     [(data, parser, pd_dtype) for data, parser, pd_dtype in _VALID_DATAFRAME_CONTENT],
 )
 def test_instance_should_be_able_to_push_a_dataframe_to_a_model_table(
-    conn: Connection, model_object: Dict[str, Any], column_data, value_parser, pd_dtype
+    _conn: Connection, _model_object: Dict[str, Any], column_data, value_parser, pd_dtype
 ):
     # given an instance without any model tables
-    mo = ModelObject.from_conn(conn, model_object["typedId"])
+    mo = ModelObject.from_conn(_conn, _model_object["typedId"])
     assert mo is not None
     assert len(list(mo.tables())) == 0
     columns = ["column1", "column2"]
@@ -245,7 +273,7 @@ def test_instance_should_be_able_to_push_a_dataframe_to_a_model_table(
 
     # and the index field label has been set (we don't check the others standard fields
     # labels as the REST API does not provide this information)
-    table_dto = conn.get_object(result_table.typedid)
+    table_dto = _conn.get_object(result_table.typedid)
     assert len(table_dto["keyFields"]) == 1
     for field in table_dto["keyFields"]:
         assert field["label"] == column_labels[field["name"]]
@@ -261,10 +289,10 @@ def test_instance_should_be_able_to_push_a_dataframe_to_a_model_table(
     [None, ["foo", "bar"]],
 )
 def test_model_object_should_be_able_to_push_and_update_multiindex_dataframes(
-    conn: Connection, model_object: Dict[str, Any], idx_names
+    _conn: Connection, _model_object: Dict[str, Any], idx_names
 ):
     # given an instance without any model tables
-    mo = ModelObject.from_conn(conn, model_object["typedId"])
+    mo = ModelObject.from_conn(_conn, _model_object["typedId"])
     assert mo is not None
     assert len(list(mo.tables())) == 0
 
@@ -328,10 +356,10 @@ def test_model_object_should_be_able_to_push_and_update_multiindex_dataframes(
 
 
 def test_model_object_should_be_able_to_update_data_of_an_owned_tables(
-    conn: Connection, model_object: Dict[str, Any]
+    _conn: Connection, _model_object: Dict[str, Any]
 ):
     # given an instance without an owned tables
-    mo = ModelObject.from_conn(conn, model_object["typedId"])
+    mo = ModelObject.from_conn(_conn, _model_object["typedId"])
     initial_data = {
         "column1": ["key1", "key2"],
         "column2": [1, 12],
@@ -371,10 +399,10 @@ def test_model_object_should_be_able_to_update_data_of_an_owned_tables(
     [(data, parser, pd_dtype) for data, parser, pd_dtype in _VALID_DATAFRAME_CONTENT],
 )
 def test_model_object_should_be_able_to_update_data_of_an_owned_tables_from_pandas(
-    conn: Connection, model_object: Dict[str, Any], column_data, value_parser, pd_dtype
+    _conn: Connection, _model_object: Dict[str, Any], column_data, value_parser, pd_dtype
 ):
     # given an instance without an owned tables
-    mo = ModelObject.from_conn(conn, model_object["typedId"])
+    mo = ModelObject.from_conn(_conn, _model_object["typedId"])
     index = [1, 2]
     initial_data = {
         "column1": [f"key{idx + 1}" for idx in range(0, 2)],
@@ -415,11 +443,11 @@ def test_model_object_should_be_able_to_update_data_of_an_owned_tables_from_pand
 
 
 def test_model_object_should_be_able_to_create_and_read_an_attachment(
-    conn: Connection,
-    model_object: Dict[str, Any],
+    _conn: Connection,
+    _model_object: Dict[str, Any],
 ):
     # when getting an empty model object
-    mo = ModelObject.from_conn(conn, model_object["typedId"])
+    mo = ModelObject.from_conn(_conn, _model_object["typedId"])
 
     # then the model does not have any attachment
     assert mo is not None
@@ -444,9 +472,9 @@ def test_model_object_should_be_able_to_create_and_read_an_attachment(
     assert data == attachment_content
 
 
-def test_instance_should_be_able_to_create_and_read_datasources(instance: Instance, tmp_path):
+def test_instance_should_be_able_to_create_and_read_datasources(_instance: Instance, tmp_path):
     # given an instance without any datasource
-    datasources = instance.datasources()
+    datasources = _instance.datasources()
     ds_list = list(datasources)
     assert len(ds_list) == 0
 
@@ -486,7 +514,7 @@ def test_instance_should_be_able_to_create_and_read_datasources(instance: Instan
     assert datasources.get(datasource.typedid).typedid == datasource.typedid
 
     # and its is possible to fetch its content as a csv stream
-    df_from_stream = csv_stream_to_dataframe(datasource.stream(128))
+    df_from_stream = _csv_stream_to_dataframe(datasource.stream(128))
     assert (dataframe[col_names] == df_from_stream[col_names]).all().all()
 
     # and it is possible to fetch its content into a file
@@ -505,14 +533,14 @@ def test_instance_should_be_able_to_create_and_read_datasources(instance: Instan
     [(data, parser, pd_dtype) for data, parser, pd_dtype in _VALID_DATAFRAME_CONTENT],
 )
 def test_instance_should_be_able_to_push_a_dataframe_to_a_datasource(
-    instance: Instance,
+    _instance: Instance,
     column_data,
     value_parser,
     pd_dtype,
-    conn,
+    _conn,
 ):
     # given an instance without any datasource
-    assert len(list(instance.datasources())) == 0
+    assert len(list(_instance.datasources())) == 0
     columns = ["column1", "column2"]
     column_labels = {
         columns[0]: "c1 label",
@@ -528,7 +556,7 @@ def test_instance_should_be_able_to_push_a_dataframe_to_a_datasource(
     data_source_name = "a_datasource_name"
     data_source_label = "a_datasource_label"
 
-    instance.datasources().push_pandas(
+    _instance.datasources().push_pandas(
         data_source_name,
         dataframe,
         data_source_label,
@@ -537,13 +565,13 @@ def test_instance_should_be_able_to_push_a_dataframe_to_a_datasource(
     )
 
     # then the table is properly created
-    result_table = instance.datasources()[0]
+    result_table = _instance.datasources()[0]
     assert result_table.name == data_source_name
     assert result_table.label == data_source_label
 
     # and the index field label has been set (we don't check the others standard fields
     # labels as the REST API does not provide this information)
-    table_dto = conn.get_object(result_table.typedid)
+    table_dto = _conn.get_object(result_table.typedid)
     assert len(table_dto["keyFields"]) == 1
     for field in table_dto["keyFields"]:
         assert field["label"] == column_labels[field["name"]]
@@ -556,7 +584,7 @@ def test_instance_should_be_able_to_push_a_dataframe_to_a_datasource(
 
 @pytest.mark.parametrize("column_data, value_parser, pd_dtype", _VALID_DATAFRAME_CONTENT)
 def test_instance_should_be_able_to_update_data_of_a_data_source_tables(
-    instance: Instance, column_data, value_parser, pd_dtype
+    _instance: Instance, column_data, value_parser, pd_dtype
 ):
     # IMPORTANT NOTE:
     # We *cannot* properly test updating existing rows, as the row deduplication process is
@@ -573,13 +601,13 @@ def test_instance_should_be_able_to_update_data_of_a_data_source_tables(
     initial_df = pd.DataFrame(initial_data, index=index)
     data_source_name = "a_datasource_name"
     data_source_label = "a_datasource_label"
-    instance.datasources().push_pandas(
+    _instance.datasources().push_pandas(
         data_source_name,
         initial_df,
         data_source_label,
         replace_existing=True,
     )
-    table = list(instance.datasources())[0]
+    table = list(_instance.datasources())[0]
 
     # when update new data
     index = [3]
@@ -603,7 +631,7 @@ def test_instance_should_be_able_to_update_data_of_a_data_source_tables(
 
 @pytest.mark.parametrize("column_data, value_parser, pd_dtype", _VALID_DATAFRAME_CONTENT)
 def test_instance_should_be_able_to_update_data_of_a_data_source_tables_from_pandas(
-    instance: Instance, column_data, value_parser, pd_dtype
+    _instance: Instance, column_data, value_parser, pd_dtype
 ):
     # IMPORTANT NOTE:
     # We *cannot* properly test updating existing rows, as the row deduplication process is
@@ -620,13 +648,13 @@ def test_instance_should_be_able_to_update_data_of_a_data_source_tables_from_pan
     initial_df = pd.DataFrame(initial_data, index=index)
     data_source_name = "a_datasource_name"
     data_source_label = "a_datasource_label"
-    instance.datasources().push_pandas(
+    _instance.datasources().push_pandas(
         data_source_name,
         initial_df,
         data_source_label,
         replace_existing=True,
     )
-    table = list(instance.datasources())[0]
+    table = list(_instance.datasources())[0]
 
     # when appending new data
     index = [3]
@@ -663,15 +691,15 @@ def assert_equal_dataframes_with_na_on_cols(
 
 
 def test_instance_should_be_able_to_create_and_read_datamarts(
-    remote: IntegrationRemote, instance: Instance, tmp_path
+    _remote: _IntegrationRemote, _instance: Instance, tmp_path
 ):
     # expecting an initial empty list of datamart
-    assert len(list(instance.datamarts())) == 0
+    assert len(list(_instance.datamarts())) == 0
 
     # when a datamart is created
     dm_name = "aDatamartName"
     col_names = ["column1", "column2"]
-    remote.new_empty_datamart(
+    _remote.new_empty_datamart(
         dm_name,
         [
             {"name": col_names[0], "type": "TEXT", "key": True},
@@ -680,16 +708,16 @@ def test_instance_should_be_able_to_create_and_read_datamarts(
     )
 
     # then it has been added to the datamarts
-    assert len(list(instance.datamarts())) == 1
-    datamart = instance.datamarts()[0]
+    assert len(list(_instance.datamarts())) == 1
+    datamart = _instance.datamarts()[0]
     assert datamart.name == dm_name
 
     # and it is possible to get it from its name
-    assert instance.datamarts().get_by_name(dm_name).typedid == datamart.typedid
-    assert instance.datamarts()[dm_name].typedid == datamart.typedid
+    assert _instance.datamarts().get_by_name(dm_name).typedid == datamart.typedid
+    assert _instance.datamarts()[dm_name].typedid == datamart.typedid
 
     # and it is possible to get it by typedid
-    assert instance.datamarts().get(datamart.typedid).typedid == datamart.typedid
+    assert _instance.datamarts().get(datamart.typedid).typedid == datamart.typedid
 
     # and its is possible to fetch its content as a csv stream
     data = next(datamart.stream(128)).decode("utf-8")
@@ -702,32 +730,33 @@ def test_instance_should_be_able_to_create_and_read_datamarts(
     assert ",".join(col_names) in data
 
     # and it is possible to fetch its content as a pandas DataFrame
-    data_frame = instance.datamarts().get_by_name(dm_name).to_pandas()
-    data_frame = instance.datamarts()[dm_name].to_pandas()
+    data_frame = _instance.datamarts()[dm_name].to_pandas()
     assert data_frame.shape == (0, 9)
     assert list(data_frame.columns[:2]) == col_names
 
 
-def test_intance_should_give_access_to_model_objects(remote: IntegrationRemote, instance: Instance):
+def test_intance_should_give_access_to_model_objects(
+    _remote: _IntegrationRemote, _instance: Instance
+):
     # expecting an initial empty list of models
-    assert len(list(instance.models())) == 0
+    assert len(list(_instance.models())) == 0
 
     # when adding a model
     mo_name = "aModelObject"
-    (mc, mo) = remote.new_model_object(mo_name)
+    (mc, mo) = _remote.new_model_object(mo_name)
 
     # then it has been added to the models
-    model_objects = list(instance.model_objects())
+    model_objects = list(_instance.model_objects())
     assert len(model_objects) == 1
     modelobject = model_objects[0]
     assert modelobject.name == mo_name
 
     # and it is possible to get it from its name
-    assert instance.model_objects().get_by_name(mo_name).typedid == modelobject.typedid
-    assert instance.model_objects()[mo_name].typedid == modelobject.typedid
+    assert _instance.model_objects().get_by_name(mo_name).typedid == modelobject.typedid
+    assert _instance.model_objects()[mo_name].typedid == modelobject.typedid
 
     # and it is possible to get it by typedId
-    assert instance.model_objects().get(modelobject.typedid).typedid == modelobject.typedid
+    assert _instance.model_objects().get(modelobject.typedid).typedid == modelobject.typedid
 
 
 @pytest.mark.parametrize(
@@ -735,15 +764,15 @@ def test_intance_should_give_access_to_model_objects(remote: IntegrationRemote, 
     [(data, parser, pd_dtype) for data, parser, pd_dtype in _VALID_DATAFRAME_CONTENT],
 )
 def test_instance_should_retry_to_push_a_dataframe_to_a_model_table(
-    connection_with_raising_session: tuple[Connection, RaisingExceptionSession],
-    model_object: Dict[str, Any],
+    _connection_with_raising_session: tuple[Connection, _RaisingExceptionSession],
+    _model_object: Dict[str, Any],
     column_data,
     value_parser,
     pd_dtype,
 ):
-    conn, raising_session = connection_with_raising_session
+    _conn, raising_session = _connection_with_raising_session
     # given an instance without any model tables
-    mo = ModelObject.from_conn(conn, model_object["typedId"])
+    mo = ModelObject.from_conn(_conn, _model_object["typedId"])
     assert mo is not None
     assert len(list(mo.tables())) == 0
     columns = ["column1", "column2"]
@@ -778,7 +807,7 @@ def test_instance_should_retry_to_push_a_dataframe_to_a_model_table(
 
     # and the index field label has been set (we don't check the others standard fields
     # labels as the REST API does not provide this information)
-    table_dto = conn.get_object(result_table.typedid)
+    table_dto = _conn.get_object(result_table.typedid)
     assert len(table_dto["keyFields"]) == 1
     assert all(field["label"] == column_labels[field["name"]] for field in table_dto["keyFields"])
 
@@ -793,15 +822,15 @@ def test_instance_should_retry_to_push_a_dataframe_to_a_model_table(
     [(data, parser, pd_dtype) for data, parser, pd_dtype in _VALID_DATAFRAME_CONTENT],
 )
 def test_model_object_should_retry_to_update_data_of_an_owned_tables_from_pandas(
-    connection_with_raising_session: tuple[Connection, RaisingExceptionSession],
-    model_object: Dict[str, Any],
+    _connection_with_raising_session: tuple[Connection, _RaisingExceptionSession],
+    _model_object: Dict[str, Any],
     column_data,
     value_parser,
     pd_dtype,
 ):
-    conn, raising_session = connection_with_raising_session
+    _conn, raising_session = _connection_with_raising_session
     # given an instance without an owned tables
-    mo = ModelObject.from_conn(conn, model_object["typedId"])
+    mo = ModelObject.from_conn(_conn, _model_object["typedId"])
     index = [1, 2]
     initial_data = {
         "column1": [f"key{idx + 1}" for idx in range(0, 2)],
@@ -844,11 +873,11 @@ def test_model_object_should_retry_to_update_data_of_an_owned_tables_from_pandas
 
 
 def test_push_pandas_should_be_able_to_define_field_types(
-    conn: Connection,
-    instance: Instance,
+    _conn: Connection,
+    _instance: Instance,
 ):
     # given an instance without any datasource
-    assert len(list(instance.datasources())) == 0
+    assert len(list(_instance.datasources())) == 0
 
     data = [
         [
@@ -967,9 +996,9 @@ def test_push_pandas_should_be_able_to_define_field_types(
     for col in columns:
         dataframe_specs.set_col_specs(col, type=col.upper())
 
-    instance.datasources().push_pandas(table_name, dataframe, manual_fields_specs=dataframe_specs)
+    _instance.datasources().push_pandas(table_name, dataframe, manual_fields_specs=dataframe_specs)
 
-    datasources_meta = conn.list_fcs("DMDS")
+    datasources_meta = _conn.list_fcs("DMDS")
     pushed_table = next(
         (table_def for table_def in datasources_meta if table_def["uniqueName"] == table_name), {}
     )

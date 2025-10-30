@@ -9,7 +9,7 @@ from pyfx2.lowlevel.connection import Connection, ConnectionRemote
 from pyfx2.lowlevel.session import PfxAuthUserPass, PfxSession
 
 
-class IntegrationRemote:
+class _IntegrationRemote:
     def __init__(
         self, session: PfxSession, auth: PfxAuthUserPass, pfx_base_url: ParseResult
     ) -> None:
@@ -116,7 +116,7 @@ class IntegrationRemote:
         )
 
 
-def calculation_results_as_dict(
+def _calculation_results_as_dict(
     calc_results_as_json: str,
 ) -> Dict[str, Dict[str, Any]]:
     return {
@@ -143,5 +143,5 @@ class _StringIteratorIO(TextIOBase):
         return result
 
 
-def csv_stream_to_dataframe(csv_data: Iterator[bytes]) -> pd.DataFrame:
+def _csv_stream_to_dataframe(csv_data: Iterator[bytes]) -> pd.DataFrame:
     return pd.read_csv(_StringIteratorIO(csv_data))

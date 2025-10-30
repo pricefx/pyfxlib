@@ -3,7 +3,7 @@ set -euo pipefail
 
 poetry run flake8 pyfx2 &&\
     poetry run flake8 --config .flake8-tests tests &&\
-    poetry run mypy pyfx2 &&
+    poetry run mypy pyfx2 --exclude _testtooling &&
     poetry run pytest tests/unit &&\
     if nc -z localhost 2000; then
         poetry run pytest tests/integration -m "not extended"

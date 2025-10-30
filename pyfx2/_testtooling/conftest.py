@@ -5,6 +5,10 @@ from urllib.parse import ParseResult, urlparse
 
 from _pytest.fixtures import fixture
 
+from requests import HTTPError, Response
+from requests.exceptions import Timeout
+
+from pyfx2._testtooling.helpers import _IntegrationRemote
 from pyfx2.api.domain import Instance
 from pyfx2.lowlevel.connection import Connection
 from pyfx2.lowlevel.session import (
@@ -15,13 +19,8 @@ from pyfx2.lowlevel.session import (
     pfx_session,
 )
 
-from requests import HTTPError, Response
-from requests.exceptions import Timeout
 
-from tests.helpers import IntegrationRemote
-
-
-class RaisingExceptionSession(RetryPfxSession):
+class _RaisingExceptionSession(RetryPfxSession):
     def __init__(
         self,
         wrapped: PfxSession,
@@ -64,30 +63,30 @@ class RaisingExceptionSession(RetryPfxSession):
 
 
 @fixture(scope="session")
-def pfx_base_url() -> ParseResult:
+def _pfx_base_url() -> ParseResult:
     return urlparse(os.getenv("PFX_BASE_URL", "http://localhost:2000"))
 
 
 @fixture(scope="session")
-def session(auth: ParseResult) -> PfxSession:
-    return pfx_session(auth)
+def _session(_auth: ParseResult) -> PfxSession:
+    return pfx_session(_auth)
 
 
 @fixture(scope="session")
-def auth(pfx_base_url: ParseResult) -> PfxAuthUserPass:
+def _auth(_pfx_base_url: ParseResult) -> PfxAuthUserPass:
     return PfxAuthUserPass(
-        pfx_base_url.netloc,
+        _pfx_base_url.netloc,
         "system",
         "root",
         lambda: "root",
-        protocol=pfx_base_url.scheme,
+        protocol=_pfx_base_url.scheme,
     )
 
 
 @fixture(scope="function")
-def remote(
-    session: PfxSession, auth: PfxAuthUserPass, pfx_base_url: ParseResult
-) -> IntegrationRemote:
+def _remote(
+    _session: PfxSession, _auth: PfxAuthUserPass, _pfx_base_url: ParseResult
+) -> _IntegrationRemote:
     def retry_on_http_error(
         request_callable: Callable, max_try: int = 3, delay_between_try: int = 5
     ):
@@ -102,16 +101,16 @@ def remote(
                 time.sleep(delay_between_try)
 
     retry_on_http_error(
-        lambda: session.post(
-            pfx_base_url._replace(
+        lambda: _session.post(
+            _pfx_base_url._replace(
                 path="/pricefx/system/remoteintegrationtestmanager/reset"
             ).geturl()
         )
     )
-    yield IntegrationRemote(session, auth, pfx_base_url)
+    yield _IntegrationRemote(_session, _auth, _pfx_base_url)
     retry_on_http_error(
-        lambda: session.post(
-            pfx_base_url._replace(
+        lambda: _session.post(
+            _pfx_base_url._replace(
                 path="/pricefx/system/remoteintegrationtestmanager/cleanup"
             ).geturl()
         )
@@ -119,52 +118,52 @@ def remote(
 
 
 @fixture(scope="function")
-def conn(remote: IntegrationRemote) -> Connection:
-    return remote.connection()
+def _conn(_remote: _IntegrationRemote) -> Connection:
+    return _remote.connection()
 
 
 @fixture(scope="function")
-def instance(conn: Connection) -> Instance:
-    return Instance(conn)
+def _instance(_conn: Connection) -> Instance:
+    return Instance(_conn)
 
 
 @fixture(scope="function")
-def model_object(remote: IntegrationRemote) -> Dict[str, Any]:
-    return remote.new_model_object("aModelObjectName")[1]
+def _model_object(_remote: _IntegrationRemote) -> Dict[str, Any]:
+    return _remote.new_model_object("aModelObjectName")[1]
 
 
 @fixture(scope="function")
-def job_jst(remote: IntegrationRemote, model_object: Dict[str, Any]) -> Dict[str, Any]:
-    remote.trigger_job(model_object)
-    return remote.job(model_object["typedId"])
+def _job_jst(_remote: _IntegrationRemote, _model_object: Dict[str, Any]) -> Dict[str, Any]:
+    _remote.trigger_job(_model_object)
+    return _remote.job(_model_object["typedId"])
 
 
 @fixture(scope="session")
-def raising_auth(pfx_base_url: ParseResult) -> PfxAuthUserPass:
+def _raising_auth(_pfx_base_url: ParseResult) -> PfxAuthUserPass:
     return PfxAuthUserPass(
-        pfx_base_url.netloc,
+        _pfx_base_url.netloc,
         "system",
         "root",
         lambda: "root",
-        protocol=pfx_base_url.scheme,
+        protocol=_pfx_base_url.scheme,
     )
 
 
 @fixture(scope="session")
-def retry_and_raising_session(
-    raising_auth, pfx_base_url
-) -> tuple[PfxSession, RaisingExceptionSession]:
-    raising = RaisingExceptionSession(SimplePfxSession(raising_auth), 2)
+def _retry_and_raising_session(
+    _raising_auth, _pfx_base_url
+) -> tuple[PfxSession, _RaisingExceptionSession]:
+    raising = _RaisingExceptionSession(SimplePfxSession(_raising_auth), 2)
     retry = RetryPfxSession(raising, retry_delays=[1, 1, 1])
     return retry, raising
 
 
 @fixture(scope="function")
-def raising_remote(
-    retry_and_raising_session: tuple[PfxSession, RaisingExceptionSession],
-    raising_auth: PfxAuthUserPass,
-    pfx_base_url: ParseResult,
-) -> IntegrationRemote:
+def _raising_remote(
+    _retry_and_raising_session: tuple[PfxSession, _RaisingExceptionSession],
+    _raising_auth: PfxAuthUserPass,
+    _pfx_base_url: ParseResult,
+) -> _IntegrationRemote:
     def retry_on_http_error(
         request_callable: Callable, max_try: int = 3, delay_between_try: int = 5
     ):
@@ -178,18 +177,18 @@ def raising_remote(
                     raise err
                 time.sleep(delay_between_try)
 
-    session, _ = retry_and_raising_session
+    _session, _ = _retry_and_raising_session
     retry_on_http_error(
-        lambda: session.post(
-            pfx_base_url._replace(
+        lambda: _session.post(
+            _pfx_base_url._replace(
                 path="/pricefx/system/remoteintegrationtestmanager/reset"
             ).geturl()
         )
     )
-    yield IntegrationRemote(session, raising_auth, pfx_base_url)
+    yield _IntegrationRemote(_session, _raising_auth, _pfx_base_url)
     retry_on_http_error(
-        lambda: session.post(
-            pfx_base_url._replace(
+        lambda: _session.post(
+            _pfx_base_url._replace(
                 path="/pricefx/system/remoteintegrationtestmanager/cleanup"
             ).geturl()
         )
@@ -197,10 +196,10 @@ def raising_remote(
 
 
 @fixture(scope="function")
-def connection_with_raising_session(
-    retry_and_raising_session, raising_remote
-) -> tuple[Connection, RaisingExceptionSession]:
-    retry, raising = retry_and_raising_session
+def _connection_with_raising_session(
+    _retry_and_raising_session, _raising_remote
+) -> tuple[Connection, _RaisingExceptionSession]:
+    retry, raising = _retry_and_raising_session
 
-    connection = raising_remote.connection()
+    connection = _raising_remote.connection()
     return connection, raising
