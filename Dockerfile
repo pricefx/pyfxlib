@@ -7,11 +7,11 @@ RUN pip install poetry requests graphviz sacred imbalanced-learn
 
 COPY pyproject.toml .
 COPY poetry.lock .
-COPY pyfx ./pyfx
+COPY pyfxlib ./pyfxlib
 
 USER $NB_UID
 
 RUN poetry install --no-dev
 
 ENTRYPOINT ["poetry", "run"]
-CMD ["python", "-m", "pyfx.env"]
+CMD ["python", "-m", "pyfxlib.env"]

@@ -5,8 +5,8 @@ from urllib.parse import ParseResult
 
 import pandas as pd
 
-from pyfx.lowlevel.connection import Connection, ConnectionRemote
-from pyfx.lowlevel.session import PfxAuthUserPass, PfxSession
+from pyfxlib.lowlevel.connection import Connection, ConnectionRemote
+from pyfxlib.lowlevel.session import PfxAuthUserPass, PfxSession
 
 
 class _IntegrationRemote:

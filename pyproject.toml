@@ -6,11 +6,11 @@ build-backend = "poetry.core.masonry.api"
 line-length = 100
 
 [tool.poetry]
-name = "pyfx"
+name = "pyfxlib"
 version = "0.1.0"
 description = "Python utilities for working with Pricefx"
 authors = ["Pricefx"]
-include = ["pyfx/py.typed"]
+include = ["pyfxlib/py.typed"]
 
 [tool.pytest.ini_options]
 markers = [

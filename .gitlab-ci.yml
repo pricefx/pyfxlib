@@ -71,9 +71,9 @@ tests:
     - pip install poetry==${POETRY_VERSION}
     - poetry check --lock
     - poetry install
-    - poetry run flake8 pyfx
+    - poetry run flake8 pyfxlib
     - poetry run flake8 --config .flake8-tests tests
-    - poetry run mypy pyfx
+    - poetry run mypy pyfxlib --exclude _testtooling
     - poetry run pytest tests/unit
 
 package:
@@ -100,11 +100,11 @@ publish-package:
   image: python:3.12
   script:
     - pip install poetry==${POETRY_VERSION}
-    - poetry config repositories.pyfx ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi
-    - poetry config http-basic.pyfx gitlab-ci-token ${CI_JOB_TOKEN}
+    - poetry config repositories.pyfxlib ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi
+    - poetry config http-basic.pyfxlib gitlab-ci-token ${CI_JOB_TOKEN}
     - poetry version $PACKAGE_VERSION # if defined, will replace version with $PACKAGE_VERSION
     - poetry version $(poetry version --short)$PACKAGE_VERSION_LOCAL # if defined, will replace vX with vX+branchname
-    - poetry publish --repository pyfx
+    - poetry publish --repository pyfxlib
   allow_failure: true
   needs:
     - package
@@ -119,7 +119,7 @@ publish-package:
 # TODO: agree with tech-ops about the the name to share with:
 #       https://gitlab.pricefx.eu/builds/pricefx-builds/blob/master/bin%2Fbuilds-hook.sh
 # (Once agreed) DO NOT CHANGE NAME as the script above relies on it
-package-pyfx-docs:
+package-pyfxlib-docs:
   stage: deploy
   image: python:3.12
   extends:
@@ -131,5 +131,5 @@ package-pyfx-docs:
   script:
     - pip install poetry==${POETRY_VERSION}
     - poetry check --lock
-    - poetry install --extras="datascience neural"
-    - poetry run pdoc3 --html --config show_source_code=False -o html --force pyfx
+    - poetry install
+    - poetry run pdoc3 --html --config show_source_code=False -o html --force pyfxlib

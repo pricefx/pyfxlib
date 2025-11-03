@@ -8,7 +8,7 @@ import pandas as pd
 
 import pytest
 
-from pyfx._testtooling.conftest import (
+from pyfxlib._testtooling.conftest import (
     _RaisingExceptionSession,
     _auth,
     _conn,
@@ -23,15 +23,15 @@ from pyfx._testtooling.conftest import (
     _retry_and_raising_session,
     _session,
 )
-from pyfx._testtooling.helpers import (
+from pyfxlib._testtooling.helpers import (
     _IntegrationRemote,
     _calculation_results_as_dict,
     _csv_stream_to_dataframe,
 )
-from pyfx.api.domain import Instance, ModelObject, PlatformJob
-from pyfx.lowlevel.avro import AvroStream
-from pyfx.lowlevel.connection import Connection
-from pyfx.lowlevel.pandasutil import FieldSpecs
+from pyfxlib.api.domain import Instance, ModelObject, PlatformJob
+from pyfxlib.lowlevel.avro import AvroStream
+from pyfxlib.lowlevel.connection import Connection
+from pyfxlib.lowlevel.pandasutil import FieldSpecs
 
 __all__ = [
     "_auth",

@@ -7,7 +7,7 @@ from typing import List
 
 import pytest
 
-from pyfx.lowlevel.configuration import (
+from pyfxlib.lowlevel.configuration import (
     CONNECTIONDISPATCH_CONFIG_SECTION,
     LOCALCONNECTION_CONFIG_SECTION,
     spec,

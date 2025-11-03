@@ -7,7 +7,7 @@ import pytest
 
 from requests import HTTPError, RequestException, Response, Timeout
 
-from pyfx.lowlevel.session import (
+from pyfxlib.lowlevel.session import (
     PfxAuthStaticToken,
     RetryPfxSession,
     SimplePfxSession,

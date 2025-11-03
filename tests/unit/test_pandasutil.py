@@ -8,8 +8,8 @@ import pandas as pd
 
 import pytest
 
-from pyfx.lowlevel.avro import AvroStream
-from pyfx.lowlevel.pandasutil import to_field_collection_spec
+from pyfxlib.lowlevel.avro import AvroStream
+from pyfxlib.lowlevel.pandasutil import to_field_collection_spec
 
 
 UNSUPPORTED_DATA = [

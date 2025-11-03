@@ -9,15 +9,22 @@ import pytest
 
 from requests import HTTPError
 
-from pyfx._testtooling.conftest import _auth, _conn, _model_object, _pfx_base_url, _remote, _session
-from pyfx._testtooling.helpers import (
+from pyfxlib._testtooling.conftest import (
+    _auth,
+    _conn,
+    _model_object,
+    _pfx_base_url,
+    _remote,
+    _session,
+)
+from pyfxlib._testtooling.helpers import (
     _IntegrationRemote,
     _calculation_results_as_dict,
     _csv_stream_to_dataframe,
 )
-from pyfx.lowlevel.avro import AvroStream
-from pyfx.lowlevel.connection import Connection
-from pyfx.lowlevel.connection import JobStatus
+from pyfxlib.lowlevel.avro import AvroStream
+from pyfxlib.lowlevel.connection import Connection
+from pyfxlib.lowlevel.connection import JobStatus
 
 __all__ = ["_auth", "_conn", "_model_object", "_pfx_base_url", "_remote", "_session"]
 

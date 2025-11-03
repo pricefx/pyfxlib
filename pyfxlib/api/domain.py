@@ -1,6 +1,6 @@
-"""High-level API for Pyfx domain objects.
+"""High-level API for pyfx domain objects.
 
-Note that, unless explicitely noted, creating or modifying an object
+Note that, unless explicitly noted, creating or modifying an object
 from this package will *not* update the corresponding platform entity.
 """
 
@@ -11,10 +11,10 @@ from typing import Any, Dict, Generic, IO, Iterator, List, Optional, TypeVar, Un
 
 import pandas as pd
 
-from pyfx.lowlevel import pandasutil, session
-from pyfx.lowlevel.avro import AvroStream
-from pyfx.lowlevel.connection import Connection, ConnectionRemote, JobStatus
-from pyfx.lowlevel.session import retry
+from pyfxlib.lowlevel import pandasutil, session
+from pyfxlib.lowlevel.avro import AvroStream
+from pyfxlib.lowlevel.connection import Connection, ConnectionRemote, JobStatus
+from pyfxlib.lowlevel.session import retry
 
 
 class PlatformJob:

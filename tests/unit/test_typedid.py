@@ -1,6 +1,6 @@
 import pytest
 
-from pyfx.lowlevel.connection import _split_typedid
+from pyfxlib.lowlevel.connection import _split_typedid
 
 
 @pytest.mark.parametrize(

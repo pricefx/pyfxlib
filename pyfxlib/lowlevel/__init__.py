@@ -1,4 +1,4 @@
-"""Internals of the pyfx library."""
+"""Internals of the pyfxlib library."""
 
 from typing import List
 
