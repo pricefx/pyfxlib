@@ -11,6 +11,10 @@ version = "0.1.0"
 description = "Python utilities for working with Pricefx"
 authors = ["Pricefx"]
 include = ["pyfxlib/py.typed"]
+packages = [
+    { include = "pyfxlib" },
+    { include = "pyfxlib/_testtooling" }
+]
 
 [tool.pytest.ini_options]
 markers = [
