@@ -7,16 +7,6 @@ variables:
   BACKEND_TARGET_TAG: "15-0-stable"
   POETRY_VERSION: "2.0.1"
 
-.scheduled:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == "main"
-      variables:
-        IMAGE_TAG: "latest"
-    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH =~ /^v[0-9]+$/
-      variables:
-        IMAGE_TAG: $CI_COMMIT_BRANCH
-  allow_failure: false
-
 .mr-main-release-only:
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH =~ /^v[0-9]+$/)
