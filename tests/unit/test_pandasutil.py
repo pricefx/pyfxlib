@@ -3,14 +3,11 @@ import datetime
 from typing import Any
 
 import fastavro
-
 import pandas as pd
-
 import pytest
 
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.pandasutil import to_field_collection_spec
-
 
 UNSUPPORTED_DATA = [
     [[1, 2]],

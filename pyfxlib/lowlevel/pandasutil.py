@@ -5,13 +5,12 @@ Contains also schema type conversion functions
 - from pandas to pricefx FieldCollections.
 """
 
-import datetime
 from collections.abc import Callable
+import datetime
 from enum import StrEnum
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
-
 import pandas as pd
 from pandas.api.types import (
     is_bool_dtype,

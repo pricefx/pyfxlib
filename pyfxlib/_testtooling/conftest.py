@@ -4,7 +4,6 @@ from typing import Any, Callable, Dict, Optional
 from urllib.parse import ParseResult, urlparse
 
 from _pytest.fixtures import fixture
-
 from requests import HTTPError, Response
 from requests.exceptions import Timeout
 
@@ -12,11 +11,11 @@ from pyfxlib._testtooling.helpers import _IntegrationRemote
 from pyfxlib.api.domain import Instance
 from pyfxlib.lowlevel.connection import Connection
 from pyfxlib.lowlevel.session import (
+    pfx_session,
     PfxAuthUserPass,
     PfxSession,
     RetryPfxSession,
     SimplePfxSession,
-    pfx_session,
 )
 
 

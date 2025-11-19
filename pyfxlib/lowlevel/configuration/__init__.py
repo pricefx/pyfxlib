@@ -1,11 +1,11 @@
 """Job context instantiation from a configuration file."""
 
+from configparser import ConfigParser
 import json
 import logging
-import uuid
-from configparser import ConfigParser
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
+import uuid
 
 from pyfxlib.api.domain import DMModel, Model, ModelObject, PlatformJob
 from pyfxlib.lowlevel.configuration import spec
@@ -19,11 +19,10 @@ from pyfxlib.lowlevel.session import (
     PasswordProviderCommand,
     PasswordProviderLinuxSecretStore,
     PasswordProviderPrompt,
-    PfxSession,
     pfx_session_from_token,
     pfx_session_from_user_pass,
+    PfxSession,
 )
-
 
 REMOTECONNECTION_CONFIG_SECTION = "connection"
 LOCALCONNECTION_CONFIG_SECTION = "connection.local"

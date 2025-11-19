@@ -1,7 +1,7 @@
 # pylint: disable=redefined-outer-name
 
-import json
 from configparser import ConfigParser
+import json
 from tempfile import TemporaryDirectory
 from typing import List
 

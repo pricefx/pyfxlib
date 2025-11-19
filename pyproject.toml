@@ -37,7 +37,7 @@ setuptools = { version = "80.*" }
 black = "*"
 flake8 = "*"
 flake8-black = "*"
-flake8-import-order = "*"
+isort = "*"
 flake8-docstrings = "*"
 httpretty = "^1.0.2"
 mypy = "*"
@@ -48,3 +48,16 @@ types-requests = "2.*"
 docker = "6.0.*"
 pyc-wheel = "1.2.*"
 types-jsonschema = "4.21.*"
+
+[tool.isort]
+profile = "appnexus"
+known_application=["pyfxlib"]
+force_alphabetical_sort_within_sections=true
+
+[tool.tomlsort]
+ignore_case = true
+in_place = true
+sort_first = ["build-system", "tool.poetry"]
+sort_inline_arrays = false
+sort_inline_tables = false
+sort_table_keys = true

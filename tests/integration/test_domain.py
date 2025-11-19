@@ -1,15 +1,12 @@
-import json
 from io import StringIO
+import json
 from typing import Any, Dict, Iterable, List, Optional
 
 import numpy as np
-
 import pandas as pd
-
 import pytest
 
 from pyfxlib._testtooling.conftest import (
-    _RaisingExceptionSession,
     _auth,
     _conn,
     _connection_with_raising_session,
@@ -19,14 +16,15 @@ from pyfxlib._testtooling.conftest import (
     _pfx_base_url,
     _raising_auth,
     _raising_remote,
+    _RaisingExceptionSession,
     _remote,
     _retry_and_raising_session,
     _session,
 )
 from pyfxlib._testtooling.helpers import (
-    _IntegrationRemote,
     _calculation_results_as_dict,
     _csv_stream_to_dataframe,
+    _IntegrationRemote,
 )
 from pyfxlib.api.domain import Instance, ModelObject, PlatformJob
 from pyfxlib.lowlevel.avro import AvroStream

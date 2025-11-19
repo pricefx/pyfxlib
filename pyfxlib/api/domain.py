@@ -4,10 +4,9 @@ Note that, unless explicitly noted, creating or modifying an object
 from this package will *not* update the corresponding platform entity.
 """
 
-import io
 from abc import ABC, abstractmethod
+import io
 from typing import Any, Dict, Generic, IO, Iterator, List, Optional, TypeVar, Union
-
 
 import pandas as pd
 

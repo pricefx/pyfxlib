@@ -5,20 +5,19 @@ For a higher level API, see the `pyfxlib.api.domain` package.
 
 """
 
+from abc import ABC, abstractmethod
 import csv
+from enum import Enum, unique
 import io
 import json
 import logging
 import mimetypes
 import os
-import re
-from abc import ABC, abstractmethod
-from enum import Enum, unique
 from pathlib import Path
+import re
 from typing import Any, Dict, Generator, IO, Iterator, List, Optional, Tuple
 
 from requests.exceptions import HTTPError
-
 from requests_toolbelt import MultipartEncoder
 
 from pyfxlib.lowlevel.avro import AvroStream

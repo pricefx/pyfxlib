@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-poetry run flake8 pyfxlib &&\
+poetry run isort --check-only --diff pyfxlib &&\
+    poetry run isort --check-only --diff tests &&\
+    poetry run flake8 pyfxlib &&\
     poetry run flake8 --config .flake8-tests tests &&\
     poetry run mypy pyfxlib --exclude _testtooling &&
     poetry run pytest tests/unit &&\

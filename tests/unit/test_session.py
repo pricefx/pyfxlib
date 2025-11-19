@@ -1,17 +1,16 @@
-import math
 from datetime import datetime
+import math
 from tempfile import NamedTemporaryFile
 from typing import Any, List
 
 import pytest
-
 from requests import HTTPError, RequestException, Response, Timeout
 
 from pyfxlib.lowlevel.session import (
+    pfx_session_from_token_file,
     PfxAuthStaticToken,
     RetryPfxSession,
     SimplePfxSession,
-    pfx_session_from_token_file,
 )
 
 

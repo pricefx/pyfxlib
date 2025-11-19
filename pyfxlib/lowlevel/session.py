@@ -3,12 +3,12 @@
 A session is used to manager persistent authentication with the platform.
 """
 
+from abc import ABC, abstractmethod
 import base64
 import getpass
 import logging
 import subprocess
 import time
-from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, overload
 
 from requests import Response, Session
@@ -516,6 +516,7 @@ class PasswordProviderLinuxSecretStore:
     def __call__(self) -> str:
         """Get the password."""
         from contextlib import closing
+
         import secretstorage  # type:ignore # Linux-specific module
 
         with closing(secretstorage.dbus_init()) as conn:

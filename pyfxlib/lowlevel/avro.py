@@ -5,16 +5,13 @@ from io import BytesIO
 from typing import Any, Dict, Generator, NamedTuple, Union
 
 import fastavro
-
 import numpy as np
-
 import pandas as pd
 
 from pyfxlib.lowlevel.pandasutil import (
     _column_dtype,
     to_avro_type,
 )
-
 
 _EXCEL_DATE_ORIGIN = 693594
 

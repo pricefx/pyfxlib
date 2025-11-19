@@ -1,12 +1,10 @@
+from io import StringIO
 import json
 import time
-from io import StringIO
 from typing import Any, Dict
 
 import pandas as pd
-
 import pytest
-
 from requests import HTTPError
 
 from pyfxlib._testtooling.conftest import (
@@ -18,13 +16,12 @@ from pyfxlib._testtooling.conftest import (
     _session,
 )
 from pyfxlib._testtooling.helpers import (
-    _IntegrationRemote,
     _calculation_results_as_dict,
     _csv_stream_to_dataframe,
+    _IntegrationRemote,
 )
 from pyfxlib.lowlevel.avro import AvroStream
-from pyfxlib.lowlevel.connection import Connection
-from pyfxlib.lowlevel.connection import JobStatus
+from pyfxlib.lowlevel.connection import Connection, JobStatus
 
 __all__ = ["_auth", "_conn", "_model_object", "_pfx_base_url", "_remote", "_session"]
 

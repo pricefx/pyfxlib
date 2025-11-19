@@ -1,5 +1,5 @@
-import json
 from io import TextIOBase
+import json
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import ParseResult
 
