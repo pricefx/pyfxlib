@@ -27,8 +27,6 @@ requests = { version = "2.*" }
 poetry-core = ">=1.0.0"
 
 fastavro = { version = "1.9.*" }
-filelock = { version = "3.*" } # if not there poetry removes filelock (behavior obtained after adding sentence-transformers)
-jsonschema = { version = "4.23.*" }
 numpy = { version = "1.26.*" } #Numpy not update to 2.X due to tensorflow
 pandas = { version = "2.2.*" }
 requests-toolbelt = { version = "1.0.*" }
