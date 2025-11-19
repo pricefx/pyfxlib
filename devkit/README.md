@@ -1,4 +1,4 @@
-# Dev tools
+# `devkit` folder
 
 This folder contains various utilities helping with development of the project.
 
@@ -18,8 +18,9 @@ In order for `check-all.sh` to be able to run integration tests, you will need t
 docker run --privileged -p 2000:2000 -e PFX_BASE_URL=http://localhost:2000 -e PFX_SERVER_TAG=develop -e MY_CI_REGISTRY_PASSWORD=XXXXX -e CI_REGISTRY_USER=XXX@pricefx.com -e CI_REGISTRY=cregistry.pricefx.eu --rm  --name int-test cregistry.pricefx.eu/engineering/remote-integrationtest:latest
 ```
 
-- the user is the Gitlab user
-- the password is a Gitlab token associated to the user, with a read_registry right
+Prerequisites:
+- the user is the Gitlab user,
+- the password is a Gitlab token associated to the user, with a read_registry right,
 - you must be able to pull a Docker image. If it is the first time, log into Docker `cregistry.pricefx.eu`:
   - command: `docker login cregistry.pricefx.eu -u XXXt@pricefx.com` with your Gitlab account (the Gitlab password will be entered)
   - check that it works with `docker pull cregistry.pricefx.eu/engineering/remote-integrationtest:latest` (you can interrupt once you are sure that the access is not denied)

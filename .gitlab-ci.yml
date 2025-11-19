@@ -116,9 +116,8 @@ publish-package:
 
 ######## DEPLOY DOCUMENTATION WEB #########
 
-# TODO: agree with tech-ops about the the name to share with:
-#       https://gitlab.pricefx.eu/builds/pricefx-builds/blob/master/bin%2Fbuilds-hook.sh
-# (Once agreed) DO NOT CHANGE NAME as the script above relies on it
+# Used by https://gitlab.pricefx.eu/builds/pricefx-builds/blob/master/bin%2Fbuilds-hook.sh
+# DO NOT CHANGE NAME as the script above relies on it
 package-pyfxlib-docs:
   stage: deploy
   image: python:3.12
