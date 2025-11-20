@@ -61,6 +61,7 @@ tests:
     - pip install poetry==${POETRY_VERSION}
     - poetry check --lock
     - poetry install
+    - poetry run toml-sort --check pyproject.toml
     - poetry run flake8 pyfxlib
     - poetry run flake8 --config .flake8-tests tests
     - poetry run mypy pyfxlib --exclude _testtooling
