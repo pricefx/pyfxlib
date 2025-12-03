@@ -1,0 +1,60 @@
+[build-system]
+build-backend = "poetry.core.masonry.api"
+requires = ["poetry_core>=1.0.0"]
+
+[tool.poetry]
+authors = ["Pricefx"]
+description = "Python utilities for working with Pricefx"
+include = ["pyfxlib/py.typed"]
+name = "pyfxlib"
+packages = [
+  {include = "pyfxlib"},
+  {include = "pyfxlib/_testtooling"}
+]
+version = "0.1.0"
+
+[tool.poetry.dependencies]
+fastavro = {version = "^1.9"}
+numpy = {version = ">=1.26,<3"}
+pandas = {version = "^2.2"}
+python = "3.12.*"
+requests = {version = "^2.0"}
+requests-toolbelt = {version = "^1.0"}
+SecretStorage = {version = "^3.3", platform = "linux"}
+setuptools = {version = "^80.0"}
+
+[tool.poetry.group.dev.dependencies]
+black = "*"
+docker = "^6.0"
+flake8 = "*"
+flake8-black = "*"
+flake8-docstrings = "*"
+isort = "*"
+mypy = "*"
+pdoc3 = "0.10.*"
+pep8-naming = "*"
+pytest = "*"
+toml-sort = "*"
+types-jsonschema = "^4.21"
+types-requests = "^2.0"
+
+[tool.black]
+line-length = 100
+
+[tool.isort]
+force_alphabetical_sort_within_sections = true
+known_application = ["pyfxlib"]
+profile = "appnexus"
+
+[tool.pytest.ini_options]
+markers = [
+  "extended: marks extended tests, taking sometime quite a long time (deselect with '-m \"not extended\"')"
+]
+
+[tool.tomlsort]
+ignore_case = true
+in_place = true
+sort_first = ["build-system", "tool.poetry"]
+sort_inline_arrays = false
+sort_inline_tables = false
+sort_table_keys = true

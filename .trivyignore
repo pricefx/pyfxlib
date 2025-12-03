@@ -1,0 +1,2 @@
+# trivy configuration file for ignoring vulnerabilities
+# when adding new entries, please add a comment explaining why
