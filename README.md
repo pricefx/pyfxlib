@@ -48,6 +48,56 @@ poetry run pdoc3 --html --config show_source_code=False -o html --force ./pyfxli
 
 ## Release process
 
-Semantic versioning:
+This project follows [Semantic Versioning](https://semver.org/) (MAJOR.MINOR.PATCH):
 
-- 
+  - **MAJOR**: Incompatible API changes (breaking changes)
+  - **MINOR**: New functionality in a backward-compatible manner
+  - **PATCH**: Backward-compatible bug fixes
+
+The only source of truth for the release version is the toml file `pyproject.toml`.
+
+### Git branching model
+
+- **`develop`**: Main development branch - Always contains the latest changes for the next release
+- **`vX`** (e.g., `v1`, `v2`): Maintenance branches for each major version
+
+### Git tags
+
+The release tags are in a **`vX.Y.Z`** format (e.g., `v1.2.3`, `v2.0.0`). They must be set only on `develop` branch or on a maintenance branch.
+When a tag is set, the package is automatically created.
+
+### Create a new release from develop
+
+#### New major version
+
+1. Create a maintenance branch from `develop` for the current major version (E.g., `v4` if you're bumping from v4.x.y to v5.0.0).
+  This allows future hotfixes on the previous major version.
+2. Create a release branch from `develop` (E.g., release/v5.0.0)
+3. Update the version in `pyproject.toml`:
+```commandline
+poetry version major   # for breaking changes (4.2.0 → 5.0.0)
+```
+4. Commit the version changes
+5. Merge the release branch into `develop` (via a merge request)
+6. Create the version tag on `develop` (E.g., v5.0.0). It must correspond to the version set in `pyproject.toml` (checked in the CI)
+7. The package will be automatically built and published to the Gitlab package repository
+8. Delete the release branch
+
+#### New minor or patch version
+
+Follow the same process as for a new major version, except that the first step is not needed.
+
+The command to update the version is either:
+```commandline
+ poetry version patch   # for bug fixes (0.1.0 → 0.1.1)
+ poetry version minor   # for new features (0.1.0 → 0.2.0)
+```
+
+###  Patch/hotfix on a maintenance branch
+
+To publish a hotfix for a previous version (E.g., v1.x.y while develop is at v2.z.t):
+follow the same process from the maintenance branch instead of `develop` (_skip step 1 - no new maintenance branch needed_).
+
+If the fix is relevant for future versions, cherry-pick the fix to `develop` after the release.
+
+**Note**: Do NOT merge maintenance branches into develop. The main `develop` branch should only track the latest major version.
