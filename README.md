@@ -35,12 +35,29 @@ priority = "explicit"
 
 And then in the `[tool.poetry.dependencies]` section:
 ```toml
-pyfxlib = { version = "*", source = "pyfxlib-gitlab" }
+pyfxlib = { version = "X.Y.*", source = "pyfxlib-gitlab" }
 ```
+
+**Note**: Token configuration may be required in various contexts (CI/CD pipelines, Docker, etc.).
+For a complete working example, see the [Python Engine CI configuration](https://gitlab.pricefx.eu/engineering/pricefx-python-engine/-/blob/main/.gitlab-ci.yml).
+
+### Testing an unreleased version of pyfxlib in another project
+
+For testing purposes, you can manually publish a package from a merge request without creating an official release tag.
+
+1. Run manually the job `publish-package` from the Gitlab CI interface.
+2. The package version will be `X.Y.Z+branch-name` (e.g., `1.2.3+feature-branch`) and will be available in the Gitlab package repository.
+3. In the target project, reference the test version in the `pyproject.toml` file:
+```toml
+pyfxlib = { version = "X.Y.Z+branch-name", source = "pyfxlib-gitlab" }
+```
+4. Then run `poetry update pyfxlib` to install the test version.
+
+Note: Test packages are not official releases and should only be used for development and testing purposes.
 
 ## Documentation
 
-You can generate an HTML version of the python engine documentation and API by running (after installing the project):
+You can generate an HTML version of the pyfxlib documentation and API by running (after installing the project):
 
 ```
 poetry run pdoc3 --html --config show_source_code=False -o html --force ./pyfxlib
