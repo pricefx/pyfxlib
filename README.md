@@ -75,17 +75,29 @@ The only source of truth for the release version is the toml file `pyproject.tom
 
 ### Git branching model
 
-- **`develop`**: Main development branch - Always contains the latest changes for the next release
+- **`develop`**: Main development branch
+    - Contains the latest changes for the next release
+    - Used for releasing new major, minor and patch versions
+    - Can only release versions based on the latest version on this branch
 - **`vX`** (e.g., `v1`, `v2`): Maintenance branches for each major version
+    - Created when a new major version is released from `develop`
+    - Used for releasing minor and patch versions on previous major versions
+    - Can only release versions based on the latest version on this branch
+
+**Important**: On any branch, you can only patch or release new minors for the **latest minor version** on that branch.
 
 ### Git tags
 
-The release tags are in a **`vX.Y.Z`** format (e.g., `v1.2.3`, `v2.0.0`). They must be set only on `develop` branch or on a maintenance branch.
+The release tags are in a **`vX.Y.Z`** format (e.g., `v1.2.3`, `v2.0.0`).
+They must be set only on:
+- `develop` branch (for new releases on the latest version)
+- `vX` maintenance branch (for releases on previous major versions)
+
 When a tag is set, the package is automatically created.
 
-### Create a new release from develop
+### Release Workflows
 
-#### New major version
+#### New Major Version (e.g. 4.2.3 → 5.0.0)
 
 1. Create a maintenance branch from `develop` for the current major version (E.g., `v4` if you're bumping from v4.x.y to v5.0.0).
   This allows future hotfixes on the previous major version.
@@ -100,21 +112,37 @@ poetry version major   # for breaking changes (4.2.0 → 5.0.0)
 7. The package will be automatically built and published to the Gitlab package repository
 8. Delete the release branch
 
-#### New minor or patch version
+#### New Minor Version (e.g. 2.3.4 → 2.4.0)
 
-Follow the same process as for a new major version, except that the first step is not needed.
+From `develop` branch: for the last major version. It is the same workflow as for a major version, except step 1.
 
-The command to update the version is either:
+1. Create a release branch from `develop` (E.g., release/v2.4.0)
+2. Update the version in `pyproject.toml`:
 ```commandline
- poetry version patch   # for bug fixes (0.1.0 → 0.1.1)
- poetry version minor   # for new features (0.1.0 → 0.2.0)
+ poetry version minor   # for new features (2.3.4 → 2.4.0)
+```
+3. Commit the version changes
+4. Merge the release branch into `develop` (via a merge request)
+5. Create the version tag on `develop` (E.g., v2.4.0). It must correspond to the version set in `pyproject.toml` (checked in the CI)
+6. The package will be automatically built and published to the Gitlab package repository
+7. Delete the release branch
+
+From a maintenance branch: for previous major versions (e.g, v3 at 3.2.1 → 3.3.0, while `develop` is at v4.x.y).
+
+It is the same process as above, but:
+- Replace `develop` with the maintenance branch name (e.g., `v3`)
+- The tag is created on the maintenance branch
+
+#### Patch Releases (e.g. 1.2.3 → 1.2.4)
+
+It is the same process as a minor version, but use:
+```commandline
+poetry version patch   # for bug fixes (1.2.3 → 1.2.4)
 ```
 
-###  Patch/hotfix on a maintenance branch
+It is done either on `develop` or on a maintenance branch, depending on which version is being patched.
+Only the last minor version of a branch can be patched.
 
-To publish a hotfix for a previous version (E.g., v1.x.y while develop is at v2.z.t):
-follow the same process from the maintenance branch instead of `develop` (_skip step 1 - no new maintenance branch needed_).
+Cherry-picking fixes: If a fix needs to be applied to both a maintenance branch and develop, implement it first on the appropriate branch, then cherry-pick to the other:
 
-If the fix is relevant for future versions, cherry-pick the fix to `develop` after the release.
-
-**Note**: Do NOT merge maintenance branches into develop. The main `develop` branch should only track the latest major version.
+**Important**: Do NOT merge maintenance branches into develop. Cherry-pick individual commits instead.
