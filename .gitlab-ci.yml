@@ -73,7 +73,33 @@ package:
   interruptible: true
   script:
     - pip install poetry==${POETRY_VERSION}
-    - poetry version $PACKAGE_VERSION # if defined, will replace version with $PACKAGE_VERSION
+    # If there is a tag, check that the tag is on an allowed branch (main or maintenance branch)
+    - |
+      if [ -n "${CI_COMMIT_TAG}" ]; then
+        if git branch -r --contains ${CI_COMMIT_TAG} | sed 's/origin\///' | grep -qE "^[ ]*(main|v[0-9]+)$"
+        then
+          echo "Tag is on an allowed branch"
+        else
+          echo "Tag ${CI_COMMIT_TAG} is not on an allowed branch. Allowed branches are 'main' or 'vX.Y.Z'."
+          exit 1
+        fi
+      else
+        echo "No tag detected, skipping branch check"
+      fi
+    # Validate version match between tag and pyproject.toml
+    - |
+        if [[ $CI_COMMIT_TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          TOML_VERSION=$(poetry version -s)
+          TAG_VERSION=${CI_COMMIT_TAG#v}
+          if [ "$TOML_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ Version mismatch!"
+            echo "   pyproject.toml version: $TOML_VERSION"
+            echo "   Git tag version: $TAG_VERSION"
+            echo "Please ensure the tag matches the version in pyproject.toml"
+            exit 1
+          fi
+          echo "✅ Version check passed: $TOML_VERSION"
+        fi
     - poetry version $(poetry version --short)$PACKAGE_VERSION_LOCAL # if defined, will replace vX with vX+branchname
     - poetry install
     - poetry build -f wheel
@@ -81,7 +107,7 @@ package:
     paths:
       - dist/
   rules:
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ # For version tag (e.g., vX.Y.Z)
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       variables:
         PACKAGE_VERSION_LOCAL: "+${CI_COMMIT_REF_SLUG}"
@@ -93,13 +119,12 @@ publish-package:
     - pip install poetry==${POETRY_VERSION}
     - poetry config repositories.pyfxlib ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi
     - poetry config http-basic.pyfxlib gitlab-ci-token ${CI_JOB_TOKEN}
-    - poetry version $PACKAGE_VERSION # if defined, will replace version with $PACKAGE_VERSION
     - poetry version $(poetry version --short)$PACKAGE_VERSION_LOCAL # if defined, will replace vX with vX+branchname
     - poetry publish --repository pyfxlib
-  allow_failure: true
   needs:
     - package
   rules:
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ # Automatic publish when a version tag is created (e.g., vX.Y.Z)
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: manual
       variables:
