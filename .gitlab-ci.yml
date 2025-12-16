@@ -7,9 +7,9 @@ variables:
   BACKEND_TARGET_TAG: "15-0-stable"
   POETRY_VERSION: "2.0.1"
 
-.mr-main-release-only:
+.mr-develop-release-only:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH =~ /^v[0-9]+$/)
+    - if: $CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH =~ /^v[0-9]+$/)
       variables:
         IMAGE_TAG: "${CI_COMMIT_SHA}"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -18,7 +18,7 @@ variables:
 
 .it-tests:
   extends:
-    - .mr-main-release-only
+    - .mr-develop-release-only
   services:
     - name: cregistry.pricefx.eu/engineering/remote-integrationtest:latest
       alias: pricefx
@@ -53,7 +53,7 @@ integration-tests-extended:
 
 tests:
   extends:
-    - .mr-main-release-only
+    - .mr-develop-release-only
   image: python:3.12
   stage: test
   interruptible: true
@@ -73,14 +73,14 @@ package:
   interruptible: true
   script:
     - pip install poetry==${POETRY_VERSION}
-    # If there is a tag, check that the tag is on an allowed branch (main or maintenance branch)
+    # If there is a tag, check that the tag is on an allowed branch (develop or maintenance branch)
     - |
       if [ -n "${CI_COMMIT_TAG}" ]; then
-        if git branch -r --contains ${CI_COMMIT_TAG} | sed 's/origin\///' | grep -qE "^[ ]*(main|v[0-9]+)$"
+        if git branch -r --contains ${CI_COMMIT_TAG} | sed 's/origin\///' | grep -qE "^[ ]*(develop|v[0-9]+)$"
         then
           echo "Tag is on an allowed branch"
         else
-          echo "Tag ${CI_COMMIT_TAG} is not on an allowed branch. Allowed branches are 'main' or 'vX.Y.Z'."
+          echo "Tag ${CI_COMMIT_TAG} is not on an allowed branch. Allowed branches are 'develop' or 'vX.Y.Z'."
           exit 1
         fi
       else
@@ -138,7 +138,7 @@ package-pyfxlib-docs:
   stage: deploy
   image: python:3.12
   extends:
-    - .mr-main-release-only
+    - .mr-develop-release-only
   interruptible: true
   artifacts:
     paths:
