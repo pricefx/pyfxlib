@@ -76,11 +76,12 @@ package:
     # If there is a tag, check that the tag is on an allowed branch (develop or maintenance branch)
     - |
       if [ -n "${CI_COMMIT_TAG}" ]; then
-        if git branch -r --contains ${CI_COMMIT_TAG} | sed 's/origin\///' | grep -qE "^[ ]*(develop|v[0-9]+)$"
+        git fetch origin
+        if git branch -r --contains ${CI_COMMIT_TAG} | sed 's|^[* ]*||' | grep -qE "origin/(develop|v[0-9]+)$"
         then
           echo "Tag is on an allowed branch"
         else
-          echo "Tag ${CI_COMMIT_TAG} is not on an allowed branch. Allowed branches are 'develop' or 'vX.Y.Z'."
+          echo "Tag ${CI_COMMIT_TAG} is not on an allowed branch. Allowed branches are 'develop' or 'vX'."
           exit 1
         fi
       else
