@@ -17,7 +17,7 @@ version = "0.1.0"
 fastavro = {version = "^1.9"}
 numpy = {version = ">=1.26,<3"}
 pandas = {version = "^2.2"}
-python = "3.12.*"
+python = ">=3.11,<4.0"
 requests = {version = "^2.0"}
 requests-toolbelt = {version = "^1.0"}
 SecretStorage = {version = "^3.3", platform = "linux"}
