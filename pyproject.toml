@@ -11,7 +11,7 @@ packages = [
   {include = "pyfxlib"},
   {include = "pyfxlib/_testtooling"}
 ]
-version = "0.1.0"
+version = "0.1.1"
 
 [tool.poetry.dependencies]
 fastavro = {version = "^1.9"}
