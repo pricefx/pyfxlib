@@ -7,9 +7,10 @@ from abc import ABC, abstractmethod
 import base64
 import getpass
 import logging
+import os
 import subprocess
 import time
-from typing import Any, Callable, Dict, List, Optional, overload
+from typing import Any, Callable, Dict, List, Optional, overload, cast
 
 from requests import Response, Session
 from requests.exceptions import HTTPError, JSONDecodeError, RequestException, Timeout
@@ -574,3 +575,20 @@ class PasswordProviderCommand:
             raise RuntimeError(f"unknown error running {self.command}")
         proc.wait()
         return proc.stdout.read().rstrip()  # drop carriage return
+
+
+class PasswordProviderEnvironment:
+    """A platform provider getting the password directly from an environment variable.
+
+    Please don't use this outside of testing.
+    """
+
+    def __init__(self, env: str = "PFX_PASSWORD") -> None:
+        """Get the password directly from env variables."""
+        self.pwd = os.environ.get(env)
+        if self.pwd is None:
+            raise ValueError("The environmental value PFX_PASSWORD is not set")
+
+    def __call__(self) -> str:
+        """Get the password."""
+        return cast(str, self.pwd)  # cast to str because mypy doesn't understand the env var is set
