@@ -6,7 +6,7 @@ A set of utilities to be able to use the Pricefx API from a Python package.
 
 If you want to install the project locally (to use the API from a script, debug a python job locally or just hack around):
 
-- have python 3.12
+- have python 3.11 or later installed
 - install the latest version of `poetry`
 - clone this project
 - in the project root, run `poetry install`
