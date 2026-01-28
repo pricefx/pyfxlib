@@ -4,13 +4,27 @@ requires = ["poetry_core>=1.0.0"]
 
 [tool.poetry]
 authors = ["Pricefx"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  'Programming Language :: Python :: 3 :: Only',
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules"
+]
 description = "Python utilities for working with Pricefx"
 include = ["pyfxlib/py.typed"]
+license = "Apache-2.0"
+maintainers = ["Pricefx <noreply@pricefx.com>"]
 name = "pyfxlib"
 packages = [
   {include = "pyfxlib"},
   {include = "pyfxlib/_testtooling"}
 ]
+readme = "README.md"
 version = "0.4.0"
 
 [tool.poetry.dependencies]
@@ -37,6 +51,11 @@ pytest = "*"
 pytest-asyncio = ">=1.3.0"
 toml-sort = "*"
 types-jsonschema = "^4.21"
+
+[tool.poetry.urls]
+Documentation = "https://developer.pricefx.eu/pricefx-api/pyfxlib/index.html"
+Homepage = "https://pypi.org/project/pyfxlib/"
+Repository = "https://gitlab.pricefx.eu/engineering/pyfxlib"
 
 [tool.black]
 line-length = 100
