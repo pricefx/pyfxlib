@@ -103,7 +103,7 @@ package:
         fi
     - poetry version $(poetry version --short)$PACKAGE_VERSION_LOCAL # if defined, will replace vX with vX+branchname
     - poetry install
-    - poetry build -f wheel
+    - poetry build
   artifacts:
     paths:
       - dist/
@@ -131,6 +131,18 @@ publish-package:
       allow_failure: true
       variables:
         PACKAGE_VERSION_LOCAL: "+${CI_COMMIT_REF_SLUG}"
+
+publish-pypi:
+  stage: deploy
+  image: python:3.12
+  script:
+    - pip install poetry==${POETRY_VERSION}
+    - poetry version $(poetry version --short)$PACKAGE_VERSION_LOCAL
+    - poetry publish --username __token__ --password ${PYPI_TOKEN}
+  needs:
+    - package
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ # Automatic publish when a version tag is created (e.g., vX.Y.Z)
 
 ######## DEPLOY DOCUMENTATION WEB #########
 
