@@ -3,8 +3,8 @@ import math
 from tempfile import NamedTemporaryFile
 from typing import Any, List
 
+from httpx import HTTPError, HTTPStatusError, Response, TimeoutException
 import pytest
-from requests import HTTPError, RequestException, Response, Timeout
 
 from pyfxlib.lowlevel.session import (
     pfx_session_from_token_file,
@@ -15,6 +15,9 @@ from pyfxlib.lowlevel.session import (
 
 
 class MockResponse(Response):
+    def __init__(self):
+        super().__init__(status_code=200)
+
     def raise_for_status(self) -> Any:
         return None
 
@@ -58,7 +61,7 @@ def test_pfxsession_tokenfile_update():
 
 
 class RaisingExceptionSession:
-    def __init__(self, exceptions: List[RequestException]) -> None:
+    def __init__(self, exceptions: List[HTTPError]) -> None:
         self.headers = {}
         self._exceptions = exceptions.copy()
         self.post_timestamps = []
@@ -79,16 +82,16 @@ class RaisingExceptionSession:
         return self._next_response()
 
 
-def http_error(status_code: int) -> HTTPError:
+def http_error(status_code: int) -> HTTPStatusError:
     response = Response()
     response.status_code = status_code
-    return HTTPError(response=response)
+    return HTTPStatusError(message="", request="", response=response)
 
 
 @pytest.mark.parametrize(
     "exception",
     [
-        (Timeout()),
+        (TimeoutException()),
         (http_error(500)),
         (http_error(409)),
     ],
@@ -122,7 +125,7 @@ def test_pfxsession_should_retry_on_timout_and_500_or_409_http_errors(exception,
 @pytest.mark.parametrize(
     "exception",
     [
-        (Timeout()),
+        (TimeoutException()),
         (http_error(409)),
     ]
     + [(http_error(code)) for code in range(500, 600)],
@@ -160,8 +163,10 @@ def test_pfxsession_should_fail_directly_on_non_elligible_exception(caplog):
         retry_delays=delays,
     )
 
-    with pytest.raises(HTTPError):
+    with pytest.raises(HTTPStatusError):
         pfx_session.post("dummy_url")
 
     assert len(raw_session.post_timestamps) == 1
-    assert "Caught a non retryable error: HTTPError()" in [rec.message for rec in caplog.records]
+    assert "Caught a non retryable error: HTTPStatusError()" in [
+        rec.message for rec in caplog.records
+    ]

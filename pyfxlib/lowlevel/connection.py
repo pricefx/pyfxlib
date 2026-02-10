@@ -15,10 +15,9 @@ import mimetypes
 import os
 from pathlib import Path
 import re
-from typing import Any, Dict, Generator, IO, Iterator, List, Optional, Tuple
+from typing import Any, Dict, IO, Iterator, List, Optional, Tuple
 
-from requests.exceptions import HTTPError
-from requests_toolbelt import MultipartEncoder
+from httpx import HTTPStatusError
 
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.session import PfxSession
@@ -207,25 +206,6 @@ class Connection(ABC):
 # The solution here is to set the timeout to 1h so that the back end will always choose this
 # configured "MAX TIMEOUT" value up to 1h.
 _DATAMART_FETCH_TIMEOUT = 3600
-
-
-def _to_chunkable_content(
-    source: MultipartEncoder, chunk_size: int = 8192
-) -> Generator[bytes, None, None]:
-    """Returns a generator that prevent request the need of a content lenght.
-
-    In that case, request uses content-encoding: chunked (see
-    https://toolbelt.readthedocs.io/en/latest/uploading-data.html#streaming-data-from-a-generator)
-    This is needed as we are producing the avro content on the fly and then the final content
-    length is unknown.
-    TODO maybe actual chuncksize is too small? (see https://github.com/requests/toolbelt/issues/75)
-    """
-    if not hasattr(source, "read"):
-        raise ValueError("given source is not readable")
-    buff = source.read(chunk_size)
-    while len(buff) > 0:
-        yield buff
-        buff = source.read(chunk_size)
 
 
 class ConnectionRemote(Connection):
@@ -417,25 +397,21 @@ class ConnectionRemote(Connection):
         else:
             schema["uniqueName"] = name
 
-        # stream multipart content
-        multipart_content = MultipartEncoder(
-            fields={
-                "DMFieldCollectionSpec": (
-                    None,
-                    json.dumps(schema),
-                    "text/json; charset=UTF-8",
-                ),
-                "DMFieldCollectionData": (
-                    None,
-                    content,
-                    "avro/binary",
-                ),
-            }
-        )
+        files = {
+            "DMFieldCollectionSpec": (
+                None,
+                json.dumps(schema),
+                "text/json; charset=UTF-8",
+            ),
+            "DMFieldCollectionData": (
+                None,
+                content,
+                "avro/binary",
+            ),
+        }
         self.session.post_simple(
             f'{self.endpoint}/datamart.createfc/{typecode}{"/replace" if replace_existing else ""}',
-            data=_to_chunkable_content(multipart_content),
-            headers={"Content-Type": multipart_content.content_type},
+            files=files,
         )
 
     def _fc_spec(self, typedid: str) -> Optional[Dict]:
@@ -461,16 +437,9 @@ class ConnectionRemote(Connection):
         response = self.session.post(f"{self.endpoint}/uploadmanager.newuploadslot").json()
         uploadslot = response["response"]["data"][0]["id"]
         try:
-            # stream multipart content
-            content = MultipartEncoder(
-                fields={"DMFieldCollectionData": ("data.avro", data, "avro/binary")}
-            )
-            self.session.post_simple(
-                f"{self.endpoint}/datamart.loadfc/{typedid}",
-                data=_to_chunkable_content(content),
-                headers={"Content-Type": content.content_type},
-            )
-        except HTTPError as err:
+            files = {"DMFieldCollectionData": ("data.avro", data, "avro/binary")}
+            self.session.post_simple(f"{self.endpoint}/datamart.loadfc/{typedid}", files=files)
+        except HTTPStatusError as err:
             error_desc = self.session.post(
                 f"{self.endpoint}/uploadmanager.progress/{uploadslot}",
             ).json()["response"]["data"][0]["data"]

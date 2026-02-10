@@ -3,9 +3,9 @@ import json
 import time
 from typing import Any, Dict
 
+from httpx import HTTPStatusError
 import pandas as pd
 import pytest
-from requests import HTTPError
 
 from pyfxlib._testtooling.conftest import (
     _auth,
@@ -531,7 +531,7 @@ def test_create_table_should_work_with_ten_million_lines_df(_conn: Connection):
             downloaded_content = _csv_stream_to_dataframe(
                 _conn.stream_fcs(data_sources[0]["typedId"])
             )
-        except HTTPError:
+        except HTTPStatusError:
             time.sleep(5)
             nb_retry += 1
 

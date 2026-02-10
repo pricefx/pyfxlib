@@ -4,8 +4,7 @@ from typing import Any, Callable, Dict, Optional
 from urllib.parse import ParseResult, urlparse
 
 from _pytest.fixtures import fixture
-from requests import HTTPError, Response
-from requests.exceptions import Timeout
+from httpx import HTTPStatusError, Response, TimeoutException
 
 from pyfxlib._testtooling.helpers import _IntegrationRemote
 from pyfxlib.api.domain import Instance
@@ -24,7 +23,7 @@ class _RaisingExceptionSession(RetryPfxSession):
         self,
         wrapped: PfxSession,
         retries: int,
-        exception_to_raise: Optional[Exception] = Timeout,
+        exception_to_raise: Optional[Exception] = TimeoutException,
         endpoints_to_fail: Optional[list] = ["datamart.createfc", "datamart.loadfc"],
     ) -> None:
         self._wrapped: PfxSession = wrapped
@@ -94,7 +93,7 @@ def _remote(
             nb_try += 1
             try:
                 return request_callable()
-            except HTTPError as err:
+            except HTTPStatusError as err:
                 if nb_try >= max_try:
                     raise err
                 time.sleep(delay_between_try)
@@ -171,7 +170,7 @@ def _raising_remote(
             nb_try += 1
             try:
                 return request_callable()
-            except HTTPError as err:
+            except HTTPStatusError as err:
                 if nb_try >= max_try:
                     raise err
                 time.sleep(delay_between_try)
