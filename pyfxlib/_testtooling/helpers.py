@@ -5,7 +5,7 @@ from urllib.parse import ParseResult
 
 import pandas as pd
 
-from pyfxlib.lowlevel.connection import Connection, ConnectionRemote
+from pyfxlib.lowlevel.connection import _run_sync, Connection, ConnectionRemote
 from pyfxlib.lowlevel.session import PfxAuthUserPass, PfxSession
 
 

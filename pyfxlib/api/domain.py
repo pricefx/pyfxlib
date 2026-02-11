@@ -6,26 +6,37 @@ from this package will *not* update the corresponding platform entity.
 
 from abc import ABC, abstractmethod
 import io
-from typing import Any, Dict, Generic, IO, Iterator, List, Optional, TypeVar, Union
+from typing import (
+    Any,
+    Dict,
+    Generic,
+    IO,
+    Iterator,
+    List,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 import pandas as pd
 
 from pyfxlib.lowlevel import pandasutil, session
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.connection import (
-    _run_sync,
-    _sync_iterator,
     Connection,
     ConnectionRemote,
+    ConnectionSync,
     JobStatus,
 )
 from pyfxlib.lowlevel.session import retry
+
+T = TypeVar("T")
 
 
 class PlatformJob:
     """A Job executed on the platform."""
 
-    def __init__(self, conn: Connection, jst_id: int):
+    def __init__(self, conn: ConnectionSync, jst_id: int):
         """Get the representation corresponding to a running job.
 
         Args:
@@ -67,7 +78,7 @@ class PlatformJob:
 class IdentifiableEntity(ABC):
     """An entity with an uniquer identifiant."""
 
-    def __init__(self, conn: Connection, typedid: str) -> None:
+    def __init__(self, conn: ConnectionSync, typedid: str) -> None:
         """Create the repesentation of an identifiable entity.
 
         Args:
@@ -81,7 +92,7 @@ class IdentifiableEntity(ABC):
 class Owned(ABC):
     """Something owned by an `IdentifiableEntity`."""
 
-    def __init__(self, conn: Connection, owner: IdentifiableEntity) -> None:
+    def __init__(self, conn: ConnectionSync, owner: IdentifiableEntity) -> None:
         """Create the repesentation of an Owned entity.
 
         Args:
@@ -101,7 +112,7 @@ class BasicEntity(IdentifiableEntity):
 
     def __init__(
         self,
-        conn: Connection,
+        conn: ConnectionSync,
         typedid: str,
         unique_name: Optional[str] = None,
         label: Optional[str] = None,
@@ -160,7 +171,7 @@ class TableImmutable(AbstractTable):
 
     def __init__(
         self,
-        conn: Connection,
+        conn: ConnectionSync,
         typedid: str,
         unique_name: Optional[str] = None,
         name: Optional[str] = None,
@@ -188,7 +199,7 @@ class TableImmutable(AbstractTable):
     @classmethod
     def from_dict(
         cls,
-        conn: Connection,
+        conn: ConnectionSync,
         attrs: Dict[str, Any],
     ) -> "TableImmutable":
         """Create a table from a dict of properties."""
@@ -210,7 +221,7 @@ class TableMutable(AbstractTable):
 
     def __init__(
         self,
-        conn: Connection,
+        conn: ConnectionSync,
         typedid: str,
         unique_name: Optional[str] = None,
         name: Optional[str] = None,
@@ -238,7 +249,7 @@ class TableMutable(AbstractTable):
     @classmethod
     def from_dict(
         cls,
-        conn: Connection,
+        conn: ConnectionSync,
         attrs: Dict[str, Any],
     ) -> "TableMutable":
         """Create a table from a dict of properties."""
@@ -344,7 +355,7 @@ class TableSource(ItemCollection[TableType], ABC):
 
     def __init__(
         self,
-        conn: Connection,
+        conn: ConnectionSync,
         type_code: str,
         req_params: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -370,7 +381,7 @@ class TableImmutableSource(TableSource[TableImmutable]):
 
     def __init__(
         self,
-        conn: Connection,
+        conn: ConnectionSync,
         type_code: str,
         req_params: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -385,7 +396,7 @@ class TableMutableSource(TableSource[TableMutable]):
 
     def __init__(
         self,
-        conn: Connection,
+        conn: ConnectionSync,
         type_code: str,
         req_params: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -523,7 +534,7 @@ class Attachment(BasicEntity, Owned):
 
     def __init__(
         self,
-        conn: Connection,
+        conn: ConnectionSync,
         owner: IdentifiableEntity,
         typedid: str,
         name: str,
@@ -554,7 +565,7 @@ class Attachment(BasicEntity, Owned):
     @classmethod
     def from_dict(
         cls,
-        conn: Connection,
+        conn: ConnectionSync,
         owner: IdentifiableEntity,
         attrs: Dict[str, Any],
     ) -> "Attachment":
@@ -614,7 +625,7 @@ class Attachments(Owned, ItemCollection[Attachment]):
 class ModelTables(TableMutableSource, Owned):
     """Tables owned by a model."""
 
-    def __init__(self, conn: Connection, owner: IdentifiableEntity):
+    def __init__(self, conn: ConnectionSync, owner: IdentifiableEntity):
         TableMutableSource.__init__(self, conn, "DMT", {"owner": str(owner.typedid)})
         Owned.__init__(self, conn, owner)
 
@@ -624,7 +635,7 @@ class CalculationItem(IdentifiableEntity, Owned):
 
     def __init__(
         self,
-        conn: Connection,
+        conn: ConnectionSync,
         owner: IdentifiableEntity,
         typedid: str,
         key1: str,
@@ -654,7 +665,7 @@ class CalculationItem(IdentifiableEntity, Owned):
     @classmethod
     def from_dict(
         cls,
-        conn: Connection,
+        conn: ConnectionSync,
         owner: IdentifiableEntity,
         attrs: Dict[str, Any],
     ) -> "CalculationItem":
@@ -685,7 +696,7 @@ class CalculationItems(IdentifiableEntity, Owned):
 
     def __init__(
         self,
-        conn: Connection,
+        conn: ConnectionSync,
         owner: IdentifiableEntity,
         typedid: str,
     ):
@@ -717,7 +728,7 @@ class ModelType(BasicEntity):
 
     def __init__(
         self,
-        conn: Connection,
+        conn: ConnectionSync,
         typedid: str,
         unique_name: str,
         label: Optional[str],
@@ -747,7 +758,7 @@ class ModelType(BasicEntity):
     @classmethod
     def from_dict(
         cls,
-        conn: Connection,
+        conn: ConnectionSync,
         attrs: Dict[str, Any],
     ) -> "ModelType":
         """Create a model type from a dict of properties."""
@@ -784,7 +795,7 @@ class DMModel(Model):
 
     def __init__(
         self,
-        conn: Connection,
+        conn: ConnectionSync,
         typedid: str,
         unique_name: Optional[str] = None,
         label: Optional[str] = None,
@@ -833,7 +844,7 @@ class DMModel(Model):
     @classmethod
     def from_dict(
         cls,
-        conn: Connection,
+        conn: ConnectionSync,
         attrs: Dict[str, Any],
     ) -> "DMModel":
         """Create a model from a dict of properties."""
@@ -861,7 +872,7 @@ class DMModel(Model):
     @classmethod
     def from_conn(
         cls,
-        conn: Connection,
+        conn: ConnectionSync,
         model_typedid: str,
     ) -> "DMModel":
         """Create a model from a model typedid."""
@@ -871,7 +882,7 @@ class DMModel(Model):
 class DMModels(ItemCollection[DMModel]):
     """The DataMart Models."""
 
-    def __init__(self, conn: Connection):
+    def __init__(self, conn: ConnectionSync):
         self._conn = conn
 
     def __iter__(self) -> Iterator[DMModel]:
@@ -888,7 +899,7 @@ class ModelObject(Model):
 
     def __init__(
         self,
-        conn: Connection,
+        conn: ConnectionSync,
         typedid: str,
         unique_name: Optional[str] = None,
         label: Optional[str] = None,
@@ -927,7 +938,7 @@ class ModelObject(Model):
     @classmethod
     def from_dict(
         cls,
-        conn: Connection,
+        conn: ConnectionSync,
         attrs: Dict[str, Any],
     ) -> "ModelObject":
         """Create a model from a dict of properties."""
@@ -946,7 +957,7 @@ class ModelObject(Model):
     @classmethod
     def from_conn(
         cls,
-        conn: Connection,
+        conn: ConnectionSync,
         model_typedid: str,
     ) -> "ModelObject":
         """Create a model from a model typedid."""
@@ -956,7 +967,7 @@ class ModelObject(Model):
 class ModelObjects(ItemCollection[ModelObject]):
     """The Models Objects."""
 
-    def __init__(self, conn: Connection):
+    def __init__(self, conn: ConnectionSync):
         self._conn = conn
 
     def __iter__(self) -> Iterator[ModelObject]:
@@ -971,7 +982,7 @@ class ModelObjects(ItemCollection[ModelObject]):
 class DataSources(TableMutableSource):
     """The data sources."""
 
-    def __init__(self, conn: Connection):
+    def __init__(self, conn: ConnectionSync):
         TableMutableSource.__init__(self, conn, "DMDS")
         self._conn = conn
 
@@ -979,7 +990,7 @@ class DataSources(TableMutableSource):
 class Datamarts(TableImmutableSource):
     """The datamarts."""
 
-    def __init__(self, conn: Connection):
+    def __init__(self, conn: ConnectionSync):
         TableImmutableSource.__init__(self, conn, "DM")
         self._conn = conn
 
@@ -988,7 +999,7 @@ class Instance:
     """A platform instance."""
 
     def __init__(self, conn: Connection):
-        self._conn = conn
+        self._conn = ConnectionSync(conn)
 
     def __repr__(self) -> str:
         return f"Instance({self._conn})"

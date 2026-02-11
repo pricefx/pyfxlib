@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import subprocess
+import time
 from typing import Any, Awaitable, Callable, cast, Dict, List, Optional, overload
 
 from httpx import AsyncClient, HTTPError, HTTPStatusError, Response, TimeoutException
@@ -167,7 +168,7 @@ class RetryPfxSession(PfxSession):
         self._retry_delays: List[int] = retry_delays if retry_delays is not None else [3, 10, 30]
 
     async def _try(self, method: Callable[[], Awaitable[Response]]) -> Response:
-        return await retry(method, 0, self._retry_delays, self._retry_predicate)
+        return await async_retry(method, 0, self._retry_delays, self._retry_predicate)
 
     async def post(self, url: str, **kwargs: Any) -> Response:
         """See `httpx.AsyncClient.post`."""
@@ -208,7 +209,7 @@ def _default_retry_predicate(exception: HTTPError) -> bool:
 
 
 @overload
-async def retry(  # noqa: E704
+async def async_retry(  # noqa: E704
     method: Callable[[], Awaitable[Response]],
     nb_tries: int,
     retry_delays: List[int],
@@ -217,7 +218,7 @@ async def retry(  # noqa: E704
 
 
 @overload
-async def retry(  # noqa: E704
+async def async_retry(  # noqa: E704
     method: Callable[[], Awaitable[None]],
     nb_tries: int,
     retry_delays: List[int] = ...,
@@ -225,7 +226,7 @@ async def retry(  # noqa: E704
 ) -> None: ...
 
 
-async def retry(
+async def async_retry(
     method: Callable[[], Awaitable[Response]] | Callable[[], Awaitable[None]],
     nb_tries: int,
     retry_delays: List[int] = [3, 10, 30],
@@ -269,7 +270,78 @@ async def retry(
                     len(retry_delays),
                 )
                 await asyncio.sleep(delay)
-                return await retry(method, nb_tries + 1, retry_delays, retry_predicate)
+                return await async_retry(method, nb_tries + 1, retry_delays, retry_predicate)
+            else:
+                LOGGER.error("Aborting after %d retries", nb_tries)
+                raise exception
+        else:
+            LOGGER.error("Caught a non retryable error: %s", repr(exception))
+            raise exception
+
+
+@overload
+def retry(  # noqa: E704
+    method: Callable[[], Response],
+    nb_tries: int,
+    retry_delays: List[int],
+    retry_predicate: Callable[[HTTPError], bool],
+) -> Response: ...
+
+
+@overload
+def retry(  # noqa: E704
+    method: Callable[[], None],
+    nb_tries: int,
+    retry_delays: List[int] = ...,
+    retry_predicate: Callable[[HTTPError], bool] = ...,
+) -> None: ...
+
+
+def retry(
+    method: Callable[[], Response] | Callable[[], None],
+    nb_tries: int,
+    retry_delays: List[int] = [3, 10, 30],
+    retry_predicate: Callable[[HTTPError], bool] = _default_retry_predicate,
+) -> Response | None:
+    """
+    Wrapper function that retries requests a given number of time before failing.
+
+    Args:
+            method: the executed request function
+            nb_tries: number of current try
+            retry_predicate: a predicate which define a request should be retried when the given
+                HTTPError happens
+            retry_delays: the sequence of delays in seconds to apply between each trial. The first
+                value is the first delay to wait before the second retry. The next value
+                will be waited after a second failure and so on. Consequently, the number
+                of retry done before aborting is equal to the size of this list
+                (excluding the initial request).
+
+    Returns:
+        Returns either Response or None, depending on what's `method` returning.
+    """
+    try:
+        return method()
+    except HTTPError as exception:
+        if retry_predicate(exception):
+            exception.add_note(
+                "Exception occurred during transfer of data from/to backend.\n"
+                "For more details, see partition BE logs and Python logs (Job trigger calculation"
+                " logs, where pricefx_job_trigger_jst is set to this jobs ID).\n"
+                "If calculation failed due to timeout, adjusting partition settings for"
+                " `datamart.query.externalMaxTimeout` might help."
+            )
+            LOGGER.error("Caught a retryable error: %s", repr(exception))
+            if len(retry_delays) > nb_tries:
+                delay = retry_delays[nb_tries]
+                LOGGER.error(
+                    "Will retry in %d seconds (%d/%d retries)...",
+                    delay,
+                    nb_tries + 1,
+                    len(retry_delays),
+                )
+                time.sleep(delay)
+                return retry(method, nb_tries + 1, retry_delays, retry_predicate)
             else:
                 LOGGER.error("Aborting after %d retries", nb_tries)
                 raise exception
