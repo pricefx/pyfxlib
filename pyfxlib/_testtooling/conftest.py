@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 import os
 import time
 from typing import Any, Callable, Dict, Optional
@@ -8,7 +9,7 @@ from httpx import HTTPStatusError, Response, TimeoutException
 
 from pyfxlib._testtooling.helpers import _IntegrationRemote
 from pyfxlib.api.domain import Instance
-from pyfxlib.lowlevel.connection import Connection
+from pyfxlib.lowlevel.connection import _run_sync, Connection, ConnectionSync
 from pyfxlib.lowlevel.session import (
     pfx_session,
     PfxAuthUserPass,
@@ -23,7 +24,7 @@ class _RaisingExceptionSession(RetryPfxSession):
         self,
         wrapped: PfxSession,
         retries: int,
-        exception_to_raise: Optional[Exception] = TimeoutException,
+        exception_to_raise: Optional[Exception] = TimeoutException("timeout"),
         endpoints_to_fail: Optional[list] = ["datamart.createfc", "datamart.loadfc"],
     ) -> None:
         self._wrapped: PfxSession = wrapped
@@ -35,21 +36,22 @@ class _RaisingExceptionSession(RetryPfxSession):
     def reset_counter(self) -> None:
         self._counter = 0
 
-    def post(self, url: str, **kwargs: Any) -> Response:
+    async def post(self, url: str, **kwargs: Any) -> Response:
         if (
             any(endpoint in url for endpoint in self._endpoints_to_fail)
             and self._counter < self._retries
         ):
             print("Raising exception on", url)
-            for data in kwargs["data"]:  # deplete the generator
-                pass
+            for file_tuple in kwargs["files"].values():
+                if hasattr(file_tuple[1], "read"):
+                    file_tuple[1].read(4096)  # deplete the file-like object
             self._counter += 1
             raise self._exception_to_raise
-        return self._wrapped.post(url, **kwargs)
+        return await self._wrapped.post(url, **kwargs)
 
-    def get(self, url: str, **kwargs: Any) -> Response:
-        """See `requests.Session.get`."""
-        return self._wrapped.get(url, **kwargs)
+    async def get(self, url: str, **kwargs: Any) -> Response:
+        """See `httpx.AsyncClient.get`."""
+        return await self._wrapped.get(url, **kwargs)
 
     def add_request_hook(self, hook: Callable[[str, str, Dict[str, Any]], None]) -> None:
         """Add a hook to be executed before sending request."""
@@ -58,6 +60,13 @@ class _RaisingExceptionSession(RetryPfxSession):
     def add_response_hook(self, hook: Callable[[Response], None]) -> None:
         """Add a hook to be executed after receiving a response."""
         self._wrapped.add_response_hook(hook)
+
+    async def get_stream(
+        self, url: str, chunk_size: int = 128, **kwargs: Any
+    ) -> AsyncIterator[bytes]:
+        """Stream bytes from the given URL. See `httpx.AsyncClient.stream`."""
+        async for chunk in self._wrapped.get_stream(url, chunk_size, **kwargs):
+            yield chunk
 
 
 @fixture(scope="session")
@@ -99,30 +108,39 @@ def _remote(
                 time.sleep(delay_between_try)
 
     retry_on_http_error(
-        lambda: _session.post(
-            _pfx_base_url._replace(
-                path="/pricefx/system/remoteintegrationtestmanager/reset"
-            ).geturl()
+        lambda: _run_sync(
+            _session.post(
+                _pfx_base_url._replace(
+                    path="/pricefx/system/remoteintegrationtestmanager/reset"
+                ).geturl()
+            )
         )
     )
     yield _IntegrationRemote(_session, _auth, _pfx_base_url)
     retry_on_http_error(
-        lambda: _session.post(
-            _pfx_base_url._replace(
-                path="/pricefx/system/remoteintegrationtestmanager/cleanup"
-            ).geturl()
+        lambda: _run_sync(
+            _session.post(
+                _pfx_base_url._replace(
+                    path="/pricefx/system/remoteintegrationtestmanager/cleanup"
+                ).geturl()
+            )
         )
     )
 
 
 @fixture(scope="function")
-def _conn(_remote: _IntegrationRemote) -> Connection:
+def _async_conn(_remote: _IntegrationRemote) -> Connection:
     return _remote.connection()
 
 
 @fixture(scope="function")
-def _instance(_conn: Connection) -> Instance:
-    return Instance(_conn)
+def _conn(_remote: _IntegrationRemote) -> ConnectionSync:
+    return ConnectionSync(_remote.connection())
+
+
+@fixture(scope="function")
+def _instance(_async_conn: Connection) -> Instance:
+    return Instance(_async_conn)
 
 
 @fixture(scope="function")
@@ -177,18 +195,22 @@ def _raising_remote(
 
     _session, _ = _retry_and_raising_session
     retry_on_http_error(
-        lambda: _session.post(
-            _pfx_base_url._replace(
-                path="/pricefx/system/remoteintegrationtestmanager/reset"
-            ).geturl()
+        lambda: _run_sync(
+            _session.post(
+                _pfx_base_url._replace(
+                    path="/pricefx/system/remoteintegrationtestmanager/reset"
+                ).geturl()
+            )
         )
     )
     yield _IntegrationRemote(_session, _raising_auth, _pfx_base_url)
     retry_on_http_error(
-        lambda: _session.post(
-            _pfx_base_url._replace(
-                path="/pricefx/system/remoteintegrationtestmanager/cleanup"
-            ).geturl()
+        lambda: _run_sync(
+            _session.post(
+                _pfx_base_url._replace(
+                    path="/pricefx/system/remoteintegrationtestmanager/cleanup"
+                ).geturl()
+            )
         )
     )
 
@@ -196,8 +218,8 @@ def _raising_remote(
 @fixture(scope="function")
 def _connection_with_raising_session(
     _retry_and_raising_session, _raising_remote
-) -> tuple[Connection, _RaisingExceptionSession]:
+) -> tuple[ConnectionSync, _RaisingExceptionSession]:
     retry, raising = _retry_and_raising_session
 
     connection = _raising_remote.connection()
-    return connection, raising
+    return ConnectionSync(connection), raising
