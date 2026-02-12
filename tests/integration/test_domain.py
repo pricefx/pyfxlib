@@ -28,7 +28,7 @@ from pyfxlib._testtooling.helpers import (
 )
 from pyfxlib.api.domain import Instance, ModelObject, PlatformJob
 from pyfxlib.lowlevel.avro import AvroStream
-from pyfxlib.lowlevel.connection import Connection
+from pyfxlib.lowlevel.connection import _run_sync, Connection
 from pyfxlib.lowlevel.pandasutil import FieldSpecs
 
 __all__ = [

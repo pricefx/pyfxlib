@@ -6,7 +6,8 @@ For a higher level API, see the `pyfxlib.api.domain` package.
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncIterator, Coroutine
 import csv
 from enum import Enum, unique
 from io import BytesIO, TextIOBase
@@ -16,7 +17,7 @@ import mimetypes
 import os
 from pathlib import Path
 import re
-from typing import Any, Dict, IO, List, Optional, Tuple
+from typing import Any, Dict, IO, Iterator, List, Optional, Tuple, TypeVar
 
 from httpx import HTTPStatusError
 
@@ -847,3 +848,138 @@ class ConnectionComposed(Connection):
     async def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
         """See `Connection` corresponding method."""
         await self._dispatch["model_parameters"].push_calcitem(typedid, key1, key2, value)
+
+
+T = TypeVar("T")
+
+
+def _run_sync(coro: Coroutine[Any, Any, T]) -> T:
+    """Execute an async coroutine synchronously."""
+    return asyncio.run(coro)
+
+
+def _sync_iterator(async_iter: AsyncIterator[bytes]) -> Iterator[bytes]:
+    """Convert an async iterator to a sync one."""
+    loop = asyncio.new_event_loop()
+    try:
+        while True:
+            try:
+                yield loop.run_until_complete(async_iter.__anext__())
+            except StopAsyncIteration:
+                break
+    finally:
+        loop.close()
+
+
+class ConnectionSync:
+    """Synchronous wrapper around an async Connection.
+
+    Adapts an async Connection for use in synchronous code (e.g. Python Engine)
+    by running each async call through `_run_sync` or `_sync_iterator`.
+    """
+
+    def __init__(self, conn: Connection):
+        self._conn = conn
+
+    def update_status(
+        self,
+        jst_id: int,
+        status_code: JobStatus,
+        progress: Optional[int],
+        msg: Optional[str] = None,
+        results: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """See `Connection` corresponding method."""
+        return _run_sync(self._conn.update_status(jst_id, status_code, progress, msg, results))
+
+    def get_fcs(
+        self,
+        typedid: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """See `Connection` corresponding method."""
+        return _run_sync(self._conn.get_fcs(typedid, params))
+
+    def list_fcs(
+        self,
+        type_code: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """See `Connection` corresponding method."""
+        return _run_sync(self._conn.list_fcs(type_code, params))
+
+    def get_object(
+        self,
+        typedid: str,
+    ) -> Dict[str, Any]:
+        """See `Connection` corresponding method."""
+        return _run_sync(self._conn.get_object(typedid))
+
+    def list_objects(
+        self,
+        type_code: str,
+    ) -> List[Dict[str, Any]]:
+        """See `Connection` corresponding method."""
+        return _run_sync(self._conn.list_objects(type_code))
+
+    def add_object(self, type_code: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
+        """See `Connection` corresponding method."""
+        return _run_sync(self._conn.add_object(type_code, attributes))
+
+    def update_object(self, type_code: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
+        """See `Connection` corresponding method."""
+        return _run_sync(self._conn.update_object(type_code, attributes))
+
+    def stream_fcs(self, typedid: str, chunk_size: int = 128) -> Iterator[bytes]:
+        """See `Connection` corresponding method."""
+        return _sync_iterator(self._conn.stream_fcs(typedid, chunk_size))
+
+    def list_attachments(
+        self,
+        typedid: str,
+    ) -> List[Dict[str, Any]]:
+        """See `Connection` corresponding method."""
+        return _run_sync(self._conn.list_attachments(typedid))
+
+    def attach_file(
+        self,
+        typedid: str,
+        name: str,
+        content: IO,
+    ) -> None:
+        """See `Connection` corresponding method."""
+        return _run_sync(self._conn.attach_file(typedid, name, content))
+
+    def pull_file(
+        self, owner_typedid: str, attachment_typedid: str, chunk_size: int = 128
+    ) -> Iterator[bytes]:
+        """See `Connection` corresponding method."""
+        return _sync_iterator(self._conn.pull_file(owner_typedid, attachment_typedid, chunk_size))
+
+    def create_table(
+        self,
+        name: str,
+        fields_spec: List[Dict],
+        content: AvroStream,
+        label: Optional[str] = None,
+        owner_typedid: Optional[str] = None,
+        replace_existing: bool = True,
+    ) -> None:
+        """See `Connection` corresponding method."""
+        return _run_sync(
+            self._conn.create_table(
+                name, fields_spec, content, label, owner_typedid, replace_existing
+            )
+        )
+
+    def update_table(self, typedid: str, data: AvroStream) -> None:
+        """See `Connection` corresponding method."""
+        return _run_sync(self._conn.update_table(typedid, data))
+
+    def get_calcitems(self, typedid: str) -> List[Dict[str, Any]]:
+        """See `Connection` corresponding method."""
+        return _run_sync(self._conn.get_calcitems(typedid))
+
+    def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
+        """See `Connection` corresponding method."""
+        return _run_sync(self._conn.push_calcitem(typedid, key1, key2, value))

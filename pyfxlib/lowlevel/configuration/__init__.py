@@ -14,6 +14,7 @@ from pyfxlib.lowlevel.connection import (
     ConnectionComposed,
     ConnectionLocal,
     ConnectionRemote,
+    ConnectionSync,
 )
 from pyfxlib.lowlevel.session import (
     PasswordProviderCommand,
@@ -228,7 +229,7 @@ def logging_from_config(
     return _log
 
 
-def model_from_config(config: ConfigParser, conn: Connection) -> Optional[Model]:
+def model_from_config(config: ConfigParser, conn: ConnectionSync) -> Optional[Model]:
     """Create PO model from config."""
     modeltypedid = config.get(JOB_CONFIG_SECTION, "modeltypedid", fallback=None)
     if modeltypedid is None:
@@ -238,7 +239,7 @@ def model_from_config(config: ConfigParser, conn: Connection) -> Optional[Model]
     return DMModel.from_conn(conn, modeltypedid)
 
 
-def job_from_config(config: ConfigParser, conn: Connection) -> Optional[PlatformJob]:
+def job_from_config(config: ConfigParser, conn: ConnectionSync) -> Optional[PlatformJob]:
     """Create Job from config."""
     jst_id = config.getint(JOB_CONFIG_SECTION, "jst_id", fallback=None)
     if jst_id is None:

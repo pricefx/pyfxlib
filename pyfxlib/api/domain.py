@@ -12,7 +12,13 @@ import pandas as pd
 
 from pyfxlib.lowlevel import pandasutil, session
 from pyfxlib.lowlevel.avro import AvroStream
-from pyfxlib.lowlevel.connection import Connection, ConnectionRemote, JobStatus
+from pyfxlib.lowlevel.connection import (
+    _run_sync,
+    _sync_iterator,
+    Connection,
+    ConnectionRemote,
+    JobStatus,
+)
 from pyfxlib.lowlevel.session import retry
 
 
