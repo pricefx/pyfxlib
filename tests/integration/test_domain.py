@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from pyfxlib._testtooling.conftest import (
+    _async_conn,
     _auth,
     _conn,
     _connection_with_raising_session,
@@ -28,10 +29,11 @@ from pyfxlib._testtooling.helpers import (
 )
 from pyfxlib.api.domain import Instance, ModelObject, PlatformJob
 from pyfxlib.lowlevel.avro import AvroStream
-from pyfxlib.lowlevel.connection import _run_sync, Connection
+from pyfxlib.lowlevel.connection import Connection
 from pyfxlib.lowlevel.pandasutil import FieldSpecs
 
 __all__ = [
+    "_async_conn",
     "_auth",
     "_conn",
     "_connection_with_raising_session",

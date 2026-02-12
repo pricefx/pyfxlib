@@ -1,6 +1,7 @@
-from io import StringIO
+import asyncio
+from collections.abc import AsyncIterator
+from io import BytesIO, StringIO
 import json
-import time
 from typing import Any, Dict
 
 from httpx import HTTPStatusError
@@ -8,8 +9,9 @@ import pandas as pd
 import pytest
 
 from pyfxlib._testtooling.conftest import (
+    _async_conn,
     _auth,
-    _conn,
+    _job_jst,
     _model_object,
     _pfx_base_url,
     _remote,
@@ -17,13 +19,20 @@ from pyfxlib._testtooling.conftest import (
 )
 from pyfxlib._testtooling.helpers import (
     _calculation_results_as_dict,
-    _csv_stream_to_dataframe,
     _IntegrationRemote,
 )
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.connection import Connection, JobStatus
 
-__all__ = ["_auth", "_conn", "_model_object", "_pfx_base_url", "_remote", "_session"]
+__all__ = [
+    "_auth",
+    "_async_conn",
+    "_job_jst",
+    "_model_object",
+    "_pfx_base_url",
+    "_remote",
+    "_session",
+]
 
 
 def assert_are_equal_for_common_dict_keys(dict_1: Dict[str, Any], dict_2: Dict[str, Any]) -> None:
@@ -36,13 +45,25 @@ def assert_are_equal_for_common_dict_keys(dict_1: Dict[str, Any], dict_2: Dict[s
     assert common_key_dict(dict_1) == common_key_dict(dict_2)
 
 
-def test_connection_should_be_able_to_add_an_object_update_it_list_it_and_fetch_it(
-    _conn: Connection,
+async def collect_bytes(async_iterator: AsyncIterator[bytes]) -> bytes:
+    chunks = []
+    async for chunk in async_iterator:
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+async def collect_csv(async_iterator: AsyncIterator[bytes]) -> pd.DataFrame:
+    return pd.read_csv(BytesIO(await collect_bytes(async_iterator)))
+
+
+@pytest.mark.asyncio
+async def test_connection_should_be_able_to_add_an_object_update_it_list_it_and_fetch_it(
+    _async_conn: Connection,
 ):
     # when adding a product
     original_label = "aProductlabel"
     updated_label = "anotherProductlabel"
-    res = _conn.add_object("P", {"label": original_label, "sku": "the_sku"})
+    res = await _async_conn.add_object("P", {"label": original_label, "sku": "the_sku"})
 
     # then the returned object contains at least the typedId and the given attributes
     assert "typedId" in res.keys()
@@ -50,25 +71,26 @@ def test_connection_should_be_able_to_add_an_object_update_it_list_it_and_fetch_
 
     # when updating this object with a new uniqueName
     res["label"] = updated_label
-    updated_res = _conn.update_object("P", res)
+    updated_res = await _async_conn.update_object("P", res)
 
     # then the returned object is containing the updated version and attributes values
     assert updated_res["label"] == updated_label
     assert updated_res["version"] == res["version"] + 1
 
     # when getting the list of products
-    products = _conn.list_objects("P")
+    products = await _async_conn.list_objects("P")
 
     # then only one exists and updated
     assert len(products) == 1
     assert_are_equal_for_common_dict_keys(products[0], updated_res)
 
     # and it can be fetched with get_object
-    fetch_pl = _conn.get_object(res["typedId"])
+    fetch_pl = await _async_conn.get_object(res["typedId"])
     assert_are_equal_for_common_dict_keys(fetch_pl, updated_res)
 
 
-def test_push_pull_and_list_data_source_should_work_as_expected(_conn: Connection):
+@pytest.mark.asyncio
+async def test_push_pull_and_list_data_source_should_work_as_expected(_async_conn: Connection):
     # when pushing a data source
     data = {
         "column1": ["key1", "key2"],
@@ -78,7 +100,7 @@ def test_push_pull_and_list_data_source_should_work_as_expected(_conn: Connectio
 
     data_source_name = "sample_data_source"
     data_source_label = "sample_data_source_label"
-    _conn.create_table(
+    await _async_conn.create_table(
         data_source_name,
         [
             {"name": "column1", "type": "TEXT", "key": True},
@@ -90,28 +112,29 @@ def test_push_pull_and_list_data_source_should_work_as_expected(_conn: Connectio
     )
 
     # then it can be listed as DMDS via list_fcs
-    fcs = _conn.list_fcs("DMDS")
+    fcs = await _async_conn.list_fcs("DMDS")
     assert len(fcs) == 1
     assert fcs[0]["label"] == data_source_label
     assert fcs[0]["uniqueName"] == data_source_name
 
     # and it can be fetched using its typedId via get_fcs
-    data_souce = _conn.get_fcs(fcs[0]["typedId"])
+    data_souce = await _async_conn.get_fcs(fcs[0]["typedId"])
     assert data_souce["label"] == data_source_label
     assert data_souce["uniqueName"] == data_source_name
 
     # and it can be listed as DMDS via list_objects
-    data_souces = _conn.list_objects("DMDS")
+    data_souces = await _async_conn.list_objects("DMDS")
     assert len(data_souces) == 1
     assert data_souces[0]["label"] == data_source_label
     assert data_souces[0]["uniqueName"] == data_source_name
 
     # and it can be pulled with stream_datasource with same content as initial pushed one
-    downloaded_content = _csv_stream_to_dataframe(_conn.stream_fcs(data_souces[0]["typedId"]))
+    downloaded_content = await collect_csv(_async_conn.stream_fcs(data_souces[0]["typedId"]))
     assert (dataframe[list(data.keys())] == downloaded_content[list(data.keys())]).all().all()
 
 
-def test_should_be_able_to_update_a_data_source(_conn: Connection):
+@pytest.mark.asyncio
+async def test_should_be_able_to_update_a_data_source(_async_conn: Connection):
     # IMPORTANT NOTE:
     # We *cannot* properly test updating existing rows, as the row deduplication process is
     # asynchronous and may only trigger after a significant delay.
@@ -127,7 +150,7 @@ def test_should_be_able_to_update_a_data_source(_conn: Connection):
 
     data_source_name = "sample_data_source"
     data_source_label = "sample_data_source_label"
-    _conn.create_table(
+    await _async_conn.create_table(
         data_source_name,
         [
             {"name": "column1", "type": "TEXT", "key": True},
@@ -137,7 +160,8 @@ def test_should_be_able_to_update_a_data_source(_conn: Connection):
         data_source_label,
         replace_existing=True,
     )
-    ds_typedid = _conn.list_fcs("DMDS")[0]["typedId"]
+    fcs = await _async_conn.list_fcs("DMDS")
+    ds_typedid = fcs[0]["typedId"]
 
     # when update new data
     new_data = {
@@ -145,7 +169,7 @@ def test_should_be_able_to_update_a_data_source(_conn: Connection):
         "column2": [2, 24],
     }
     dataframe_append = pd.DataFrame(new_data, index=[3, 4])
-    _conn.update_table(ds_typedid, AvroStream.from_dataframe(dataframe_append))
+    await _async_conn.update_table(ds_typedid, AvroStream.from_dataframe(dataframe_append))
 
     # then the new content is added to the table
     expected_data = {
@@ -153,11 +177,12 @@ def test_should_be_able_to_update_a_data_source(_conn: Connection):
         "column2": [1, 12, 2, 24],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = _csv_stream_to_dataframe(_conn.stream_fcs(ds_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(ds_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
-def test_should_fail_to_update_a_data_source_when_duplicates(_conn: Connection):
+@pytest.mark.asyncio
+async def test_should_fail_to_update_a_data_source_when_duplicates(_async_conn: Connection):
     # IMPORTANT NOTE:
     # We *cannot* properly test updating existing rows, as the row deduplication process is
     # asynchronous and may only trigger after a significant delay.
@@ -173,7 +198,7 @@ def test_should_fail_to_update_a_data_source_when_duplicates(_conn: Connection):
 
     data_source_name = "sample_data_source"
     data_source_label = "sample_data_source_label"
-    _conn.create_table(
+    await _async_conn.create_table(
         data_source_name,
         [
             {"name": "column1", "type": "TEXT", "key": True},
@@ -183,7 +208,8 @@ def test_should_fail_to_update_a_data_source_when_duplicates(_conn: Connection):
         data_source_label,
         replace_existing=True,
     )
-    ds_typedid = _conn.list_fcs("DMDS")[0]["typedId"]
+    fcs = await _async_conn.list_fcs("DMDS")
+    ds_typedid = fcs[0]["typedId"]
 
     # when update new data
     new_data = {
@@ -193,7 +219,7 @@ def test_should_fail_to_update_a_data_source_when_duplicates(_conn: Connection):
     dataframe_append = pd.DataFrame(new_data, index=[1, 2, 3])
 
     with pytest.raises(Exception, match="Error while uploading file:"):
-        _conn.update_table(ds_typedid, AvroStream.from_dataframe(dataframe_append))
+        await _async_conn.update_table(ds_typedid, AvroStream.from_dataframe(dataframe_append))
 
     # then no new content is added to the table
     expected_data = {
@@ -201,11 +227,12 @@ def test_should_fail_to_update_a_data_source_when_duplicates(_conn: Connection):
         "column2": [1, 12],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = _csv_stream_to_dataframe(_conn.stream_fcs(ds_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(ds_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
-def test_should_be_able_to_update_the_existing_rows_on_a_data_source(_conn: Connection):
+@pytest.mark.asyncio
+async def test_should_be_able_to_update_the_existing_rows_on_a_data_source(_async_conn: Connection):
     # IMPORTANT NOTE:
     # We *cannot* properly test updating existing rows, as the row deduplication process is
     # asynchronous and may only trigger after a significant delay.
@@ -221,7 +248,7 @@ def test_should_be_able_to_update_the_existing_rows_on_a_data_source(_conn: Conn
 
     data_source_name = "sample_data_source"
     data_source_label = "sample_data_source_label"
-    _conn.create_table(
+    await _async_conn.create_table(
         data_source_name,
         [
             {"name": "column1", "type": "TEXT", "key": True},
@@ -231,7 +258,8 @@ def test_should_be_able_to_update_the_existing_rows_on_a_data_source(_conn: Conn
         data_source_label,
         replace_existing=True,
     )
-    ds_typedid = _conn.list_fcs("DMDS")[0]["typedId"]
+    fcs = await _async_conn.list_fcs("DMDS")
+    ds_typedid = fcs[0]["typedId"]
 
     # when update new data
     new_data = {
@@ -239,7 +267,7 @@ def test_should_be_able_to_update_the_existing_rows_on_a_data_source(_conn: Conn
         "column2": [2, 24],
     }
     dataframe_append = pd.DataFrame(new_data, index=[1, 2])
-    _conn.update_table(ds_typedid, AvroStream.from_dataframe(dataframe_append))
+    await _async_conn.update_table(ds_typedid, AvroStream.from_dataframe(dataframe_append))
 
     # then the new content is added to the table
     expected_data = {
@@ -247,12 +275,13 @@ def test_should_be_able_to_update_the_existing_rows_on_a_data_source(_conn: Conn
         "column2": [2, 24],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = _csv_stream_to_dataframe(_conn.stream_fcs(ds_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(ds_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
-def test_should_be_able_to_attach_a_file_list_attachments_and_pull_an_attachment(
-    _conn: Connection, _model_object: Dict[str, Any]
+@pytest.mark.asyncio
+async def test_should_be_able_to_attach_a_file_list_attachments_and_pull_an_attachment(
+    _async_conn: Connection, _model_object: Dict[str, Any]
 ):
     # given an empty model object and an attachment content
     mo_typedid = _model_object["typedId"]
@@ -260,20 +289,21 @@ def test_should_be_able_to_attach_a_file_list_attachments_and_pull_an_attachment
     attachment_content = "a first line\n" "a second line\n" "the last line"
 
     # when attaching a file to the model object
-    _conn.attach_file(mo_typedid, attachment_name, StringIO(attachment_content))
+    await _async_conn.attach_file(mo_typedid, attachment_name, StringIO(attachment_content))
 
     # then this file should be present in the list of its attachments
-    attachments = _conn.list_attachments(mo_typedid)
+    attachments = await _async_conn.list_attachments(mo_typedid)
     assert len(attachments) == 1
     assert attachments[0]["fileName"] == attachment_name
 
     # and it is possible to fetch back its content
-    content = _conn.pull_file(mo_typedid, attachments[0]["typedId"], 128)
-    assert attachment_content == next(content).decode("utf-8")
+    content = await collect_bytes(_async_conn.pull_file(mo_typedid, attachments[0]["typedId"], 128))
+    assert attachment_content == content.decode("utf-8")
 
 
-def test_should_be_able_to_push_an_owned_table_and_read_it_back(
-    _conn: Connection, _model_object: Dict[str, Any]
+@pytest.mark.asyncio
+async def test_should_be_able_to_push_an_owned_table_and_read_it_back(
+    _async_conn: Connection, _model_object: Dict[str, Any]
 ):
     # given an empty model
     mo_typedid = _model_object["typedId"]
@@ -286,7 +316,7 @@ def test_should_be_able_to_push_an_owned_table_and_read_it_back(
     dataframe = pd.DataFrame(data)
 
     # when pushing an owned table
-    _conn.create_table(
+    await _async_conn.create_table(
         table_name,
         [
             {"name": "column1", "type": "TEXT", "key": True},
@@ -299,63 +329,20 @@ def test_should_be_able_to_push_an_owned_table_and_read_it_back(
     )
 
     # then the table is created
-    fcs = _conn.list_fcs("DMT", {"owner": mo_typedid})
+    fcs = await _async_conn.list_fcs("DMT", {"owner": mo_typedid})
     assert len(fcs) == 1
     assert fcs[0]["name"] == table_name
     assert fcs[0]["label"] == table_label
     assert [x["name"] for x in fcs[0]["fields"]] == list(data.keys())
 
     # and we can fetch its content
-    downloaded_content = _csv_stream_to_dataframe(_conn.stream_fcs(fcs[0]["typedId"], 128))
+    downloaded_content = await collect_csv(_async_conn.stream_fcs(fcs[0]["typedId"], 128))
     assert (dataframe[list(data.keys())] == downloaded_content[list(data.keys())]).all().all()
 
 
-def test_should_be_able_to_update_model_table(_conn: Connection, _model_object: Dict[str, Any]):
-    # given a model
-    mo_typedid = _model_object["typedId"]
-    table_name = "sample_table_source"
-    table_label = "sample_table_label"
-    initial_data = {
-        "column1": ["key1", "key2"],
-        "column2": [1, 12],
-    }
-    dataframe_init = pd.DataFrame(initial_data)
-
-    # with an owned table
-    _conn.create_table(
-        table_name,
-        [
-            {"name": "column1", "type": "TEXT", "key": True},
-            {"name": "column2", "type": "INTEGER"},
-        ],
-        AvroStream.from_dataframe(dataframe_init),
-        table_label,
-        mo_typedid,
-        replace_existing=True,
-    )
-    table_typedid = _conn.list_fcs("DMT", {"owner": mo_typedid})[0]["typedId"]
-
-    # when appending new data
-    index = [2, 3]
-    new_data = {
-        "column1": ["key2", "key3"],
-        "column2": [42, 24],
-    }
-    dataframe_append = pd.DataFrame(new_data, index=index)
-    _conn.update_table(table_typedid, AvroStream.from_dataframe(dataframe_append))
-
-    # then the new content is added to the table
-    expected_data = {
-        "column1": ["key1", "key2", "key3"],
-        "column2": [1, 42, 24],
-    }
-    dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = _csv_stream_to_dataframe(_conn.stream_fcs(table_typedid, 128))
-    assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
-
-
-def test_should_fail_to_update_model_table_when_duplicates(
-    _conn: Connection, _model_object: Dict[str, Any]
+@pytest.mark.asyncio
+async def test_should_be_able_to_update_model_table(
+    _async_conn: Connection, _model_object: Dict[str, Any]
 ):
     # given a model
     mo_typedid = _model_object["typedId"]
@@ -368,7 +355,7 @@ def test_should_fail_to_update_model_table_when_duplicates(
     dataframe_init = pd.DataFrame(initial_data)
 
     # with an owned table
-    _conn.create_table(
+    await _async_conn.create_table(
         table_name,
         [
             {"name": "column1", "type": "TEXT", "key": True},
@@ -379,7 +366,56 @@ def test_should_fail_to_update_model_table_when_duplicates(
         mo_typedid,
         replace_existing=True,
     )
-    table_typedid = _conn.list_fcs("DMT", {"owner": mo_typedid})[0]["typedId"]
+    fcs = await _async_conn.list_fcs("DMT", {"owner": mo_typedid})
+    table_typedid = fcs[0]["typedId"]
+
+    # when appending new data
+    index = [2, 3]
+    new_data = {
+        "column1": ["key2", "key3"],
+        "column2": [42, 24],
+    }
+    dataframe_append = pd.DataFrame(new_data, index=index)
+    await _async_conn.update_table(table_typedid, AvroStream.from_dataframe(dataframe_append))
+
+    # then the new content is added to the table
+    expected_data = {
+        "column1": ["key1", "key2", "key3"],
+        "column2": [1, 42, 24],
+    }
+    dataframe_expected = pd.DataFrame(expected_data)
+    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(table_typedid, 128))
+    assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
+
+
+@pytest.mark.asyncio
+async def test_should_fail_to_update_model_table_when_duplicates(
+    _async_conn: Connection, _model_object: Dict[str, Any]
+):
+    # given a model
+    mo_typedid = _model_object["typedId"]
+    table_name = "sample_table_source"
+    table_label = "sample_table_label"
+    initial_data = {
+        "column1": ["key1", "key2"],
+        "column2": [1, 12],
+    }
+    dataframe_init = pd.DataFrame(initial_data)
+
+    # with an owned table
+    await _async_conn.create_table(
+        table_name,
+        [
+            {"name": "column1", "type": "TEXT", "key": True},
+            {"name": "column2", "type": "INTEGER"},
+        ],
+        AvroStream.from_dataframe(dataframe_init),
+        table_label,
+        mo_typedid,
+        replace_existing=True,
+    )
+    fcs = await _async_conn.list_fcs("DMT", {"owner": mo_typedid})
+    table_typedid = fcs[0]["typedId"]
 
     # when appending new data
     index = [1, 2, 3]
@@ -390,7 +426,7 @@ def test_should_fail_to_update_model_table_when_duplicates(
     dataframe_append = pd.DataFrame(new_data, index=index)
 
     with pytest.raises(Exception, match="Error while uploading file:"):
-        _conn.update_table(table_typedid, AvroStream.from_dataframe(dataframe_append))
+        await _async_conn.update_table(table_typedid, AvroStream.from_dataframe(dataframe_append))
 
     # then the no new content is added to the table
     expected_data = {
@@ -398,12 +434,13 @@ def test_should_fail_to_update_model_table_when_duplicates(
         "column2": [1, 12],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = _csv_stream_to_dataframe(_conn.stream_fcs(table_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(table_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
-def test_should_be_able_update_the_existing_rows_on_a_model_table(
-    _conn: Connection, _model_object: Dict[str, Any]
+@pytest.mark.asyncio
+async def test_should_be_able_update_the_existing_rows_on_a_model_table(
+    _async_conn: Connection, _model_object: Dict[str, Any]
 ):
     # given a model
     mo_typedid = _model_object["typedId"]
@@ -416,7 +453,7 @@ def test_should_be_able_update_the_existing_rows_on_a_model_table(
     dataframe_init = pd.DataFrame(initial_data)
 
     # with an owned table
-    _conn.create_table(
+    await _async_conn.create_table(
         table_name,
         [
             {"name": "column1", "type": "TEXT", "key": True},
@@ -427,7 +464,8 @@ def test_should_be_able_update_the_existing_rows_on_a_model_table(
         mo_typedid,
         replace_existing=True,
     )
-    table_typedid = _conn.list_fcs("DMT", {"owner": mo_typedid})[0]["typedId"]
+    fcs = await _async_conn.list_fcs("DMT", {"owner": mo_typedid})
+    table_typedid = fcs[0]["typedId"]
 
     # when appending new data
     index = [1, 2]
@@ -436,7 +474,7 @@ def test_should_be_able_update_the_existing_rows_on_a_model_table(
         "column2": [2, 24],
     }
     dataframe_append = pd.DataFrame(new_data, index=index)
-    _conn.update_table(table_typedid, AvroStream.from_dataframe(dataframe_append))
+    await _async_conn.update_table(table_typedid, AvroStream.from_dataframe(dataframe_append))
 
     # then the new content is added to the table
     expected_data = {
@@ -444,23 +482,23 @@ def test_should_be_able_update_the_existing_rows_on_a_model_table(
         "column2": [2, 24],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = _csv_stream_to_dataframe(_conn.stream_fcs(table_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(table_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
-def test_should_be_able_to_update_a_job_status(
-    _remote: _IntegrationRemote, _conn: Connection, _model_object: Dict[str, Any]
+@pytest.mark.asyncio
+async def test_should_be_able_to_update_a_job_status(
+    _remote: _IntegrationRemote,
+    _async_conn: Connection,
+    _model_object: Dict[str, Any],
+    _job_jst: Dict[str, Any],
 ):
-    # given an empty model object and an emulated job
-    _remote.trigger_job(_model_object)
-    jobs = _remote.jobs(_model_object["typedId"])
-    assert len(jobs) == 1
-    job = jobs[0]
+    job_id = _job_jst["id"]
     calc_results = {"foo": 12, "bar": "baz"}
     message = "almost finished"
     # when updating the status of the job
-    _conn.update_status(
-        job["id"],
+    await _async_conn.update_status(
+        job_id,
         JobStatus.PROCESSING,
         42,
         message,
@@ -468,7 +506,7 @@ def test_should_be_able_to_update_a_job_status(
     )
 
     # the JST has been updated in a proper way
-    updated_job = _conn.get_object(f"{job['id']}.JST")
+    updated_job = await _async_conn.get_object(f"{job_id}.JST")
     assert updated_job is not None
     assert "status" in updated_job
     assert updated_job["status"] == "PROCESSING"
@@ -480,10 +518,9 @@ def test_should_be_able_to_update_a_job_status(
     assert calc_results == _calculation_results_as_dict(updated_job["calculationResults"])
 
     # and when the job is updated with the finished status
-    _conn.update_status(job["id"], JobStatus.FINISHED, progress=100)
+    await _async_conn.update_status(job_id, JobStatus.FINISHED, progress=100)
 
-    # the JST has been updated in a proper way
-    finished_job = _conn.get_object(f"{job['id']}.JST")
+    finished_job = await _async_conn.get_object(f"{job_id}.JST")
     assert finished_job is not None
     assert "status" in finished_job
     assert finished_job["status"] == "FINISHED"
@@ -496,8 +533,9 @@ def test_should_be_able_to_update_a_job_status(
     assert calc_results == _calculation_results_as_dict(finished_job["calculationResults"])
 
 
+@pytest.mark.asyncio
 @pytest.mark.extended
-def test_create_table_should_work_with_ten_million_lines_df(_conn: Connection):
+async def test_create_table_should_work_with_ten_million_lines_df(_async_conn: Connection):
     # when pushing a data source
     data = {
         "column1": [f"key{idx}" for idx in range(10000000)],
@@ -506,7 +544,7 @@ def test_create_table_should_work_with_ten_million_lines_df(_conn: Connection):
     dataframe = pd.DataFrame(data)
     data_source_name = "sample_data_source"
     data_source_label = "sample_data_source_label"
-    _conn.create_table(
+    await _async_conn.create_table(
         data_source_name,
         [
             {"name": "column1", "type": "TEXT", "key": True},
@@ -518,7 +556,7 @@ def test_create_table_should_work_with_ten_million_lines_df(_conn: Connection):
     )
 
     # it can be listed as DMDS via list_objects
-    data_sources = _conn.list_objects("DMDS")
+    data_sources = await _async_conn.list_objects("DMDS")
     assert len(data_sources) == 1
     assert data_sources[0]["label"] == data_source_label
     assert data_sources[0]["uniqueName"] == data_source_name
@@ -528,11 +566,11 @@ def test_create_table_should_work_with_ten_million_lines_df(_conn: Connection):
     nb_retry = 0
     while downloaded_content is None and nb_retry < 3:
         try:
-            downloaded_content = _csv_stream_to_dataframe(
-                _conn.stream_fcs(data_sources[0]["typedId"])
+            downloaded_content = await collect_csv(
+                _async_conn.stream_fcs(data_sources[0]["typedId"])
             )
         except HTTPStatusError:
-            time.sleep(5)
+            await asyncio.sleep(5)
             nb_retry += 1
 
     assert downloaded_content is not None, "Failed to download pushed datasource"
