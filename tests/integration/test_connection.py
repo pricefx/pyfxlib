@@ -1,8 +1,9 @@
 import asyncio
 from collections.abc import AsyncIterator
+import inspect
 from io import BytesIO, StringIO
 import json
-from typing import Any, Dict
+from typing import Any, Dict, Iterator
 
 from httpx import HTTPStatusError
 import pandas as pd
@@ -11,6 +12,7 @@ import pytest
 from pyfxlib._testtooling.conftest import (
     _async_conn,
     _auth,
+    _conn,
     _job_jst,
     _model_object,
     _pfx_base_url,
@@ -22,11 +24,12 @@ from pyfxlib._testtooling.helpers import (
     _IntegrationRemote,
 )
 from pyfxlib.lowlevel.avro import AvroStream
-from pyfxlib.lowlevel.connection import Connection, JobStatus
+from pyfxlib.lowlevel.connection import Connection, ConnectionSync, JobStatus
 
 __all__ = [
     "_auth",
     "_async_conn",
+    "_conn",
     "_job_jst",
     "_model_object",
     "_pfx_base_url",
@@ -579,3 +582,36 @@ async def test_create_table_should_work_with_ten_million_lines_df(_async_conn: C
     )
     dataframe.sort_values(["column1"], axis=0, ignore_index=True, ascending=True, inplace=True)
     assert (downloaded_content[list(data.keys())] == dataframe[list(data.keys())]).all().all()
+
+
+def test_connection_sync_returns_values_not_coroutines(_conn: ConnectionSync):
+    # given a data source
+    data = {
+        "column1": ["key1", "key2"],
+        "column2": [1, 12],
+    }
+    dataframe = pd.DataFrame(data)
+
+    data_source_name = "sample_data_source"
+    data_source_label = "sample_data_source_label"
+    _conn.create_table(
+        data_source_name,
+        [
+            {"name": "column1", "type": "TEXT", "key": True},
+            {"name": "column2", "type": "INTEGER"},
+        ],
+        AvroStream.from_dataframe(dataframe),
+        data_source_label,
+        replace_existing=True,
+    )
+
+    # when calling a method of the connection using _run_sync
+    list_dmds = _conn.list_fcs("DMDS")
+    assert not inspect.iscoroutine(list_dmds)
+    assert isinstance(list_dmds, list)
+    assert "typedId" in list_dmds[0]
+
+    # when using a method of the connection using _sync_iterator
+    chunks = _conn.stream_fcs(list_dmds[0]["typedId"])
+    assert not inspect.iscoroutine(chunks)
+    assert isinstance(chunks, Iterator)
