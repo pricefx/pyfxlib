@@ -998,8 +998,11 @@ class Datamarts(TableImmutableSource):
 class Instance:
     """A platform instance."""
 
-    def __init__(self, conn: Connection):
-        self._conn = ConnectionSync(conn)
+    def __init__(self, conn: Union[Connection, ConnectionSync]):
+        if isinstance(conn, ConnectionSync):
+            self._conn = conn
+        else:
+            self._conn = ConnectionSync(conn)
 
     def __repr__(self) -> str:
         return f"Instance({self._conn})"
