@@ -159,6 +159,11 @@ def conn_from_config(config: ConfigParser) -> Connection:
     )
 
 
+def sync_conn_from_config(config: ConfigParser) -> ConnectionSync:
+    """Create a synchronous connection (ConnectionSync) from config."""
+    return ConnectionSync(conn_from_config(config))
+
+
 def user_params_from_config(config: ConfigParser) -> Dict[str, Any]:
     """Create user params dict from config."""
     my_spec = spec.required_section("user").must_contains("parameters")
