@@ -468,7 +468,7 @@ def test_model_object_should_be_able_to_create_and_read_an_attachment(
     assert mo.attachments()[attachment_name].typedid == attachment.typedid
 
     # and its is possible to fetch its content as a stream
-    data = next(attachment.download_file(chunk_size=128)).decode("utf-8")
+    data = next(attachment.download_file()).decode("utf-8")
     assert data == attachment_content
 
 

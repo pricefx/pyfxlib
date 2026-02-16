@@ -21,6 +21,7 @@ from typing import Any, Dict, IO, Iterator, List, Optional, Tuple, TypeVar
 
 from httpx import HTTPStatusError
 
+from pyfxlib.lowlevel import _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.session import PfxSession
 
@@ -118,7 +119,9 @@ class Connection(ABC):
         pass
 
     @abstractmethod
-    async def stream_fcs(self, typedid: str, chunk_size: int = 128) -> AsyncIterator[bytes]:
+    async def stream_fcs(
+        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+    ) -> AsyncIterator[bytes]:
         """Stream the content of a data source."""
         yield b""
 
@@ -142,7 +145,10 @@ class Connection(ABC):
 
     @abstractmethod
     async def pull_file(
-        self, owner_typedid: str, attachment_typedid: str, chunk_size: int = 128
+        self,
+        owner_typedid: str,
+        attachment_typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
     ) -> AsyncIterator[bytes]:
         """Fetch file from the backend."""
         yield b""
@@ -310,7 +316,9 @@ class ConnectionRemote(Connection):
         )
         return response.json()["response"]["data"][0]
 
-    async def stream_fcs(self, typedid: str, chunk_size: int = 128) -> AsyncIterator[bytes]:
+    async def stream_fcs(
+        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+    ) -> AsyncIterator[bytes]:
         """See `Connection` corresponding method."""
         async for chunk in self.session.get_stream(
             f"{self.endpoint}/datamart.fetch/{typedid}?stream&timeout={_DATAMART_FETCH_TIMEOUT}",
@@ -360,7 +368,10 @@ class ConnectionRemote(Connection):
             await self.session.post(f"{self.endpoint}/uploadmanager.deleteslot/{slot_id}")
 
     async def pull_file(
-        self, owner_typedid: str, attachment_typedid: str, chunk_size: int = 128
+        self,
+        owner_typedid: str,
+        attachment_typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
     ) -> AsyncIterator[bytes]:
         """See `Connection` corresponding method."""
         attachment_id = attachment_typedid.partition(".BD")[0]
@@ -610,7 +621,9 @@ class ConnectionLocal(Connection):
         """
         return attributes
 
-    async def stream_fcs(self, typedid: str, chunk_size: int = 128) -> AsyncIterator[bytes]:
+    async def stream_fcs(
+        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+    ) -> AsyncIterator[bytes]:
         """See `Connection` corresponding method."""
         with open(self._data_sources_path / f"{typedid}.csv", "rb") as fin:
             while chunk := fin.read(chunk_size):
@@ -657,7 +670,10 @@ class ConnectionLocal(Connection):
                 binfile.write(content.read())
 
     async def pull_file(
-        self, owner_typedid: str, attachment_typedid: str, chunk_size: int = 128
+        self,
+        owner_typedid: str,
+        attachment_typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
     ) -> AsyncIterator[bytes]:
         """See `Connection` corresponding method."""
         with open(self._attachments_path(owner_typedid) / attachment_typedid, "rb") as fin:
@@ -793,7 +809,9 @@ class ConnectionComposed(Connection):
         """See `Connection` corresponding method."""
         return await self._default.update_object(type_code, attributes)
 
-    async def stream_fcs(self, typedid: str, chunk_size: int = 128) -> AsyncIterator[bytes]:
+    async def stream_fcs(
+        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+    ) -> AsyncIterator[bytes]:
         """See `Connection` corresponding method."""
         async for chunk in self._dispatch["pa_tables"].stream_fcs(typedid, chunk_size):
             yield chunk
@@ -815,7 +833,10 @@ class ConnectionComposed(Connection):
         await self._dispatch["model_attachments"].attach_file(typedid, name, content)
 
     async def pull_file(
-        self, owner_typedid: str, attachment_typedid: str, chunk_size: int = 128
+        self,
+        owner_typedid: str,
+        attachment_typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
     ) -> AsyncIterator[bytes]:
         """See `Connection` corresponding method."""
         async for chunk in self._dispatch["model_attachments"].pull_file(
@@ -930,7 +951,9 @@ class ConnectionSync:
         """See `Connection` corresponding method."""
         return _run_sync(self._conn.update_object(type_code, attributes))
 
-    def stream_fcs(self, typedid: str, chunk_size: int = 128) -> Iterator[bytes]:
+    def stream_fcs(
+        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+    ) -> Iterator[bytes]:
         """See `Connection` corresponding method."""
         return _sync_iterator(self._conn.stream_fcs(typedid, chunk_size))
 
@@ -951,7 +974,10 @@ class ConnectionSync:
         return _run_sync(self._conn.attach_file(typedid, name, content))
 
     def pull_file(
-        self, owner_typedid: str, attachment_typedid: str, chunk_size: int = 128
+        self,
+        owner_typedid: str,
+        attachment_typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
     ) -> Iterator[bytes]:
         """See `Connection` corresponding method."""
         return _sync_iterator(self._conn.pull_file(owner_typedid, attachment_typedid, chunk_size))

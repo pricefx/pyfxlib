@@ -9,6 +9,7 @@ from httpx import HTTPStatusError, Response, TimeoutException
 
 from pyfxlib._testtooling.helpers import _IntegrationRemote
 from pyfxlib.api.domain import Instance
+from pyfxlib.lowlevel import _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.connection import _run_sync, Connection, ConnectionSync
 from pyfxlib.lowlevel.session import (
     pfx_session,
@@ -62,7 +63,7 @@ class _RaisingExceptionSession(RetryPfxSession):
         self._wrapped.add_response_hook(hook)
 
     async def get_stream(
-        self, url: str, chunk_size: int = 128, **kwargs: Any
+        self, url: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE, **kwargs: Any
     ) -> AsyncIterator[bytes]:
         """Stream bytes from the given URL. See `httpx.AsyncClient.stream`."""
         async for chunk in self._wrapped.get_stream(url, chunk_size, **kwargs):

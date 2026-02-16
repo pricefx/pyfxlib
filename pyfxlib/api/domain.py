@@ -20,7 +20,7 @@ from typing import (
 
 import pandas as pd
 
-from pyfxlib.lowlevel import pandasutil, session
+from pyfxlib.lowlevel import _DEFAULT_STREAM_CHUNK_SIZE, pandasutil, session
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.connection import (
     Connection,
@@ -144,7 +144,7 @@ class BasicEntity(IdentifiableEntity):
 class AbstractTable(BasicEntity, ABC):
     """Base class for all table types."""
 
-    def stream(self, chunk_size: int = 128) -> Iterator[bytes]:
+    def stream(self, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE) -> Iterator[bytes]:
         """Stream the content of this table."""
         return self._conn.stream_fcs(self.typedid, chunk_size)
 
@@ -583,7 +583,7 @@ class Attachment(BasicEntity, Owned):
             attrs["length"],
         )
 
-    def download_file(self, chunk_size: int = 128) -> Iterator[bytes]:
+    def download_file(self, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE) -> Iterator[bytes]:
         """Download an attachment.
 
         Args:

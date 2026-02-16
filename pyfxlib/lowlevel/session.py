@@ -17,6 +17,8 @@ from typing import Any, Awaitable, Callable, cast, Dict, List, Optional, overloa
 
 from httpx import AsyncClient, HTTPError, HTTPStatusError, Response, TimeoutException
 
+from pyfxlib.lowlevel import _DEFAULT_STREAM_CHUNK_SIZE
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -50,7 +52,7 @@ class PfxSession(ABC):
 
     @abstractmethod
     async def get_stream(
-        self, url: str, chunk_size: int = 128, **kwargs: Any
+        self, url: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE, **kwargs: Any
     ) -> AsyncIterator[bytes]:
         """Get a stream from the given URL."""
         yield b""
@@ -191,7 +193,7 @@ class RetryPfxSession(PfxSession):
         self._wrapped.add_response_hook(hook)
 
     async def get_stream(
-        self, url: str, chunk_size: int = 128, **kwargs: Any
+        self, url: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE, **kwargs: Any
     ) -> AsyncIterator[bytes]:
         """Stream bytes from the given URL. See `httpx.AsyncClient.stream`."""
         async for chunk in self._wrapped.get_stream(url, chunk_size=chunk_size, **kwargs):
@@ -424,7 +426,7 @@ class SimplePfxSession(PfxSession):
         self._after_response_hooks.append(hook)
 
     async def get_stream(
-        self, url: str, chunk_size: int = 128, **kwargs: Any
+        self, url: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE, **kwargs: Any
     ) -> AsyncIterator[bytes]:
         """Stream bytes from the given URL. See `httpx.AsyncClient.stream`."""
         await self._auth.before_request(self._session)
