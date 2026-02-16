@@ -57,6 +57,26 @@ class PfxSession(ABC):
         """Get a stream from the given URL."""
         yield b""
 
+    @abstractmethod
+    def has_header(self, key: str) -> bool:
+        """Check if a header is set in the session."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def set_header(self, key: str, value: str) -> None:
+        """Set a header to be used for all requests."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def remove_header(self, key: str) -> None:
+        """Remove a header from the session."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def reset_connection(self) -> None:
+        """Close the underlying HTTP connection pool."""
+        raise NotImplementedError
+
 
 class PfxAuthMethod(ABC):
     """Formal interface of a PfxAuthMethod."""
@@ -198,6 +218,26 @@ class RetryPfxSession(PfxSession):
         """Stream bytes from the given URL. See `httpx.AsyncClient.stream`."""
         async for chunk in self._wrapped.get_stream(url, chunk_size=chunk_size, **kwargs):
             yield chunk
+
+    def has_header(self, key: str) -> bool:
+        """Check if a header is set in the session."""
+        return self._wrapped.has_header(key)
+
+    def set_header(self, key: str, value: str) -> None:
+        """Set a header to be used for all requests."""
+        self._wrapped.set_header(key, value)
+
+    def remove_header(self, key: str) -> None:
+        """Remove a header from the session."""
+        self._wrapped.remove_header(key)
+
+    def reset_connection(self) -> None:
+        """Close the underlying HTTP connection pool.
+
+        Useful when connections become stale, e.g. after sync calls
+        that create and destroy event loops.
+        """
+        self._wrapped.reset_connection()
 
 
 def _default_retry_predicate(exception: HTTPError) -> bool:
@@ -370,9 +410,6 @@ class SimplePfxSession(PfxSession):
             session = AsyncClient(timeout=None)
         self._session: AsyncClient = session
         self._auth = auth
-        # disable keep-alive, this makes the connection pool a bit useless,
-        #  but it's impossible to disable it, cf https://github.com/urllib3/urllib3/issues/383
-        self._session.headers.update({"Connection": "close"})
         # initialize authentication method
         self._before_request_hooks: List[Callable[[str, str, Dict[str, Any]], None]] = []
         self._after_response_hooks: List[Callable[[Response], None]] = []
@@ -434,6 +471,25 @@ class SimplePfxSession(PfxSession):
             response.raise_for_status()
             async for chunk in response.aiter_bytes(chunk_size=chunk_size):
                 yield chunk
+
+    def has_header(self, key: str) -> bool:
+        """Check if a header is set in the session."""
+        return key in self._session.headers
+
+    def set_header(self, key: str, value: str) -> None:
+        """Set a header to be used for all requests."""
+        self._session.headers.update({key: value})
+
+    def remove_header(self, key: str) -> None:
+        """Remove a header from the session."""
+        if key in self._session.headers:
+            del self._session.headers[key]
+
+    def reset_connection(self) -> None:
+        """Close the underlying HTTP connection pool."""
+        headers = dict(self._session.headers)
+        self._session = AsyncClient(timeout=None)
+        self._session.headers.update(headers)
 
 
 def _error_response_body(err: HTTPStatusError) -> Optional[str]:

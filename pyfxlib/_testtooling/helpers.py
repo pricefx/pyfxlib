@@ -20,6 +20,20 @@ class _IntegrationRemote:
             pfx_base_url._replace(path="/pricefx/system").geturl(), session
         )
 
+    def _sync(self, coroutine):
+        """Run async code synchronously, with Connection: close to avoid pool poisoning."""
+        try:
+            if not self._session.has_header("Connection"):
+                self._session.set_header("Connection", "close")
+                try:
+                    return _run_sync(coroutine)
+                finally:
+                    self._session.remove_header("Connection")
+            else:
+                return _run_sync(coroutine)
+        finally:
+            self._session.reset_connection()
+
     def connection(self) -> Connection:
         return self._conn
 
@@ -30,11 +44,11 @@ class _IntegrationRemote:
 
     def jwt(self) -> str:
         # initialize auth if not already done
-        _run_sync(self._auth.before_request(self._session))
+        self._sync(self._auth.before_request(self._session))
         return self._auth.pfxtoken
 
     def trigger_job(self, mo: Dict[str, Any]) -> None:
-        _run_sync(
+        self._sync(
             self._session.post(
                 self.endpoint_url(
                     f"remoteintegrationtestmanager/createJobTriggerTask/{mo['typedId']}"
@@ -52,7 +66,7 @@ class _IntegrationRemote:
         )
 
     def jobs(self, mo_typedid: str) -> List[Dict[str, Any]]:
-        response = _run_sync(
+        response = self._sync(
             self._session.post(
                 self._pfx_base_url._replace(
                     path="/pricefx/system/admin.fetchjst",
@@ -66,7 +80,7 @@ class _IntegrationRemote:
         jobs = self.jobs(mo_typedid)
         if len(jobs) != 1:
             raise Exception(f"Should have only one job for {mo_typedid}, got {len(jobs)}")
-        return _run_sync(self.connection().get_object(f"{jobs[0]['id']}.JST"))
+        return self._sync(self.connection().get_object(f"{jobs[0]['id']}.JST"))
 
     def new_model_object(
         self,
@@ -76,7 +90,7 @@ class _IntegrationRemote:
         mc = model_class if model_class is not None else self.new_model_class()
         return (
             mc,
-            _run_sync(
+            self._sync(
                 self._conn.add_object(
                     "MO",
                     {
@@ -90,7 +104,7 @@ class _IntegrationRemote:
         )
 
     def new_model_class(self, unique_name: str = "aModelClass") -> Dict[str, Any]:
-        return _run_sync(
+        return self._sync(
             self._conn.add_object(
                 "MC",
                 {
@@ -106,14 +120,14 @@ class _IntegrationRemote:
         )
 
     def new_empty_datamart(self, name: str, fields_spec: Optional[List[Dict]]):
-        response = _run_sync(
+        response = self._sync(
             self._session.post(
                 self.endpoint_url("datamart.newfc/DM"),
                 json={"data": {"uniqueName": name, "label": name}},
             )
         )
         entry = response.json()["response"]["data"][0]
-        _run_sync(
+        self._sync(
             self._session.post(
                 self.endpoint_url("datamart.updatefc/DM"),
                 json={

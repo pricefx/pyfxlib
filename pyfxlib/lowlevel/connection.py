@@ -901,6 +901,11 @@ class ConnectionSync:
 
     def __init__(self, conn: Connection):
         self._conn = conn
+        # Disable keep-alive: close is needed for sync usage because asyncio.run() creates/destroys
+        # the event loop on each call, making keep-alive connections try to reuse a closed
+        # event loop.
+        if hasattr(conn, "session"):
+            conn.session.set_header("Connection", "close")
 
     def update_status(
         self,

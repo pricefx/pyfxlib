@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Generator
 import os
 import time
 from typing import Any, Callable, Dict, Optional
@@ -10,7 +10,7 @@ from httpx import HTTPStatusError, Response, TimeoutException
 from pyfxlib._testtooling.helpers import _IntegrationRemote
 from pyfxlib.api.domain import Instance
 from pyfxlib.lowlevel import _DEFAULT_STREAM_CHUNK_SIZE
-from pyfxlib.lowlevel.connection import _run_sync, Connection, ConnectionSync
+from pyfxlib.lowlevel.connection import Connection, ConnectionSync
 from pyfxlib.lowlevel.session import (
     pfx_session,
     PfxAuthUserPass,
@@ -108,8 +108,9 @@ def _remote(
                     raise err
                 time.sleep(delay_between_try)
 
+    remote = _IntegrationRemote(_session, _auth, _pfx_base_url)
     retry_on_http_error(
-        lambda: _run_sync(
+        lambda: remote._sync(
             _session.post(
                 _pfx_base_url._replace(
                     path="/pricefx/system/remoteintegrationtestmanager/reset"
@@ -117,9 +118,12 @@ def _remote(
             )
         )
     )
-    yield _IntegrationRemote(_session, _auth, _pfx_base_url)
+
+    yield remote
+
+    _session.reset_connection()
     retry_on_http_error(
-        lambda: _run_sync(
+        lambda: remote._sync(
             _session.post(
                 _pfx_base_url._replace(
                     path="/pricefx/system/remoteintegrationtestmanager/cleanup"
@@ -180,7 +184,7 @@ def _raising_remote(
     _retry_and_raising_session: tuple[PfxSession, _RaisingExceptionSession],
     _raising_auth: PfxAuthUserPass,
     _pfx_base_url: ParseResult,
-) -> _IntegrationRemote:
+) -> Generator[_IntegrationRemote, None, None]:
     def retry_on_http_error(
         request_callable: Callable, max_try: int = 3, delay_between_try: int = 5
     ):
@@ -195,8 +199,9 @@ def _raising_remote(
                 time.sleep(delay_between_try)
 
     _session, _ = _retry_and_raising_session
+    remote = _IntegrationRemote(_session, _raising_auth, _pfx_base_url)
     retry_on_http_error(
-        lambda: _run_sync(
+        lambda: remote._sync(
             _session.post(
                 _pfx_base_url._replace(
                     path="/pricefx/system/remoteintegrationtestmanager/reset"
@@ -205,8 +210,9 @@ def _raising_remote(
         )
     )
     yield _IntegrationRemote(_session, _raising_auth, _pfx_base_url)
+    _session.reset_connection()
     retry_on_http_error(
-        lambda: _run_sync(
+        lambda: remote._sync(
             _session.post(
                 _pfx_base_url._replace(
                     path="/pricefx/system/remoteintegrationtestmanager/cleanup"
