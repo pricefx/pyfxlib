@@ -20,8 +20,9 @@ import re
 from typing import Any, Dict, IO, Iterator, List, Optional, Tuple, TypeVar
 
 from httpx import HTTPStatusError
+import pandas as pd
 
-from pyfxlib.lowlevel import _DEFAULT_STREAM_CHUNK_SIZE
+from pyfxlib.lowlevel import _DEFAULT_PAGE_SIZE, _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.session import PfxSession
 
@@ -124,6 +125,16 @@ class Connection(ABC):
     ) -> AsyncIterator[bytes]:
         """Stream the content of a data source."""
         yield b""
+
+    @abstractmethod
+    async def fetch_paginated_fcs(
+        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+    ) -> AsyncIterator[List[Dict[str, Any]]]:
+        """Fetch the content of a data source using paginated requests.
+
+        More reliable than stream_fcs for large datasets.
+        """
+        yield []
 
     @abstractmethod
     async def list_attachments(
@@ -326,6 +337,26 @@ class ConnectionRemote(Connection):
             params={"output": "csv"},
         ):
             yield chunk
+
+    async def fetch_paginated_fcs(
+        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+    ) -> AsyncIterator[List[Dict[str, Any]]]:
+        """See `Connection` corresponding method."""
+        sort_by: List[str] = []
+        fc_meta = await self.get_fcs(typedid)
+        sort_by = [field["name"] for field in fc_meta.get("fields", []) if field.get("key", False)]
+
+        start_row = 0
+        while True:
+            response = await self.session.post(
+                f"{self.endpoint}/datamart.fetch/{typedid}",
+                json={"startRow": start_row, "endRow": start_row + page_size, "sortBy": sort_by},
+            )
+            data = response.json()["response"]["data"]
+            if not data:
+                break
+            yield data
+            start_row += page_size
 
     async def list_attachments(
         self,
@@ -629,6 +660,13 @@ class ConnectionLocal(Connection):
             while chunk := fin.read(chunk_size):
                 yield chunk
 
+    async def fetch_paginated_fcs(
+        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+    ) -> AsyncIterator[List[Dict[str, Any]]]:
+        """See `Connection` corresponding method."""
+        for chunk in pd.read_csv(self._data_sources_path / f"{typedid}.csv", chunksize=page_size):
+            yield chunk.to_dict(orient="records")
+
     async def list_attachments(
         self,
         typedid: str,
@@ -816,6 +854,13 @@ class ConnectionComposed(Connection):
         async for chunk in self._dispatch["pa_tables"].stream_fcs(typedid, chunk_size):
             yield chunk
 
+    async def fetch_paginated_fcs(
+        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+    ) -> AsyncIterator[List[Dict[str, Any]]]:
+        """See `Connection` corresponding method."""
+        async for page in self._dispatch["pa_tables"].fetch_paginated_fcs(typedid, page_size):
+            yield page
+
     async def list_attachments(
         self,
         typedid: str,
@@ -879,7 +924,7 @@ def _run_sync(coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coro)
 
 
-def _sync_iterator(async_iter: AsyncIterator[bytes]) -> Iterator[bytes]:
+def _sync_iterator(async_iter: AsyncIterator[T]) -> Iterator[T]:
     """Convert an async iterator to a sync one."""
     loop = asyncio.new_event_loop()
     try:
@@ -961,6 +1006,12 @@ class ConnectionSync:
     ) -> Iterator[bytes]:
         """See `Connection` corresponding method."""
         return _sync_iterator(self._conn.stream_fcs(typedid, chunk_size))
+
+    def fetch_paginated_fcs(
+        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+    ) -> Iterator[List[Dict[str, Any]]]:
+        """See `Connection` corresponding method."""
+        return _sync_iterator(self._conn.fetch_paginated_fcs(typedid, page_size))
 
     def list_attachments(
         self,

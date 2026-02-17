@@ -20,7 +20,12 @@ from typing import (
 
 import pandas as pd
 
-from pyfxlib.lowlevel import _DEFAULT_STREAM_CHUNK_SIZE, pandasutil, session
+from pyfxlib.lowlevel import (
+    _DEFAULT_PAGE_SIZE,
+    _DEFAULT_STREAM_CHUNK_SIZE,
+    pandasutil,
+    session,
+)
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.connection import (
     Connection,
@@ -148,6 +153,12 @@ class AbstractTable(BasicEntity, ABC):
         """Stream the content of this table."""
         return self._conn.stream_fcs(self.typedid, chunk_size)
 
+    def fetch_paginated(
+        self, page_size: int = _DEFAULT_PAGE_SIZE
+    ) -> Iterator[List[Dict[str, Any]]]:
+        """Fetch the content of the table page by page."""
+        return self._conn.fetch_paginated_fcs(self.typedid, page_size)
+
     def to_file(self, file_path: str) -> None:
         """Write table content to file.
 
@@ -164,6 +175,13 @@ class AbstractTable(BasicEntity, ABC):
                 buff.write(data)
             buff.seek(0)
             return pd.read_csv(buff, sep=",", **args)
+
+    def to_pandas_paginated(self, page_size: int = _DEFAULT_PAGE_SIZE) -> pd.DataFrame:
+        """Get a DataFramevia paginated fetch."""
+        dfs = []
+        for page in self.fetch_paginated(page_size):
+            dfs.append(pd.DataFrame(page))
+        return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
 
 class TableImmutable(AbstractTable):

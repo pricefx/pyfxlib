@@ -1,11 +1,9 @@
-import asyncio
 from collections.abc import AsyncIterator
 import inspect
 from io import BytesIO, StringIO
 import json
 from typing import Any, Dict, Iterator
 
-from httpx import HTTPStatusError
 import pandas as pd
 import pytest
 
@@ -565,18 +563,14 @@ async def test_create_table_should_work_with_ten_million_lines_df(_async_conn: C
     assert data_sources[0]["uniqueName"] == data_source_name
 
     # and it can be pulled with stream_datasource with same content as initial pushed one
-    downloaded_content = None
-    nb_retry = 0
-    while downloaded_content is None and nb_retry < 3:
-        try:
-            downloaded_content = await collect_csv(
-                _async_conn.stream_fcs(data_sources[0]["typedId"])
-            )
-        except HTTPStatusError:
-            await asyncio.sleep(5)
-            nb_retry += 1
+    dataframes = []
+    async for page in _async_conn.fetch_paginated_fcs(data_sources[0]["typedId"]):
+        dataframes.append(pd.DataFrame(page))
 
+    downloaded_content = pd.concat(dataframes, ignore_index=True) if dataframes else pd.DataFrame()
     assert downloaded_content is not None, "Failed to download pushed datasource"
+    assert len(downloaded_content) == len(dataframe)
+
     downloaded_content.sort_values(
         ["column1"], axis=0, ignore_index=True, ascending=True, inplace=True
     )
