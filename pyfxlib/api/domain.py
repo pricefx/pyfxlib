@@ -970,7 +970,10 @@ class ModelObject(Model):
         model_typedid: str,
     ) -> "ModelObject":
         """Create a model from a model typedid."""
-        return ModelObject.from_dict(conn, conn.get_object(model_typedid))
+        data = conn.get_object(model_typedid)
+        if data is None:
+            raise ValueError(f"Object not found: {model_typedid}")
+        return ModelObject.from_dict(conn, data)
 
 
 class ModelObjects(ItemCollection[ModelObject]):
@@ -985,7 +988,10 @@ class ModelObjects(ItemCollection[ModelObject]):
 
     def get(self, typedid: str) -> ModelObject:
         """Get the model object with the given id."""
-        return ModelObject.from_dict(self._conn, self._conn.get_object(typedid))
+        data = self._conn.get_object(typedid)
+        if data is None:
+            raise ValueError(f"Object not found: {typedid}")
+        return ModelObject.from_dict(self._conn, data)
 
 
 class DataSources(TableMutableSource):

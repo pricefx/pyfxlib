@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 import asyncio
 from collections.abc import AsyncIterator, Coroutine, Iterator
 import csv
-from enum import Enum, unique
+from enum import Enum, StrEnum, unique
 from io import BytesIO, TextIOBase
 import json
 import logging
@@ -106,8 +106,32 @@ class ConnectionAsync(ABC):
     async def list_objects(
         self,
         type_code: str,
+        filters: list[dict[str, Any]] | None = None,
+        filter_aggregator: str | None = None,
+        start_row: int | None = None,
+        max_rows: int | None = None,
+        sort_by: str | None = None,
     ) -> list[dict[str, Any]]:
-        """List all the elements of a given type."""
+        """List all the elements of a given type with optional filtering and pagination.
+
+        Common types: P (Products), C (Customers), PL (Price Lists), Q (Quotes),
+                      MO (Model Objects), DMM (DM Models), DMT (DM Tables),
+                      DMDS (DM Data Sources)...
+        If you need the full list of TypeCodes, search the knowledge base for "Type Codes".
+
+        Args:
+            type_code: Entity TypeCode
+            filters: a list of filters in the format
+                     [{"fieldName": ..., "operator": ..., "value": ...}, ...]
+            filter_aggregator: "and" or "or" (default) when multiple filter values are provided
+            start_row: Starting index (0-based)
+            max_rows: Max results (1-200, default 5)
+            sort: field on which to sort the data
+
+        Returns:
+            List of entity objects with all fields,
+            as defined in the Pricefx REST API public documentation.
+        """
         pass
 
     @abstractmethod
@@ -236,6 +260,42 @@ class ConnectionAsync(ABC):
 _DATAMART_FETCH_TIMEOUT = 3600
 
 
+# TODO: copy from genfx, remove duplication
+class FilterOperator(StrEnum):
+    """Filter operators for search criteria."""
+
+    EQUALS = "equals"
+    IEQUALS = "iEquals"
+    NOTEQUAL = "notEqual"
+    INOTEQUAL = "iNotEqual"
+    GREATERTHAN = "greaterThan"
+    GREATEROREQUAL = "greaterOrEqual"
+    LESSOREQUAL = "lessOrEqual"
+    LESSTHAN = "lessThan"
+    ISNULL = "isNull"
+    NOTNULL = "notNull"
+    CONTAINS = "contains"
+    ICONTAINS = "iContains"
+    CONTAINSPATTERN = "containsPattern"
+    ICONTAINSPATTERN = "iContainsPattern"
+    NOTCONTAINS = "notContains"
+    INOTCONTAINS = "iNotContains"
+    STARTSWITH = "startsWith"
+    ISTARTSWITH = "iStartsWith"
+    NOTSTARTSWITH = "notStartsWith"
+    INOTSTARTSWITH = "iNotStartsWith"
+    ENDSWITH = "endsWith"
+    IENDSWITH = "iEndsWith"
+    NOTENDSWITH = "notEndsWith"
+    INOTENDSWITH = "iNotEndsWith"
+    BETWEEN = "between"
+    BETWEENINCLUSIVE = "betweenInclusive"
+    IBETWEEN = "iBetween"
+    IBETWEENINCLUSIVE = "iBetweenInclusive"
+    INSET = "inSet"
+    NOTINSET = "notInSet"
+
+
 class ConnectionRemote(ConnectionAsync):
     """A connection to a remote instance.
 
@@ -314,12 +374,51 @@ class ConnectionRemote(ConnectionAsync):
         else:
             raise ValueError(f"Object with typedId '{typedid}' not found")
 
+    @staticmethod
+    def _build_criteria(
+        filters: list[dict[str, Any]] | None = None,
+        filter_aggregator: str | None = None,
+    ) -> dict[str, Any] | None:
+        if not filters:
+            return None
+        for filt in filters:
+            if not {"fieldName", "operator", "value"}.issubset(filt.keys()):
+                raise ValueError(
+                    f"Invalid filter format: {filt}. "
+                    "Expected keys: 'fieldName', 'operator', 'value'."
+                )
+            if filt["operator"] not in FilterOperator:
+                raise ValueError(
+                    f"Invalid filter operator for the filter {filt}. "
+                    f"Expected one of: {[operator.value for operator in FilterOperator]}"
+                )
+        return {
+            "_constructor": "AdvancedCriteria",
+            "operator": filter_aggregator if filter_aggregator else "or",
+            "criteria": filters,
+        }
+
     async def list_objects(
         self,
         type_code: str,
+        filters: list[dict[str, Any]] | None = None,
+        filter_aggregator: str | None = None,
+        start_row: int | None = None,
+        max_rows: int | None = None,
+        sort_by: str | None = None,
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        response = await self.session.post(f"{self.endpoint}/fetch/{type_code}")
+        start_row = start_row or 0
+        end_row = start_row + max(min(max_rows, 200), 1) if max_rows is not None else None
+        body = {
+            "startRow": start_row,
+            "endRow": end_row,
+            "operationType": "fetch",
+            "textMatchStyle": "exact",
+            "data": self._build_criteria(filters, filter_aggregator),
+            "sortBy": [sort_by] if sort_by else None,
+        }
+        response = await self.session.post(f"{self.endpoint}/fetch/{type_code}", json=body)
         return response.json()["response"]["data"]
 
     async def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
@@ -642,6 +741,11 @@ class ConnectionLocal(ConnectionAsync):
     async def list_objects(
         self,
         type_code: str,
+        filters: list[dict[str, Any]] | None = None,
+        filter_aggregator: str | None = None,
+        start_row: int | None = None,
+        max_rows: int | None = None,
+        sort_by: str | None = None,
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method.
 
@@ -846,9 +950,16 @@ class ConnectionComposed(ConnectionAsync):
     async def list_objects(
         self,
         type_code: str,
+        filters: list[dict[str, Any]] | None = None,
+        filter_aggregator: str | None = None,
+        start_row: int | None = None,
+        max_rows: int | None = None,
+        sort_by: str | None = None,
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        return await self._default.list_objects(type_code)
+        return await self._default.list_objects(
+            type_code, filters, filter_aggregator, start_row, max_rows, sort_by
+        )
 
     async def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
@@ -1000,9 +1111,18 @@ class ConnectionSync:
     def list_objects(
         self,
         type_code: str,
+        filters: list[dict[str, Any]] | None = None,
+        filter_aggregator: str | None = None,
+        start_row: int | None = None,
+        max_rows: int | None = None,
+        sort_by: str | None = None,
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.list_objects(type_code))
+        return _run_sync(
+            self._conn.list_objects(
+                type_code, filters, filter_aggregator, start_row, max_rows, sort_by
+            )
+        )
 
     def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
