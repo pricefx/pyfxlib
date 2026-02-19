@@ -90,7 +90,16 @@ class ConnectionAsync(ABC):
         self,
         typedid: str,
     ) -> dict[str, Any]:
-        """Get the attributes of a specific element."""
+        """Get the attributes of a specific element.
+
+        Args:
+            typedid: the typedId of the element, in the format "{id}.{typeCode}"
+        Returns:
+            The corresponding object with all fields,
+            as defined in the Pricefx REST API public documentation.
+        Raises:
+            ValueError: if no object is found for the given typedId
+        """
         pass
 
     @abstractmethod
@@ -299,7 +308,11 @@ class ConnectionRemote(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         id, type_code = _split_typedid(typedid)
         response = await self.session.post(f"{self.endpoint}/fetch/{type_code}/{id}")
-        return response.json()["response"]["data"][0]
+        data = response.json()["response"]["data"]
+        if data is not None:
+            return data[0]
+        else:
+            raise ValueError(f"Object with typedId '{typedid}' not found")
 
     async def list_objects(
         self,
