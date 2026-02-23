@@ -10,7 +10,7 @@ import uuid
 from pyfxlib.api.domain import DMModel, Model, ModelObject, PlatformJob
 from pyfxlib.lowlevel.configuration import spec
 from pyfxlib.lowlevel.connection import (
-    Connection,
+    ConnectionAsync,
     ConnectionComposed,
     ConnectionLocal,
     ConnectionRemote,
@@ -33,7 +33,7 @@ LOGS_CONFIG_SECTION = "logging"
 JOB_CONFIG_SECTION = "job"
 
 
-def _remote_conn_from_config(config: ConfigParser) -> Optional[Connection]:
+def _remote_conn_from_config(config: ConfigParser) -> Optional[ConnectionAsync]:
     """Create a remote Connection from config."""
     auth_values = ["token", "login"]
     pass_values = ["prompt", "keyring", "command"]
@@ -97,7 +97,7 @@ def _remote_conn_from_config(config: ConfigParser) -> Optional[Connection]:
     )
 
 
-def _local_conn_from_config(config: ConfigParser) -> Optional[Connection]:
+def _local_conn_from_config(config: ConfigParser) -> Optional[ConnectionAsync]:
     """Create a local Connection from config."""
     my_spec = (
         spec.optional_section(LOCALCONNECTION_CONFIG_SECTION)
@@ -115,7 +115,7 @@ def _local_conn_from_config(config: ConfigParser) -> Optional[Connection]:
     )
 
 
-def conn_from_config(config: ConfigParser) -> Connection:
+def conn_from_config(config: ConfigParser) -> ConnectionAsync:
     """Create a Connection from config."""
     remote_conn = _remote_conn_from_config(config)
     local_conn = _local_conn_from_config(config)

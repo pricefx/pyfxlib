@@ -72,11 +72,6 @@ class PfxSession(ABC):
         """Remove a header from the session."""
         raise NotImplementedError
 
-    @abstractmethod
-    def reset_connection(self) -> None:
-        """Close the underlying HTTP connection pool."""
-        raise NotImplementedError
-
 
 class PfxAuthMethod(ABC):
     """Formal interface of a PfxAuthMethod."""
@@ -230,14 +225,6 @@ class RetryPfxSession(PfxSession):
     def remove_header(self, key: str) -> None:
         """Remove a header from the session."""
         self._wrapped.remove_header(key)
-
-    def reset_connection(self) -> None:
-        """Close the underlying HTTP connection pool.
-
-        Useful when connections become stale, e.g. after sync calls
-        that create and destroy event loops.
-        """
-        self._wrapped.reset_connection()
 
 
 def _default_retry_predicate(exception: HTTPError) -> bool:
@@ -485,12 +472,6 @@ class SimplePfxSession(PfxSession):
         if key in self._session.headers:
             del self._session.headers[key]
 
-    def reset_connection(self) -> None:
-        """Close the underlying HTTP connection pool."""
-        headers = dict(self._session.headers)
-        self._session = AsyncClient(timeout=None)
-        self._session.headers.update(headers)
-
 
 def _error_response_body(err: HTTPStatusError) -> Optional[str]:
     if err.response is not None and err.response.text is not None:
@@ -622,6 +603,8 @@ class PfxAuthUserPass(PfxAuthMethod):
                 if (body := _error_response_body(err)) is not None:
                     LOGGER.error("Error response body: %s", body)
                 raise err
+        else:
+            session.headers.update({"Cookie": f"X-PriceFx-jwt={self.pfxtoken}"})
 
     async def after_response(self, session: AsyncClient, response: Response) -> None:
         """See `PfxAuthMethod.after_response`."""

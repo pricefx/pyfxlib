@@ -5,7 +5,7 @@ from urllib.parse import ParseResult
 
 import pandas as pd
 
-from pyfxlib.lowlevel.connection import _run_sync, Connection, ConnectionRemote
+from pyfxlib.lowlevel.connection import ConnectionAsync, ConnectionRemote
 from pyfxlib.lowlevel.session import PfxAuthUserPass, PfxSession
 
 
@@ -20,21 +20,7 @@ class _IntegrationRemote:
             pfx_base_url._replace(path="/pricefx/system").geturl(), session
         )
 
-    def _sync(self, coroutine):
-        """Run async code synchronously, with Connection: close to avoid pool poisoning."""
-        try:
-            if not self._session.has_header("Connection"):
-                self._session.set_header("Connection", "close")
-                try:
-                    return _run_sync(coroutine)
-                finally:
-                    self._session.remove_header("Connection")
-            else:
-                return _run_sync(coroutine)
-        finally:
-            self._session.reset_connection()
-
-    def connection(self) -> Connection:
+    def connection(self) -> ConnectionAsync:
         return self._conn
 
     def endpoint_url(self, path_suffix: str = "") -> str:
@@ -42,106 +28,92 @@ class _IntegrationRemote:
             path=f"/pricefx/system/{path_suffix.lstrip('/')}"
         ).geturl()
 
-    def jwt(self) -> str:
+    async def jwt(self) -> str:
         # initialize auth if not already done
-        self._sync(self._auth.before_request(self._session))
+        await self._auth.before_request(self._session)
         return self._auth.pfxtoken
 
-    def trigger_job(self, mo: Dict[str, Any]) -> None:
-        self._sync(
-            self._session.post(
-                self.endpoint_url(
-                    f"remoteintegrationtestmanager/createJobTriggerTask/{mo['typedId']}"
-                ),
-                json={
-                    "data": {
-                        "modelId": mo["typedId"].split(".")[0],
-                        "modelName": mo["uniqueName"],
-                        "parameters": "someParameters",
-                        "imageName": "imageName",
-                        "imageTag": "imageTag",
-                    }
-                },
-            )
+    async def trigger_job(self, mo: Dict[str, Any]) -> None:
+        await self._session.post(
+            self.endpoint_url(f"remoteintegrationtestmanager/createJobTriggerTask/{mo['typedId']}"),
+            json={
+                "data": {
+                    "modelId": mo["typedId"].split(".")[0],
+                    "modelName": mo["uniqueName"],
+                    "parameters": "someParameters",
+                    "imageName": "imageName",
+                    "imageTag": "imageTag",
+                }
+            },
         )
 
-    def jobs(self, mo_typedid: str) -> List[Dict[str, Any]]:
-        response = self._sync(
-            self._session.post(
-                self._pfx_base_url._replace(
-                    path="/pricefx/system/admin.fetchjst",
-                ).geturl(),
-                json={"data": {"targetObject": mo_typedid}},
-            )
+    async def jobs(self, mo_typedid: str) -> List[Dict[str, Any]]:
+        response = await self._session.post(
+            self._pfx_base_url._replace(
+                path="/pricefx/system/admin.fetchjst",
+            ).geturl(),
+            json={"data": {"targetObject": mo_typedid}},
         )
         return response.json()["response"]["data"]
 
-    def job(self, mo_typedid: str) -> Dict[str, Any]:
-        jobs = self.jobs(mo_typedid)
+    async def job(self, mo_typedid: str) -> Dict[str, Any]:
+        jobs = await self.jobs(mo_typedid)
         if len(jobs) != 1:
             raise Exception(f"Should have only one job for {mo_typedid}, got {len(jobs)}")
-        return self._sync(self.connection().get_object(f"{jobs[0]['id']}.JST"))
+        return await self.connection().get_object(f"{jobs[0]['id']}.JST")
 
-    def new_model_object(
+    async def new_model_object(
         self,
         unique_name: str,
         model_class: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        mc = model_class if model_class is not None else self.new_model_class()
+        mc = model_class if model_class is not None else await self.new_model_class()
         return (
             mc,
-            self._sync(
-                self._conn.add_object(
-                    "MO",
-                    {
-                        "uniqueName": unique_name,
-                        "modelClassUN": mc["uniqueName"],
-                        "state": {},
-                        "workflowStatus": "DRAFT",
-                    },
-                )
+            await self._conn.add_object(
+                "MO",
+                {
+                    "uniqueName": unique_name,
+                    "modelClassUN": mc["uniqueName"],
+                    "state": {},
+                    "workflowStatus": "DRAFT",
+                },
             ),
         )
 
-    def new_model_class(self, unique_name: str = "aModelClass") -> Dict[str, Any]:
-        return self._sync(
-            self._conn.add_object(
-                "MC",
-                {
-                    "uniqueName": unique_name,
-                    "definition": {
-                        "evaluations": [],
-                        "calculations": [],
-                        "steps": [],
-                    },
-                    "workflowFormulaName": None,
+    async def new_model_class(self, unique_name: str = "aModelClass") -> Dict[str, Any]:
+        return await self._conn.add_object(
+            "MC",
+            {
+                "uniqueName": unique_name,
+                "definition": {
+                    "evaluations": [],
+                    "calculations": [],
+                    "steps": [],
                 },
-            )
+                "workflowFormulaName": None,
+            },
         )
 
-    def new_empty_datamart(self, name: str, fields_spec: Optional[List[Dict]]):
-        response = self._sync(
-            self._session.post(
-                self.endpoint_url("datamart.newfc/DM"),
-                json={"data": {"uniqueName": name, "label": name}},
-            )
+    async def new_empty_datamart(self, name: str, fields_spec: Optional[List[Dict]]):
+        response = await self._session.post(
+            self.endpoint_url("datamart.newfc/DM"),
+            json={"data": {"uniqueName": name, "label": name}},
         )
         entry = response.json()["response"]["data"][0]
-        self._sync(
-            self._session.post(
-                self.endpoint_url("datamart.updatefc/DM"),
-                json={
-                    "data": {
-                        "typedId": entry["typedId"],
-                        "version": entry["version"],
-                        "uniqueName": name,
-                        "label": name,
-                        "source": "",
-                        "fields": fields_spec,
-                        "deployed": True,
-                    }
-                },
-            )
+        await self._session.post(
+            self.endpoint_url("datamart.updatefc/DM"),
+            json={
+                "data": {
+                    "typedId": entry["typedId"],
+                    "version": entry["version"],
+                    "uniqueName": name,
+                    "label": name,
+                    "source": "",
+                    "fields": fields_spec,
+                    "deployed": True,
+                }
+            },
         )
 
 

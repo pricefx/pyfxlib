@@ -1,16 +1,17 @@
-from collections.abc import AsyncIterator, Generator
+import asyncio
+from collections.abc import AsyncGenerator, AsyncIterator
 import os
-import time
 from typing import Any, Callable, Dict, Optional
 from urllib.parse import ParseResult, urlparse
 
 from _pytest.fixtures import fixture
 from httpx import HTTPStatusError, Response, TimeoutException
+import pytest_asyncio
 
 from pyfxlib._testtooling.helpers import _IntegrationRemote
 from pyfxlib.api.domain import Instance
 from pyfxlib.lowlevel import _DEFAULT_STREAM_CHUNK_SIZE
-from pyfxlib.lowlevel.connection import Connection, ConnectionSync
+from pyfxlib.lowlevel.connection import ConnectionAsync, ConnectionSync
 from pyfxlib.lowlevel.session import (
     pfx_session,
     PfxAuthUserPass,
@@ -18,6 +19,21 @@ from pyfxlib.lowlevel.session import (
     RetryPfxSession,
     SimplePfxSession,
 )
+
+
+async def retry_on_http_error(
+    request_callable: Callable, max_try: int = 3, delay_between_try: int = 5
+):
+    """Retry on HTTP error."""
+    nb_try = 0
+    while nb_try <= max_try:
+        nb_try += 1
+        try:
+            return await request_callable()
+        except HTTPStatusError as err:
+            if nb_try >= max_try:
+                raise err
+            await asyncio.sleep(delay_between_try)
 
 
 class _RaisingExceptionSession(RetryPfxSession):
@@ -75,7 +91,7 @@ def _pfx_base_url() -> ParseResult:
     return urlparse(os.getenv("PFX_BASE_URL", "http://localhost:2000"))
 
 
-@fixture(scope="session")
+@fixture(scope="function")
 def _session(_auth: ParseResult) -> PfxSession:
     return pfx_session(_auth)
 
@@ -91,50 +107,40 @@ def _auth(_pfx_base_url: ParseResult) -> PfxAuthUserPass:
     )
 
 
-@fixture(scope="function")
-def _remote(
+@pytest_asyncio.fixture(scope="function")
+async def _remote(
     _session: PfxSession, _auth: PfxAuthUserPass, _pfx_base_url: ParseResult
 ) -> _IntegrationRemote:
-    def retry_on_http_error(
-        request_callable: Callable, max_try: int = 3, delay_between_try: int = 5
-    ):
-        nb_try = 0
-        while nb_try <= max_try:
-            nb_try += 1
-            try:
-                return request_callable()
-            except HTTPStatusError as err:
-                if nb_try >= max_try:
-                    raise err
-                time.sleep(delay_between_try)
-
     remote = _IntegrationRemote(_session, _auth, _pfx_base_url)
-    retry_on_http_error(
-        lambda: remote._sync(
-            _session.post(
+    _session.set_header("Connection", "close")
+    try:
+        await retry_on_http_error(
+            lambda: _session.post(
                 _pfx_base_url._replace(
                     path="/pricefx/system/remoteintegrationtestmanager/reset"
                 ).geturl()
             )
         )
-    )
+    finally:
+        _session.remove_header("Connection")
 
     yield remote
 
-    _session.reset_connection()
-    retry_on_http_error(
-        lambda: remote._sync(
-            _session.post(
+    _session.set_header("Connection", "close")
+    try:
+        await retry_on_http_error(
+            lambda: _session.post(
                 _pfx_base_url._replace(
                     path="/pricefx/system/remoteintegrationtestmanager/cleanup"
                 ).geturl()
             )
         )
-    )
+    finally:
+        _session.remove_header("Connection")
 
 
 @fixture(scope="function")
-def _async_conn(_remote: _IntegrationRemote) -> Connection:
+def _async_conn(_remote: _IntegrationRemote) -> ConnectionAsync:
     return _remote.connection()
 
 
@@ -144,19 +150,19 @@ def _conn(_remote: _IntegrationRemote) -> ConnectionSync:
 
 
 @fixture(scope="function")
-def _instance(_async_conn: Connection) -> Instance:
+def _instance(_async_conn: ConnectionAsync) -> Instance:
     return Instance(_async_conn)
 
 
-@fixture(scope="function")
-def _model_object(_remote: _IntegrationRemote) -> Dict[str, Any]:
-    return _remote.new_model_object("aModelObjectName")[1]
+@pytest_asyncio.fixture(scope="function")
+async def _model_object(_remote: _IntegrationRemote) -> Dict[str, Any]:
+    return (await _remote.new_model_object("aModelObjectName"))[1]
 
 
-@fixture(scope="function")
-def _job_jst(_remote: _IntegrationRemote, _model_object: Dict[str, Any]) -> Dict[str, Any]:
-    _remote.trigger_job(_model_object)
-    return _remote.job(_model_object["typedId"])
+@pytest_asyncio.fixture(scope="function")
+async def _job_jst(_remote: _IntegrationRemote, _model_object: Dict[str, Any]) -> Dict[str, Any]:
+    await _remote.trigger_job(_model_object)
+    return await _remote.job(_model_object["typedId"])
 
 
 @fixture(scope="session")
@@ -179,47 +185,39 @@ def _retry_and_raising_session(
     return retry, raising
 
 
-@fixture(scope="function")
-def _raising_remote(
+@pytest_asyncio.fixture(scope="function")
+async def _raising_remote(
     _retry_and_raising_session: tuple[PfxSession, _RaisingExceptionSession],
     _raising_auth: PfxAuthUserPass,
     _pfx_base_url: ParseResult,
-) -> Generator[_IntegrationRemote, None, None]:
-    def retry_on_http_error(
-        request_callable: Callable, max_try: int = 3, delay_between_try: int = 5
-    ):
-        nb_try = 0
-        while nb_try <= max_try:
-            nb_try += 1
-            try:
-                return request_callable()
-            except HTTPStatusError as err:
-                if nb_try >= max_try:
-                    raise err
-                time.sleep(delay_between_try)
+) -> AsyncGenerator[_IntegrationRemote, None]:
 
     _session, _ = _retry_and_raising_session
-    remote = _IntegrationRemote(_session, _raising_auth, _pfx_base_url)
-    retry_on_http_error(
-        lambda: remote._sync(
-            _session.post(
+    _IntegrationRemote(_session, _raising_auth, _pfx_base_url)
+    _session.set_header("Connection", "close")
+    try:
+        await retry_on_http_error(
+            lambda: _session.post(
                 _pfx_base_url._replace(
                     path="/pricefx/system/remoteintegrationtestmanager/reset"
                 ).geturl()
             )
         )
-    )
+    finally:
+        _session.remove_header("Connection")
     yield _IntegrationRemote(_session, _raising_auth, _pfx_base_url)
-    _session.reset_connection()
-    retry_on_http_error(
-        lambda: remote._sync(
-            _session.post(
+
+    _session.set_header("Connection", "close")
+    try:
+        await retry_on_http_error(
+            lambda: _session.post(
                 _pfx_base_url._replace(
                     path="/pricefx/system/remoteintegrationtestmanager/cleanup"
                 ).geturl()
             )
         )
-    )
+    finally:
+        _session.remove_header("Connection")
 
 
 @fixture(scope="function")
@@ -230,3 +228,19 @@ def _connection_with_raising_session(
 
     connection = _raising_remote.connection()
     return ConnectionSync(connection), raising
+
+
+@pytest_asyncio.fixture(scope="function")
+async def _setup_datamart(
+    _remote: _IntegrationRemote, _instance: Instance
+) -> tuple[Instance, str, list[str]]:
+    dm_name = "aDatamartName"
+    col_names = ["column1", "column2"]
+    await _remote.new_empty_datamart(
+        dm_name,
+        [
+            {"name": col_names[0], "type": "TEXT", "key": True},
+            {"name": col_names[1], "type": "NUMBER"},
+        ],
+    )
+    return _instance, dm_name, col_names

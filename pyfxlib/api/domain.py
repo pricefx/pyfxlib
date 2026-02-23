@@ -28,7 +28,7 @@ from pyfxlib.lowlevel import (
 )
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.connection import (
-    Connection,
+    ConnectionAsync,
     ConnectionRemote,
     ConnectionSync,
     JobStatus,
@@ -1016,7 +1016,7 @@ class Datamarts(TableImmutableSource):
 class Instance:
     """A platform instance."""
 
-    def __init__(self, conn: Union[Connection, ConnectionSync]):
+    def __init__(self, conn: Union[ConnectionAsync, ConnectionSync]):
         if isinstance(conn, ConnectionSync):
             self._conn = conn
         else:

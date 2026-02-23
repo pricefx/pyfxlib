@@ -22,11 +22,11 @@ from pyfxlib._testtooling.helpers import (
     _IntegrationRemote,
 )
 from pyfxlib.lowlevel.avro import AvroStream
-from pyfxlib.lowlevel.connection import Connection, ConnectionSync, JobStatus
+from pyfxlib.lowlevel.connection import ConnectionAsync, ConnectionSync, JobStatus
 
 __all__ = [
-    "_auth",
     "_async_conn",
+    "_auth",
     "_conn",
     "_job_jst",
     "_model_object",
@@ -59,7 +59,7 @@ async def collect_csv(async_iterator: AsyncIterator[bytes]) -> pd.DataFrame:
 
 @pytest.mark.asyncio
 async def test_connection_should_be_able_to_add_an_object_update_it_list_it_and_fetch_it(
-    _async_conn: Connection,
+    _async_conn: ConnectionAsync,
 ):
     # when adding a product
     original_label = "aProductlabel"
@@ -91,7 +91,7 @@ async def test_connection_should_be_able_to_add_an_object_update_it_list_it_and_
 
 
 @pytest.mark.asyncio
-async def test_push_pull_and_list_data_source_should_work_as_expected(_async_conn: Connection):
+async def test_push_pull_and_list_data_source_should_work_as_expected(_async_conn: ConnectionAsync):
     # when pushing a data source
     data = {
         "column1": ["key1", "key2"],
@@ -135,7 +135,7 @@ async def test_push_pull_and_list_data_source_should_work_as_expected(_async_con
 
 
 @pytest.mark.asyncio
-async def test_should_be_able_to_update_a_data_source(_async_conn: Connection):
+async def test_should_be_able_to_update_a_data_source(_async_conn: ConnectionAsync):
     # IMPORTANT NOTE:
     # We *cannot* properly test updating existing rows, as the row deduplication process is
     # asynchronous and may only trigger after a significant delay.
@@ -183,7 +183,7 @@ async def test_should_be_able_to_update_a_data_source(_async_conn: Connection):
 
 
 @pytest.mark.asyncio
-async def test_should_fail_to_update_a_data_source_when_duplicates(_async_conn: Connection):
+async def test_should_fail_to_update_a_data_source_when_duplicates(_async_conn: ConnectionAsync):
     # IMPORTANT NOTE:
     # We *cannot* properly test updating existing rows, as the row deduplication process is
     # asynchronous and may only trigger after a significant delay.
@@ -233,7 +233,9 @@ async def test_should_fail_to_update_a_data_source_when_duplicates(_async_conn: 
 
 
 @pytest.mark.asyncio
-async def test_should_be_able_to_update_the_existing_rows_on_a_data_source(_async_conn: Connection):
+async def test_should_be_able_to_update_the_existing_rows_on_a_data_source(
+    _async_conn: ConnectionAsync,
+):
     # IMPORTANT NOTE:
     # We *cannot* properly test updating existing rows, as the row deduplication process is
     # asynchronous and may only trigger after a significant delay.
@@ -282,7 +284,7 @@ async def test_should_be_able_to_update_the_existing_rows_on_a_data_source(_asyn
 
 @pytest.mark.asyncio
 async def test_should_be_able_to_attach_a_file_list_attachments_and_pull_an_attachment(
-    _async_conn: Connection, _model_object: Dict[str, Any]
+    _async_conn: ConnectionAsync, _model_object: Dict[str, Any]
 ):
     # given an empty model object and an attachment content
     mo_typedid = _model_object["typedId"]
@@ -304,7 +306,7 @@ async def test_should_be_able_to_attach_a_file_list_attachments_and_pull_an_atta
 
 @pytest.mark.asyncio
 async def test_should_be_able_to_push_an_owned_table_and_read_it_back(
-    _async_conn: Connection, _model_object: Dict[str, Any]
+    _async_conn: ConnectionAsync, _model_object: Dict[str, Any]
 ):
     # given an empty model
     mo_typedid = _model_object["typedId"]
@@ -343,7 +345,7 @@ async def test_should_be_able_to_push_an_owned_table_and_read_it_back(
 
 @pytest.mark.asyncio
 async def test_should_be_able_to_update_model_table(
-    _async_conn: Connection, _model_object: Dict[str, Any]
+    _async_conn: ConnectionAsync, _model_object: Dict[str, Any]
 ):
     # given a model
     mo_typedid = _model_object["typedId"]
@@ -391,7 +393,7 @@ async def test_should_be_able_to_update_model_table(
 
 @pytest.mark.asyncio
 async def test_should_fail_to_update_model_table_when_duplicates(
-    _async_conn: Connection, _model_object: Dict[str, Any]
+    _async_conn: ConnectionAsync, _model_object: Dict[str, Any]
 ):
     # given a model
     mo_typedid = _model_object["typedId"]
@@ -441,7 +443,7 @@ async def test_should_fail_to_update_model_table_when_duplicates(
 
 @pytest.mark.asyncio
 async def test_should_be_able_update_the_existing_rows_on_a_model_table(
-    _async_conn: Connection, _model_object: Dict[str, Any]
+    _async_conn: ConnectionAsync, _model_object: Dict[str, Any]
 ):
     # given a model
     mo_typedid = _model_object["typedId"]
@@ -490,7 +492,7 @@ async def test_should_be_able_update_the_existing_rows_on_a_model_table(
 @pytest.mark.asyncio
 async def test_should_be_able_to_update_a_job_status(
     _remote: _IntegrationRemote,
-    _async_conn: Connection,
+    _async_conn: ConnectionAsync,
     _model_object: Dict[str, Any],
     _job_jst: Dict[str, Any],
 ):
@@ -536,7 +538,7 @@ async def test_should_be_able_to_update_a_job_status(
 
 @pytest.mark.asyncio
 @pytest.mark.extended
-async def test_create_table_should_work_with_ten_million_lines_df(_async_conn: Connection):
+async def test_create_table_should_work_with_ten_million_lines_df(_async_conn: ConnectionAsync):
     # when pushing a data source
     data = {
         "column1": [f"key{idx}" for idx in range(10000000)],
