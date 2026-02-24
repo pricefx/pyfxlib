@@ -114,6 +114,14 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
+    async def quick_search(self, sku_or_label: str) -> list[dict[str, Any]]:
+        """Search for all lists containing a product designated by its sku or label.
+
+        Note that the search is case-sensitive.
+        """
+        pass
+
+    @abstractmethod
     async def list_objects(
         self,
         type_code: str,
@@ -448,6 +456,13 @@ class ConnectionRemote(ConnectionAsync):
             return data[0]
         else:
             raise ValueError(f"Object with typedId '{typedid}' not found")
+
+    async def quick_search(self, sku_or_label: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(
+            f"{self.endpoint}/productmanager.quicksearch/{sku_or_label}"
+        )
+        return response.json()["response"]["data"]
 
     @staticmethod
     def _build_criteria(
@@ -860,6 +875,13 @@ class ConnectionLocal(ConnectionAsync):
         """
         return {"id": _split_typedid(typedid)[0], "typedId": f"{typedid}"}
 
+    async def quick_search(self, sku_or_label: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method.
+
+        This implementation of the methods always returns an empty list.
+        """
+        return []
+
     async def list_objects(
         self,
         type_code: str,
@@ -1098,6 +1120,10 @@ class ConnectionComposed(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return await self._default.get_object(typedid)
 
+    async def quick_search(self, sku_or_label: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.quick_search(sku_or_label)
+
     async def list_objects(
         self,
         type_code: str,
@@ -1281,6 +1307,10 @@ class ConnectionSync:
     ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.get_object(typedid))
+
+    def quick_search(self, sku_or_label: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.quick_search(sku_or_label))
 
     def list_objects(
         self,
