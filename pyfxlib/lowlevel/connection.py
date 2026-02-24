@@ -146,6 +146,22 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
+    async def list_lpg_items(
+        self, lpg_id: int, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch the item data from an LPG.
+
+        Args:
+            lpg_id: Id of the LPG
+            filters: a dict of filters in the format {fieldName: value, ...} (optional)
+                They are supposed to use an iequals operator, and will be aggregated with an "and".
+        Returns:
+            List of LPG products with all fields,
+            as defined in the Pricefx REST API public documentation.
+        """
+        pass
+
+    @abstractmethod
     async def get_object_metadata(
         self,
         type_code: str,
@@ -478,6 +494,22 @@ class ConnectionRemote(ConnectionAsync):
             "sortBy": [sort_by] if sort_by else None,
         }
         response = await self.session.post(f"{self.endpoint}/fetch/{type_code}", json=body)
+        return response.json()["response"]["data"]
+
+    async def list_lpg_items(
+        self, lpg_id: int, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        criteria = []
+        if filters:
+            criteria = [
+                {"fieldName": key, "operator": FilterOperator.IEQUALS, "value": value}
+                for key, value in filters.items()
+            ]
+        response = await self.session.post(
+            f"{self.endpoint}/pricegridmanager.fetch/{lpg_id}",
+            json={"data": self._build_criteria(criteria, "and")},
+        )
         return response.json()["response"]["data"]
 
     async def get_object_metadata(
@@ -843,6 +875,15 @@ class ConnectionLocal(ConnectionAsync):
         """
         return []
 
+    async def list_lpg_items(
+        self, lpg_id: int, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method.
+
+        This implementation of the methods always returns an empty list.
+        """
+        return []
+
     async def get_object_metadata(
         self,
         type_code: str,
@@ -1071,6 +1112,12 @@ class ConnectionComposed(ConnectionAsync):
             type_code, filters, filter_aggregator, start_row, max_rows, sort_by
         )
 
+    async def list_lpg_items(
+        self, lpg_id: int, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.list_lpg_items(lpg_id, filters)
+
     async def get_object_metadata(
         self,
         type_code: str,
@@ -1250,6 +1297,12 @@ class ConnectionSync:
                 type_code, filters, filter_aggregator, start_row, max_rows, sort_by
             )
         )
+
+    def list_lpg_items(
+        self, lpg_id: int, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.list_lpg_items(lpg_id, filters))
 
     def get_object_metadata(
         self,
