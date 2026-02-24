@@ -135,6 +135,25 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
+    async def get_object_metadata(
+        self,
+        type_code: str,
+        payload_key: str,
+        object_id: int,
+    ) -> list[dict[str, Any]]:
+        """Get the metadata of a specific element.
+
+        Common type: PGIM (Price Grid Item Attribute Meta)
+        If you need the full list of TypeCodes, search the knowledge base for "Type Codes".
+
+        Args:
+            type_code: Entity TypeCode
+            payload_key: the key corresponding to the type_code to put in the body of the request
+            object_id: Id of the object
+        """
+        pass
+
+    @abstractmethod
     async def add_object(
         self,
         type_code: str,
@@ -753,6 +772,18 @@ class ConnectionLocal(ConnectionAsync):
         """
         return []
 
+    async def get_object_metadata(
+        self,
+        type_code: str,
+        payload_key: str,
+        object_id: int,
+    ) -> list[dict[str, Any]]:
+        """See `Connection` corresponding method.
+
+        This implementation of the methods always returns an empty list.
+        """
+        return []
+
     async def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method.
 
@@ -961,6 +992,15 @@ class ConnectionComposed(ConnectionAsync):
             type_code, filters, filter_aggregator, start_row, max_rows, sort_by
         )
 
+    async def get_object_metadata(
+        self,
+        type_code: str,
+        payload_key: str,
+        object_id: int,
+    ) -> list[dict[str, Any]]:
+        """See `Connection` corresponding method."""
+        return await self._default.get_object_metadata(type_code, payload_key, object_id)
+
     async def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.add_object(type_code, attributes)
@@ -1123,6 +1163,15 @@ class ConnectionSync:
                 type_code, filters, filter_aggregator, start_row, max_rows, sort_by
             )
         )
+
+    def get_object_metadata(
+        self,
+        type_code: str,
+        payload_key: str,
+        object_id: int,
+    ) -> list[dict[str, Any]]:
+        """See `Connection` corresponding method."""
+        return _run_sync(self._conn.get_object_metadata(type_code, payload_key, object_id))
 
     def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
