@@ -4,8 +4,9 @@ This module defines a DSL for checking a configuration is valid.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from configparser import ConfigParser
-from typing import Any, Callable, List, Optional
+from typing import Any
 
 
 class SpecError(Exception):
@@ -18,7 +19,7 @@ class Spec(ABC):
     """Spec that must be followed by a config to build an object."""
 
     @abstractmethod
-    def diagnostic(self, config: ConfigParser) -> List[str]:
+    def diagnostic(self, config: ConfigParser) -> list[str]:
         """Returns issues with the config regarding the spec."""
         pass
 
@@ -42,10 +43,10 @@ class Spec(ABC):
 class UnitSpec(Spec):
     """Spec of an unitary item that must be validated."""
 
-    def __init__(self, diagnostic: Callable[[ConfigParser], List[str]]) -> None:
+    def __init__(self, diagnostic: Callable[[ConfigParser], list[str]]) -> None:
         self._diagnostic = diagnostic
 
-    def diagnostic(self, config: ConfigParser) -> List[str]:
+    def diagnostic(self, config: ConfigParser) -> list[str]:
         """See `Spec.diagnostic`."""
         return self._diagnostic(config)
 
@@ -59,7 +60,7 @@ class OptionalSpec(Spec):
     def __init__(self, spec: Spec) -> None:
         self._spec = spec
 
-    def diagnostic(self, config: ConfigParser) -> List[str]:
+    def diagnostic(self, config: ConfigParser) -> list[str]:
         """See `Spec.diagnostic`."""
         diag = self._spec.diagnostic(config)
         return [f"[Optional] {msg}" for msg in diag]
@@ -83,7 +84,7 @@ class ConditionalSpec(Spec):
         self._spec = spec
         self._condition = condition
 
-    def diagnostic(self, config: ConfigParser) -> List[str]:
+    def diagnostic(self, config: ConfigParser) -> list[str]:
         """See `Spec.diagnostic`."""
         return self._spec.diagnostic(config) if self._condition(config) else []
 
@@ -95,7 +96,7 @@ class FunctionSpec(Spec):
         self._condition = condition
         self._diag_string = diag_string
 
-    def diagnostic(self, config: ConfigParser) -> List[str]:
+    def diagnostic(self, config: ConfigParser) -> list[str]:
         """See `Spec.diagnostic`."""
         return [self._diag_string] if not self._condition(config) else []
 
@@ -103,12 +104,12 @@ class FunctionSpec(Spec):
 class ComposedSpec(Spec):
     """Spec composed of multiple specs."""
 
-    def __init__(self, specs: List[Spec]) -> None:
+    def __init__(self, specs: list[Spec]) -> None:
         self._specs = specs
 
-    def diagnostic(self, config: ConfigParser) -> List[str]:
+    def diagnostic(self, config: ConfigParser) -> list[str]:
         """See `Spec.diagnostic`."""
-        res: List[str] = []
+        res: list[str] = []
         for spec in self._specs:
             res = [*res, *spec.diagnostic(config)]
         return res
@@ -125,7 +126,7 @@ class SectionMustExistSpec(UnitSpec):
     """Spec validating a section is present."""
 
     def __init__(self, section: str) -> None:
-        def _diagnostic(config: ConfigParser) -> List[str]:
+        def _diagnostic(config: ConfigParser) -> list[str]:
             return [f"Required section `{section}` is missing"] if section not in config else []
 
         super().__init__(_diagnostic)
@@ -138,7 +139,7 @@ class SectionMustContainKeySpec(UnitSpec):
     """
 
     def __init__(self, section: str, key: str) -> None:
-        def _diagnostic(config: ConfigParser) -> List[str]:
+        def _diagnostic(config: ConfigParser) -> list[str]:
             if section not in config:
                 return []
 
@@ -160,9 +161,9 @@ class PossibleValuesSpec(UnitSpec):
         self,
         section: str,
         key: str,
-        values: List[Any],
+        values: list[Any],
     ) -> None:
-        def _diagnostic(config: ConfigParser) -> List[str]:
+        def _diagnostic(config: ConfigParser) -> list[str]:
             if section not in config:
                 return []
             if key not in config[section]:
@@ -184,7 +185,7 @@ class SectionSpec(ComposedSpec):
         self,
         section: str,
         required: bool = True,
-        specs: Optional[List[Spec]] = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         self._section = section
         self._required = required
@@ -203,14 +204,14 @@ class SectionSpec(ComposedSpec):
         """Add a spec from a function that must be checked."""
         return self.with_spec(FunctionSpec(cond, diag_msg))
 
-    def must_contains(self, key: str, possible_values: Optional[List[Any]] = None) -> "SectionSpec":
+    def must_contains(self, key: str, possible_values: list[Any] | None = None) -> "SectionSpec":
         """Add required key to section spec."""
         self.with_spec(SectionMustContainKeySpec(self._section, key))
         if possible_values is not None:
             self.with_spec(PossibleValuesSpec(self._section, key, possible_values))
         return self
 
-    def may_contains(self, key: str, possible_values: Optional[List[Any]] = None) -> "SectionSpec":
+    def may_contains(self, key: str, possible_values: list[Any] | None = None) -> "SectionSpec":
         """Add optional key to section spec."""
         self.with_spec(OptionalSpec(SectionMustContainKeySpec(self._section, key)))
         if possible_values is not None:
@@ -245,7 +246,7 @@ class ConditionalSectionSpec(SectionSpec):
         super().__init__(section, required)
         self._condition = condition
 
-    def diagnostic(self, config: ConfigParser) -> List[str]:
+    def diagnostic(self, config: ConfigParser) -> list[str]:
         """See `Spec.diagnostic`."""
         return super().diagnostic(config) if self._condition(config) else []
 

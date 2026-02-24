@@ -45,6 +45,9 @@ For a complete working example, see the [Python Engine CI configuration](https:/
 
 For testing purposes, you can manually publish a package from a merge request without creating an official release tag.
 
+> ⚠️  **Important**: Always bump the version in `pyproject.toml` **before** publishing a test package.
+> Without bumping, projects pinned to the current stable version may inadvertently install your dev package instead.
+
 1. Run manually the job `publish-package` from the Gitlab CI interface.
 2. The package version will be `X.Y.Z+branch-name` (e.g., `1.2.3+feature-branch`) and will be available in the Gitlab package repository.
 3. In the target project, reference the test version in the `pyproject.toml` file:

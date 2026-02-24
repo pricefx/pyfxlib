@@ -8,7 +8,7 @@ Contains also schema type conversion functions
 from collections.abc import Callable
 import datetime
 from enum import StrEnum
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
+from typing import Any, NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -21,7 +21,7 @@ from pandas.api.types import (
 )
 
 
-def to_pricefx_type(column: pd.Series) -> Optional[str]:
+def to_pricefx_type(column: pd.Series) -> str | None:
     """Returns the pricefx column type corresponding to the given pandas Series data.
 
     Return None if the given numpy type is not supported.
@@ -33,7 +33,7 @@ def to_pricefx_type(column: pd.Series) -> Optional[str]:
     return col_type.pricefx if col_type is not None else None
 
 
-def to_avro_type(column: pd.Series) -> Optional[Union[str, Dict[str, Any]]]:
+def to_avro_type(column: pd.Series) -> str | dict[str, Any] | None:
     """Returns the avro type declaration corresponding to the given pandas Series data.
 
     Return None if the given numpy type is not supported.
@@ -47,11 +47,11 @@ def to_avro_type(column: pd.Series) -> Optional[Union[str, Dict[str, Any]]]:
 
 def to_field_collection_spec(
     dataframe: pd.DataFrame,
-    dimensions: Optional[List[str]] = None,
+    dimensions: list[str] | None = None,
     on_unsupported_type: str = "error",
     inplace: bool = False,
-    column_labels: Optional[Dict[str, str]] = None,
-) -> Tuple[List[Dict[str, Any]], pd.DataFrame]:
+    column_labels: dict[str, str] | None = None,
+) -> tuple[list[dict[str, Any]], pd.DataFrame]:
     """
     Returns the pricefx field collection spec and the corresponding DataFrame.
 
@@ -176,24 +176,24 @@ class FieldSpecs:
         _field_type_to_dtype[extended_type] = _field_type_to_dtype[base_type]
 
     @property
-    def field_type_to_dtype(self) -> Dict[str, _DtypeAndCheck]:
+    def field_type_to_dtype(self) -> dict[str, _DtypeAndCheck]:
         """Returns dict with check and retype for each FieldType."""
         return self._field_type_to_dtype
 
     def __init__(self) -> None:
-        self.schema: Dict[str, Dict[str, Any]] = {}
+        self.schema: dict[str, dict[str, Any]] = {}
 
     def set_col_specs(
         self,
         col_name: str,
-        name: Optional[str] = None,
-        label: Optional[str] = None,
-        type: Optional[str] = None,
-        key: Optional[bool] = False,
-        distribution_key: Optional[bool] = False,
-        dimension: Optional[bool] = False,
-        format: Optional[str] = None,
-        measure_type: Optional[str] = None,
+        name: str | None = None,
+        label: str | None = None,
+        type: str | None = None,
+        key: bool | None = False,
+        distribution_key: bool | None = False,
+        dimension: bool | None = False,
+        format: str | None = None,
+        measure_type: str | None = None,
     ) -> None:
         """Set specs for single column.
 
@@ -251,11 +251,11 @@ class FieldSpecs:
 
 def _update_fields_spec(
     conv_dataframe: pd.DataFrame,
-    current_fields_spec_list: List[Dict[str, Any]],
-    updated_fields_spec: Dict[str, Dict[str, Any]],
+    current_fields_spec_list: list[dict[str, Any]],
+    updated_fields_spec: dict[str, dict[str, Any]],
     keep_index: bool,
     inplace: bool,
-) -> Tuple[List[Dict[str, Any]], pd.DataFrame]:
+) -> tuple[list[dict[str, Any]], pd.DataFrame]:
     """Update default field specifications with manual specifications.
 
     Args:
@@ -329,11 +329,11 @@ def _update_fields_spec(
 
 
 class _ColumnType(NamedTuple):
-    avro: Union[str, Dict[str, Any]]
+    avro: str | dict[str, Any]
     pricefx: str
 
 
-def _column_type(column: pd.Series) -> Optional[_ColumnType]:
+def _column_type(column: pd.Series) -> _ColumnType | None:
     dtype = _column_dtype(column)
     if (isinstance(dtype, type) and issubclass(dtype, str)) or pd.StringDtype().is_dtype(dtype):
         return _ColumnType("string", "TEXT")
@@ -360,7 +360,7 @@ def _column_type(column: pd.Series) -> Optional[_ColumnType]:
     return None
 
 
-def _column_dtype(column: pd.Series) -> Union[type, np.dtype]:
+def _column_dtype(column: pd.Series) -> type | np.dtype:
     """Returns most possible precise column data type.
 
     If it is an Object Series (dtype('O')),

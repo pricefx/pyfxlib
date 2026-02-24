@@ -1,10 +1,10 @@
 from datetime import datetime
 import math
 from tempfile import NamedTemporaryFile
-from typing import Any, List
+from typing import Any
 
+from httpx import HTTPError, HTTPStatusError, Request, Response, TimeoutException
 import pytest
-from requests import HTTPError, RequestException, Response, Timeout
 
 from pyfxlib.lowlevel.session import (
     pfx_session_from_token_file,
@@ -15,6 +15,9 @@ from pyfxlib.lowlevel.session import (
 
 
 class MockResponse(Response):
+    def __init__(self):
+        super().__init__(status_code=200)
+
     def raise_for_status(self) -> Any:
         return None
 
@@ -23,28 +26,29 @@ class MockSession:
     def __init__(self):
         self.headers = {}
 
-    def get(self, url: str, **kwargs: Any) -> Response:
+    async def get(self, url: str, **kwargs: Any) -> Response:
         return MockResponse()
 
-    def post(self, url: str, **kwargs: Any) -> Response:
+    async def post(self, url: str, **kwargs: Any) -> Response:
         return MockResponse()
 
 
-def test_pfxsession_tokenfile_update():
+@pytest.mark.asyncio
+async def test_pfxsession_tokenfile_update():
     with NamedTemporaryFile(mode="w", delete_on_close=False) as tokenfile:
         tokenfile.write("token1")
         tokenfile.flush()
 
         raw_session = MockSession()
         pfxsession = pfx_session_from_token_file(tokenfile.name, session=raw_session)
-        assert "Cookie" in raw_session.headers
+        await pfxsession.get("someurl")
         assert raw_session.headers["Cookie"] == "X-PriceFx-jwt=token1"
 
         tokenfile.seek(0)
         tokenfile.write("token2")
         tokenfile.flush()
 
-        pfxsession.get("someurl")
+        await pfxsession.get("someurl")
 
         assert raw_session.headers["Cookie"] == "X-PriceFx-jwt=token2"
 
@@ -52,13 +56,13 @@ def test_pfxsession_tokenfile_update():
         tokenfile.write("token3")
         tokenfile.flush()
 
-        pfxsession.post("someurl")
+        await pfxsession.post("someurl")
 
         assert raw_session.headers["Cookie"] == "X-PriceFx-jwt=token3"
 
 
 class RaisingExceptionSession:
-    def __init__(self, exceptions: List[RequestException]) -> None:
+    def __init__(self, exceptions: list[HTTPError]) -> None:
         self.headers = {}
         self._exceptions = exceptions.copy()
         self.post_timestamps = []
@@ -70,30 +74,32 @@ class RaisingExceptionSession:
             raise exc
         return MockResponse()
 
-    def get(self, url: str, **kwargs: Any) -> Response:
+    async def get(self, url: str, **kwargs: Any) -> Response:
         self.get_timestamps.append(datetime.now().timestamp())
         return self._next_response()
 
-    def post(self, url: str, **kwargs: Any) -> Response:
+    async def post(self, url: str, **kwargs: Any) -> Response:
         self.post_timestamps.append(datetime.now().timestamp())
         return self._next_response()
 
 
-def http_error(status_code: int) -> HTTPError:
-    response = Response()
+def http_error(status_code: int) -> HTTPStatusError:
+    request = Request("GET", "some url")
+    response = Response(status_code)
     response.status_code = status_code
-    return HTTPError(response=response)
+    return HTTPStatusError(message="", request=request, response=response)
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "exception",
     [
-        (Timeout()),
+        (TimeoutException("timeout")),
         (http_error(500)),
         (http_error(409)),
     ],
 )
-def test_pfxsession_should_retry_on_timout_and_500_or_409_http_errors(exception, caplog):
+async def test_pfxsession_should_retry_on_timout_and_500_or_409_http_errors(exception, caplog):
     raw_session = RaisingExceptionSession([exception] * 3)
     delays = [1, 2, 1]
     pfx_session = RetryPfxSession(
@@ -101,7 +107,7 @@ def test_pfxsession_should_retry_on_timout_and_500_or_409_http_errors(exception,
         retry_delays=delays,
     )
 
-    resp = pfx_session.post("dummy_url")
+    resp = await pfx_session.post("dummy_url")
 
     assert resp is not None
     assert len(raw_session.post_timestamps) == 4
@@ -119,15 +125,18 @@ def test_pfxsession_should_retry_on_timout_and_500_or_409_http_errors(exception,
     assert all(m in effective_log_messages for m in expected_log_messages), effective_log_messages
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "exception",
     [
-        (Timeout()),
+        (TimeoutException("timeout")),
         (http_error(409)),
     ]
     + [(http_error(code)) for code in range(500, 600)],
 )
-def test_pfxsession_should_fail_after_too_much_timout_and_5xx_409_http_errors(exception, caplog):
+async def test_pfxsession_should_fail_after_too_much_timout_and_5xx_409_http_errors(
+    exception, caplog
+):
     raw_session = RaisingExceptionSession([exception] * 2)
     delays = [0]
     pfx_session = RetryPfxSession(
@@ -136,7 +145,7 @@ def test_pfxsession_should_fail_after_too_much_timout_and_5xx_409_http_errors(ex
     )
 
     with pytest.raises(type(exception)):
-        pfx_session.post("dummy_url")
+        await pfx_session.post("dummy_url")
 
     assert len(raw_session.post_timestamps) == 2
     assert [
@@ -152,7 +161,8 @@ def test_pfxsession_should_fail_after_too_much_timout_and_5xx_409_http_errors(ex
     assert all(m in effective_log_messages for m in expected_log_messages), effective_log_messages
 
 
-def test_pfxsession_should_fail_directly_on_non_elligible_exception(caplog):
+@pytest.mark.asyncio
+async def test_pfxsession_should_fail_directly_on_non_elligible_exception(caplog):
     raw_session = RaisingExceptionSession([http_error(404)])
     delays = [1, 2]
     pfx_session = RetryPfxSession(
@@ -160,8 +170,10 @@ def test_pfxsession_should_fail_directly_on_non_elligible_exception(caplog):
         retry_delays=delays,
     )
 
-    with pytest.raises(HTTPError):
-        pfx_session.post("dummy_url")
+    with pytest.raises(HTTPStatusError):
+        await pfx_session.post("dummy_url")
 
     assert len(raw_session.post_timestamps) == 1
-    assert "Caught a non retryable error: HTTPError()" in [rec.message for rec in caplog.records]
+    assert "Caught a non retryable error: HTTPStatusError('')" in [
+        rec.message for rec in caplog.records
+    ]

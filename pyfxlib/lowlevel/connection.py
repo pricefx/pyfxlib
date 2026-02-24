@@ -6,20 +6,23 @@ For a higher level API, see the `pyfxlib.api.domain` package.
 """
 
 from abc import ABC, abstractmethod
+import asyncio
+from collections.abc import AsyncIterator, Coroutine, Iterator
 import csv
 from enum import Enum, unique
-import io
+from io import BytesIO, TextIOBase
 import json
 import logging
 import mimetypes
 import os
 from pathlib import Path
 import re
-from typing import Any, Dict, Generator, IO, Iterator, List, Optional, Tuple
+from typing import Any, IO, TypeVar
 
-from requests.exceptions import HTTPError
-from requests_toolbelt import MultipartEncoder
+from httpx import HTTPStatusError
+import pandas as pd
 
+from pyfxlib.lowlevel import _DEFAULT_PAGE_SIZE, _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.session import PfxSession
 
@@ -35,8 +38,8 @@ class JobStatus(Enum):
     FAILED = "FAILED"
 
 
-class Connection(ABC):
-    """Abstract class for a Connection.
+class ConnectionAsync(ABC):
+    """Abstract class for an async Connection.
 
     A connection abstract the low-lever details of interacting with a "backend".
     This backend can be an actual Pricefx instance, or can be substituted with,
@@ -44,13 +47,13 @@ class Connection(ABC):
     """
 
     @abstractmethod
-    def update_status(
+    async def update_status(
         self,
         jst_id: int,
         status_code: JobStatus,
-        progress: Optional[int],
-        msg: Optional[str] = None,
-        results: Optional[Dict[str, Any]] = None,
+        progress: int | None,
+        msg: str | None = None,
+        results: dict[str, Any] | None = None,
     ) -> None:
         """Update the job status on the backend.
 
@@ -65,72 +68,84 @@ class Connection(ABC):
         pass
 
     @abstractmethod
-    def get_fcs(
+    async def get_fcs(
         self,
         typedid: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Get the attributes of a specific fields collection."""
         pass
 
     @abstractmethod
-    def list_fcs(
+    async def list_fcs(
         self,
         type_code: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """List all the fields collections of a given type."""
         pass
 
     @abstractmethod
-    def get_object(
+    async def get_object(
         self,
         typedid: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get the attributes of a specific element."""
         pass
 
     @abstractmethod
-    def list_objects(
+    async def list_objects(
         self,
         type_code: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """List all the elements of a given type."""
         pass
 
     @abstractmethod
-    def add_object(
+    async def add_object(
         self,
         type_code: str,
-        attributes: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        attributes: dict[str, Any],
+    ) -> dict[str, Any]:
         """Add an object and returns its actual attributes."""
         pass
 
     @abstractmethod
-    def update_object(
+    async def update_object(
         self,
         type_code: str,
-        attributes: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        attributes: dict[str, Any],
+    ) -> dict[str, Any]:
         """Update an object and returns its actual attributes."""
         pass
 
     @abstractmethod
-    def stream_fcs(self, typedid: str, chunk_size: int = 128) -> Iterator[bytes]:
+    async def stream_fcs(
+        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+    ) -> AsyncIterator[bytes]:
         """Stream the content of a data source."""
-        pass
+        yield b""
 
     @abstractmethod
-    def list_attachments(
+    async def fetch_paginated_fcs(
+        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+    ) -> AsyncIterator[list[dict[str, Any]]]:
+        """Fetch the content of a data source using paginated requests.
+
+        More reliable than stream_fcs for large datasets.
+        """
+        yield []
+
+    @abstractmethod
+    async def list_attachments(
         self,
         typedid: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get the information about attachments of the model."""
         pass
 
     @abstractmethod
-    def attach_file(
+    async def attach_file(
         self,
         typedid: str,
         name: str,
@@ -140,20 +155,23 @@ class Connection(ABC):
         pass
 
     @abstractmethod
-    def pull_file(
-        self, owner_typedid: str, attachment_typedid: str, chunk_size: int = 128
-    ) -> Iterator[bytes]:
+    async def pull_file(
+        self,
+        owner_typedid: str,
+        attachment_typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+    ) -> AsyncIterator[bytes]:
         """Fetch file from the backend."""
-        pass
+        yield b""
 
     @abstractmethod
-    def create_table(
+    async def create_table(
         self,
         name: str,
-        fields_spec: List[Dict],
+        fields_spec: list[dict],
         content: AvroStream,
-        label: Optional[str] = None,
-        owner_typedid: Optional[str] = None,
+        label: str | None = None,
+        owner_typedid: str | None = None,
         replace_existing: bool = True,
     ) -> None:
         """Create a table in the backend.
@@ -177,7 +195,7 @@ class Connection(ABC):
         pass
 
     @abstractmethod
-    def update_table(self, typedid: str, data: AvroStream) -> None:
+    async def update_table(self, typedid: str, data: AvroStream) -> None:
         """Update data of an already existing DMTable or DMDataSource.
 
         Values of rows with same keys will be updated.
@@ -190,12 +208,12 @@ class Connection(ABC):
         pass
 
     @abstractmethod
-    def get_calcitems(self, typedid: str) -> List[Dict[str, Any]]:
+    async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
         """Get the calculation items associated with a specific typedid."""
         pass
 
     @abstractmethod
-    def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
+    async def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
         """Push a new calculation item associated with a specific typedid."""
         pass
 
@@ -209,26 +227,7 @@ class Connection(ABC):
 _DATAMART_FETCH_TIMEOUT = 3600
 
 
-def _to_chunkable_content(
-    source: MultipartEncoder, chunk_size: int = 8192
-) -> Generator[bytes, None, None]:
-    """Returns a generator that prevent request the need of a content lenght.
-
-    In that case, request uses content-encoding: chunked (see
-    https://toolbelt.readthedocs.io/en/latest/uploading-data.html#streaming-data-from-a-generator)
-    This is needed as we are producing the avro content on the fly and then the final content
-    length is unknown.
-    TODO maybe actual chuncksize is too small? (see https://github.com/requests/toolbelt/issues/75)
-    """
-    if not hasattr(source, "read"):
-        raise ValueError("given source is not readable")
-    buff = source.read(chunk_size)
-    while len(buff) > 0:
-        yield buff
-        buff = source.read(chunk_size)
-
-
-class ConnectionRemote(Connection):
+class ConnectionRemote(ConnectionAsync):
     """A connection to a remote instance.
 
     This class abstracts the various aspects of interacting with the Pricefx platform behind an
@@ -242,16 +241,16 @@ class ConnectionRemote(Connection):
     def __repr__(self) -> str:
         return f"ConnectionRemote({self.endpoint})"
 
-    def update_status(
+    async def update_status(
         self,
         jst_id: int,
         status_code: JobStatus,
-        progress: Optional[int],
-        msg: Optional[str] = None,
-        results: Optional[Dict[str, Any]] = None,
+        progress: int | None,
+        msg: str | None = None,
+        results: dict[str, Any] | None = None,
     ) -> None:
-        """See `Connection` corresponding method."""
-        data: Dict[str, Any] = {
+        """See `ConnectionAsync` corresponding method."""
+        data: dict[str, Any] = {
             "jstId": jst_id,
             "status": status_code.value,
             "progress": progress,
@@ -271,90 +270,112 @@ class ConnectionRemote(Connection):
                 for (name, value) in results.items()
             ]
 
-        self.session.post(
+        await self.session.post(
             f"{self.endpoint}/optimization.updatejst",
             json={"data": data},
         )
 
-    def get_fcs(self, typedid: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """See `Connection` corresponding method."""
-        response = self.session.post(
+    async def get_fcs(self, typedid: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(
             f"{self.endpoint}/datamart.getfcs/{typedid}",
             json={"data": params},
         )
         return response.json()["response"]["data"][0]
 
-    def list_fcs(
-        self, type_code: str, params: Optional[Dict[str, Any]] = None
-    ) -> List[Dict[str, Any]]:
-        """See `Connection` corresponding method."""
-        response = self.session.post(
+    async def list_fcs(
+        self, type_code: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(
             f"{self.endpoint}/datamart.getfcs/{type_code}", json={"data": params}
         )
         return response.json()["response"]["data"]
 
-    def get_object(
+    async def get_object(
         self,
         typedid: str,
-    ) -> Dict[str, Any]:
-        """See `Connection` corresponding method."""
+    ) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
         id, type_code = _split_typedid(typedid)
-        response = self.session.post(f"{self.endpoint}/fetch/{type_code}/{id}")
+        response = await self.session.post(f"{self.endpoint}/fetch/{type_code}/{id}")
         return response.json()["response"]["data"][0]
 
-    def list_objects(
+    async def list_objects(
         self,
         type_code: str,
-    ) -> List[Dict[str, Any]]:
-        """See `Connection` corresponding method."""
-        response = self.session.post(f"{self.endpoint}/fetch/{type_code}")
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(f"{self.endpoint}/fetch/{type_code}")
         return response.json()["response"]["data"]
 
-    def add_object(self, type_code: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
-        """See `Connection` corresponding method."""
-        response = self.session.post(
+    async def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(
             f"{self.endpoint}/add/{type_code}",
             json={"data": attributes},
         )
         return response.json()["response"]["data"][0]
 
-    def update_object(self, type_code: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
-        """See `Connection` corresponding method."""
-        response = self.session.post(
+    async def update_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(
             f"{self.endpoint}/update/{type_code}",
             json={"data": attributes},
         )
         return response.json()["response"]["data"][0]
 
-    def stream_fcs(self, typedid: str, chunk_size: int = 128) -> Iterator[bytes]:
-        """See `Connection` corresponding method."""
-        response = self.session.get(
+    async def stream_fcs(
+        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+    ) -> AsyncIterator[bytes]:
+        """See `ConnectionAsync` corresponding method."""
+        async for chunk in self.session.get_stream(
             f"{self.endpoint}/datamart.fetch/{typedid}?stream&timeout={_DATAMART_FETCH_TIMEOUT}",
+            chunk_size=chunk_size,
             params={"output": "csv"},
-            stream=True,
-        )
-        return response.iter_content(chunk_size=chunk_size)
+        ):
+            yield chunk
 
-    def list_attachments(
+    async def fetch_paginated_fcs(
+        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+    ) -> AsyncIterator[list[dict[str, Any]]]:
+        """See `ConnectionAsync` corresponding method."""
+        sort_by: list[str] = []
+        fc_meta = await self.get_fcs(typedid)
+        sort_by = [field["name"] for field in fc_meta.get("fields", []) if field.get("key", False)]
+
+        start_row = 0
+        while True:
+            response = await self.session.post(
+                f"{self.endpoint}/datamart.fetch/{typedid}",
+                json={"startRow": start_row, "endRow": start_row + page_size, "sortBy": sort_by},
+            )
+            data = response.json()["response"]["data"]
+            if not data:
+                break
+            yield data
+            start_row += page_size
+
+    async def list_attachments(
         self,
         typedid: str,
-    ) -> List[Dict[str, Any]]:
-        """See `Connection` corresponding method."""
-        response = self.session.post(f"{self.endpoint}/bdmanager.list/{typedid}")
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(f"{self.endpoint}/bdmanager.list/{typedid}")
         return response.json()["response"]["data"]
 
-    def attach_file(
+    async def attach_file(
         self,
         typedid: str,
         name: str,
         content: IO,
     ) -> None:
-        """See `Connection` corresponding method."""
-        response = self.session.post(f"{self.endpoint}/uploadmanager.newuploadslot")
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(f"{self.endpoint}/uploadmanager.newuploadslot")
         slot_id = response.json()["response"]["data"][0]["id"]
 
         try:
-            attachments = self.session.post(f"{self.endpoint}/bdmanager.list/" + typedid)
+            attachments = await self.session.post(f"{self.endpoint}/bdmanager.list/" + typedid)
             existing = [
                 attachment["typedId"].partition(".BD")[0]
                 for attachment in attachments.json()["response"]["data"]
@@ -366,47 +387,52 @@ class ConnectionRemote(Connection):
             else:
                 url = f"{self.endpoint}/bdmanager.upload/{typedid}/{slot_id}"
 
-            self.session.post(
+            if isinstance(content, TextIOBase):
+                content = BytesIO(content.read().encode("utf-8"))
+            await self.session.post(
                 url,
-                files={name: content},
+                files={name: (name, content, "text/plain")},
             )
         finally:
-            self.session.post(f"{self.endpoint}/uploadmanager.deleteslot/{slot_id}")
+            await self.session.post(f"{self.endpoint}/uploadmanager.deleteslot/{slot_id}")
 
-    def pull_file(
-        self, owner_typedid: str, attachment_typedid: str, chunk_size: int = 128
-    ) -> Iterator[bytes]:
-        """See `Connection` corresponding method."""
+    async def pull_file(
+        self,
+        owner_typedid: str,
+        attachment_typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+    ) -> AsyncIterator[bytes]:
+        """See `ConnectionAsync` corresponding method."""
         attachment_id = attachment_typedid.partition(".BD")[0]
         try:
-            response = self.session.get(
+            async for chunk in self.session.get_stream(
                 f"{self.endpoint}/bdmanager.download/{owner_typedid}/{attachment_id}",
+                chunk_size=chunk_size,
                 params={"output": "file"},
-                stream=True,
-            )
-            return response.iter_content(chunk_size=chunk_size)
+            ):
+                yield chunk
         except Exception as e:
             raise Exception(f"Error while fetching attached file '{attachment_typedid}'") from e
 
-    def _delete_fc(self, fc_type: str, name: str) -> None:
-        self.session.post(
+    async def _delete_fc(self, fc_type: str, name: str) -> None:
+        await self.session.post(
             f"{self.endpoint}/datamart.deletefc/{fc_type}",
             json={"data": {"uniqueName": name}},
         )
 
-    def create_table(
+    async def create_table(
         self,
         name: str,
-        fields_spec: List[Dict],
+        fields_spec: list[dict],
         content: AvroStream,
-        label: Optional[str] = None,
-        owner_typedid: Optional[str] = None,
+        label: str | None = None,
+        owner_typedid: str | None = None,
         replace_existing: bool = True,
     ) -> None:
-        """See `Connection` corresponding method."""
+        """See `ConnectionAsync` corresponding method."""
         typecode = "DMT" if owner_typedid is not None else "DMDS"
 
-        schema: Dict[str, Any] = {
+        schema: dict[str, Any] = {
             "label": label if label is not None else name,
             "fields": fields_spec,
         }
@@ -417,76 +443,71 @@ class ConnectionRemote(Connection):
         else:
             schema["uniqueName"] = name
 
-        # stream multipart content
-        multipart_content = MultipartEncoder(
-            fields={
-                "DMFieldCollectionSpec": (
-                    None,
-                    json.dumps(schema),
-                    "text/json; charset=UTF-8",
-                ),
-                "DMFieldCollectionData": (
-                    None,
-                    content,
-                    "avro/binary",
-                ),
-            }
-        )
-        self.session.post_simple(
+        files = {
+            "DMFieldCollectionSpec": (
+                None,
+                json.dumps(schema),
+                "text/json; charset=UTF-8",
+            ),
+            "DMFieldCollectionData": (
+                None,
+                content,
+                "avro/binary",
+            ),
+        }
+        await self.session.post_simple(
             f'{self.endpoint}/datamart.createfc/{typecode}{"/replace" if replace_existing else ""}',
-            data=_to_chunkable_content(multipart_content),
-            headers={"Content-Type": multipart_content.content_type},
+            files=files,
         )
 
-    def _fc_spec(self, typedid: str) -> Optional[Dict]:
+    async def _fc_spec(self, typedid: str) -> dict | None:
         objectid = typedid.split(".")[0]
         fc_type = typedid.split(".")[1]
-        response = self.session.post(
+        response_value = await self.session.post(
             f"{self.endpoint}/datamart.getfcs/{fc_type}",
             json={
                 "data": {
                     "id": objectid,
                 }
             },
-        ).json()
+        )
+        response = response_value.json()
         if len(response["response"]["data"]) > 0:
             return response["response"]["data"][0]
         return None
 
-    def update_table(self, typedid: str, data: AvroStream) -> None:
-        """See `Connection` corresponding method."""
-        fc_entry = self._fc_spec(typedid)
+    async def update_table(self, typedid: str, data: AvroStream) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        fc_entry = await self._fc_spec(typedid)
         if fc_entry is None:
             raise RuntimeError(f"Trying to append to non-existing table '{typedid}'")
-        response = self.session.post(f"{self.endpoint}/uploadmanager.newuploadslot").json()
+        response_value = await self.session.post(f"{self.endpoint}/uploadmanager.newuploadslot")
+        response = response_value.json()
         uploadslot = response["response"]["data"][0]["id"]
         try:
-            # stream multipart content
-            content = MultipartEncoder(
-                fields={"DMFieldCollectionData": ("data.avro", data, "avro/binary")}
+            files = {"DMFieldCollectionData": ("data.avro", data, "avro/binary")}
+            await self.session.post_simple(
+                f"{self.endpoint}/datamart.loadfc/{typedid}", files=files
             )
-            self.session.post_simple(
-                f"{self.endpoint}/datamart.loadfc/{typedid}",
-                data=_to_chunkable_content(content),
-                headers={"Content-Type": content.content_type},
-            )
-        except HTTPError as err:
-            error_desc = self.session.post(
+        except HTTPStatusError as err:
+            error_value = await self.session.post(
                 f"{self.endpoint}/uploadmanager.progress/{uploadslot}",
-            ).json()["response"]["data"][0]["data"]
+            )
+            error_desc = error_value.json()["response"]["data"][0]["data"]
             raise Exception(f"Error while uploading file: {error_desc}") from err
         finally:
-            self.session.post(f"{self.endpoint}/uploadmanager.deleteslot/{uploadslot}")
+            await self.session.post(f"{self.endpoint}/uploadmanager.deleteslot/{uploadslot}")
 
-    def get_calcitems(self, typedid: str) -> List[Dict[str, Any]]:
-        """See `Connection` corresponding method."""
+    async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
         url = f"{self.endpoint}/lookuptablemanager.fetch/{_split_typedid(typedid)[0]}"
-        return self.session.post(url).json()["response"]["data"]
+        response = await self.session.post(url)
+        return response.json()["response"]["data"]
 
-    def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
-        """See `Connection` corresponding method."""
+    async def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
+        """See `ConnectionAsync` corresponding method."""
         url = f"{self.endpoint}/lookuptablemanager.add/{_split_typedid(typedid)[0]}"
-        self.session.post(
+        await self.session.post(
             url,
             json={
                 "data": {
@@ -498,14 +519,14 @@ class ConnectionRemote(Connection):
         )
 
 
-def _split_typedid(typed_id: str) -> Tuple[int, str]:
+def _split_typedid(typed_id: str) -> tuple[int, str]:
     match = re.search(r"^(?P<id>[0-9]+)\.(?P<type_code>[A-Z]+)$", typed_id)
     if match:
         return (int(match.group("id")), match.group("type_code"))
     raise ValueError(f"'{typed_id}' is not a valid typedId")
 
 
-class ConnectionLocal(Connection):
+class ConnectionLocal(ConnectionAsync):
     """A connection that use the local filesystem.
 
     This "connection" actually pull/push data from/to the local filesystem.
@@ -515,7 +536,7 @@ class ConnectionLocal(Connection):
     def __init__(
         self,
         path: Path,
-        logformat: Optional[str] = None,
+        logformat: str | None = None,
     ) -> None:
         self.path = path
 
@@ -543,15 +564,15 @@ class ConnectionLocal(Connection):
         os.makedirs(self.path / model_typedid / "attachments", exist_ok=True)
         return self.path / model_typedid / "attachments"
 
-    def update_status(
+    async def update_status(
         self,
         jst_id: int,
         status_code: JobStatus,
-        progress: Optional[int],
-        msg: Optional[str] = None,
-        results: Optional[Dict[str, Any]] = None,
+        progress: int | None,
+        msg: str | None = None,
+        results: dict[str, Any] | None = None,
     ) -> None:
-        """See `Connection` corresponding method."""
+        """See `ConnectionAsync` corresponding method."""
         logfile = self._logs_path / f"{str(jst_id)}.txt"
         logger = logging.getLogger(str(logfile))
         if len(logger.handlers) == 0:
@@ -573,82 +594,82 @@ class ConnectionLocal(Connection):
             },
         )
 
-    def get_fcs(
+    async def get_fcs(
         self,
         typedid: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """See `Connection` corresponding method.
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method.
 
         This implementation will return a minimal dict.
         """
         return {"typedId": typedid}
 
-    def list_fcs(
+    async def list_fcs(
         self,
         type_code: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
-        """See `Connection` corresponding method.
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method.
 
         This implementation of the methods always returns an empty list.
         """
         return []
 
-    def get_object(
+    async def get_object(
         self,
         typedid: str,
-    ) -> Dict[str, Any]:
-        """See `Connection` corresponding method.
+    ) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method.
 
         This implementation will return a minimal dict.
         """
         return {"id": _split_typedid(typedid)[0], "typedId": f"{typedid}"}
 
-    def list_objects(
+    async def list_objects(
         self,
         type_code: str,
-    ) -> List[Dict[str, Any]]:
-        """See `Connection` corresponding method.
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method.
 
         This implementation of the methods always returns an empty list.
         """
         return []
 
-    def add_object(self, type_code: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
-        """See `Connection` corresponding method.
+    async def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method.
 
         This implementation of the methods always returns the attributes.
         """
         return attributes
 
-    def update_object(self, type_code: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
-        """See `Connection` corresponding method.
+    async def update_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method.
 
         This implementation of the methods always returns the attributes.
         """
         return attributes
 
-    def stream_fcs(self, typedid: str, chunk_size: int = 128) -> Iterator[bytes]:
-        """See `Connection` corresponding method."""
-        filepath = self._data_sources_path / f"{typedid}.csv"
-        current_pos = 0
+    async def stream_fcs(
+        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+    ) -> AsyncIterator[bytes]:
+        """See `ConnectionAsync` corresponding method."""
+        with open(self._data_sources_path / f"{typedid}.csv", "rb") as fin:
+            while chunk := fin.read(chunk_size):
+                yield chunk
 
-        def _read_part() -> bytes:
-            nonlocal current_pos
-            with open(filepath, "rb") as fin:
-                fin.seek(current_pos)
-                res = fin.read(chunk_size)
-            current_pos += chunk_size
-            return res
+    async def fetch_paginated_fcs(
+        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+    ) -> AsyncIterator[list[dict[str, Any]]]:
+        """See `ConnectionAsync` corresponding method."""
+        for chunk in pd.read_csv(self._data_sources_path / f"{typedid}.csv", chunksize=page_size):
+            yield chunk.to_dict(orient="records")
 
-        return iter(_read_part, b"")
-
-    def list_attachments(
+    async def list_attachments(
         self,
         typedid: str,
-    ) -> List[Dict[str, Any]]:
-        """See `Connection` corresponding method."""
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
         attachments_path = self._attachments_path(typedid)
         res = []
         mimes = mimetypes.MimeTypes()
@@ -669,48 +690,42 @@ class ConnectionLocal(Connection):
             )
         return res
 
-    def attach_file(
+    async def attach_file(
         self,
         typedid: str,
         name: str,
         content: IO,
     ) -> None:
-        """See `Connection` corresponding method."""
+        """See `ConnectionAsync` corresponding method."""
         filepath = self._attachments_path(typedid) / name
-        if isinstance(content, io.TextIOBase):
+        if isinstance(content, TextIOBase):
             with open(filepath, "w") as textfile:
                 textfile.write(content.read())
         else:
             with open(filepath, "wb") as binfile:
                 binfile.write(content.read())
 
-    def pull_file(
-        self, owner_typedid: str, attachment_typedid: str, chunk_size: int = 128
-    ) -> Iterator[bytes]:
-        """See `Connection` corresponding method."""
-        filepath = self._attachments_path(owner_typedid) / attachment_typedid
-        current_pos = 0
+    async def pull_file(
+        self,
+        owner_typedid: str,
+        attachment_typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+    ) -> AsyncIterator[bytes]:
+        """See `ConnectionAsync` corresponding method."""
+        with open(self._attachments_path(owner_typedid) / attachment_typedid, "rb") as fin:
+            while chunk := fin.read(chunk_size):
+                yield chunk
 
-        def _read_part() -> bytes:
-            nonlocal current_pos
-            with open(filepath, "rb") as fin:
-                fin.seek(current_pos)
-                res = fin.read(chunk_size)
-            current_pos += chunk_size
-            return res
-
-        return iter(_read_part, b"")
-
-    def create_table(
+    async def create_table(
         self,
         name: str,
-        fields_spec: List[Dict],
+        fields_spec: list[dict],
         content: AvroStream,
-        label: Optional[str] = None,
-        owner_typedid: Optional[str] = None,
+        label: str | None = None,
+        owner_typedid: str | None = None,
         replace_existing: bool = True,
     ) -> None:
-        """See `Connection` corresponding method."""
+        """See `ConnectionAsync` corresponding method."""
         if owner_typedid is not None:
             tablepath = self._owned_tables_path(owner_typedid) / f"{name}.avro"
         else:
@@ -720,8 +735,8 @@ class ConnectionLocal(Connection):
             while buffer := binfile.read():
                 binfile.write(buffer)
 
-    def update_table(self, typedid: str, data: AvroStream) -> None:
-        """See `Connection` corresponding method."""
+    async def update_table(self, typedid: str, data: AvroStream) -> None:
+        """See `ConnectionAsync` corresponding method."""
         filepath = self._data_sources_path / f"{typedid}.avro"
         if not filepath.is_file():
             raise RuntimeError(f"Trying to append to non-existing table '{typedid}'")
@@ -730,9 +745,9 @@ class ConnectionLocal(Connection):
             while buffer := data.read(4096):
                 file.write(buffer)
 
-    def get_calcitems(self, typedid: str) -> List[Dict[str, Any]]:
-        """See `Connection` corresponding method."""
-        res: List[Dict[str, Any]] = []
+    async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        res: list[dict[str, Any]] = []
         with open(self.calcitems_path) as csvfile:
             csvcontent = csv.reader(csvfile)
             header = csvcontent.__next__()
@@ -743,8 +758,8 @@ class ConnectionLocal(Connection):
                 res.append(rowdict)
         return res
 
-    def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
-        """See `Connection` corresponding method."""
+    async def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
+        """See `ConnectionAsync` corresponding method."""
         file_path = self.calcitems_path / f"{typedid}.csv"
         if not os.path.exists(file_path):
             with open(file_path, "w") as out:
@@ -752,16 +767,16 @@ class ConnectionLocal(Connection):
         with open(file_path, "a") as out:
             csv.writer(out).writerow([key1, key2, value])
 
-    def _pull_dir(self, dir_type: str, dir_path: str) -> None:
+    async def _pull_dir(self, dir_type: str, dir_path: str) -> None:
         # Nothing to do
         return
 
-    def _push_result_files(self, result_dir_path: str) -> None:
+    async def _push_result_files(self, result_dir_path: str) -> None:
         # Nothing to do
         return
 
 
-class ConnectionComposed(Connection):
+class ConnectionComposed(ConnectionAsync):
     """A connection that composes a remote and local connections.
 
     This composite connection allows to mix and match calls between a remote
@@ -770,8 +785,8 @@ class ConnectionComposed(Connection):
 
     def __init__(
         self,
-        dispatch: Dict[str, Connection],
-        default_connection: Connection,
+        dispatch: dict[str, ConnectionAsync],
+        default_connection: ConnectionAsync,
     ) -> None:
         self._dispatch = dispatch
         self._default = default_connection
@@ -779,65 +794,229 @@ class ConnectionComposed(Connection):
     def __repr__(self) -> str:
         return f"ConnectionDispatch(default={self._default})"
 
+    async def update_status(
+        self,
+        jst_id: int,
+        status_code: JobStatus,
+        progress: int | None,
+        msg: str | None = None,
+        results: dict[str, Any] | None = None,
+    ) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        await self._dispatch["job_updates"].update_status(
+            jst_id, status_code, progress, msg, results
+        )
+
+    async def get_fcs(
+        self,
+        typedid: str,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.get_fcs(typedid)
+
+    async def list_fcs(
+        self,
+        type_code: str,
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.list_fcs(type_code, params)
+
+    async def get_object(
+        self,
+        typedid: str,
+    ) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.get_object(typedid)
+
+    async def list_objects(
+        self,
+        type_code: str,
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.list_objects(type_code)
+
+    async def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.add_object(type_code, attributes)
+
+    async def update_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.update_object(type_code, attributes)
+
+    async def stream_fcs(
+        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+    ) -> AsyncIterator[bytes]:
+        """See `ConnectionAsync` corresponding method."""
+        async for chunk in self._dispatch["pa_tables"].stream_fcs(typedid, chunk_size):
+            yield chunk
+
+    async def fetch_paginated_fcs(
+        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+    ) -> AsyncIterator[list[dict[str, Any]]]:
+        """See `ConnectionAsync` corresponding method."""
+        async for page in self._dispatch["pa_tables"].fetch_paginated_fcs(typedid, page_size):
+            yield page
+
+    async def list_attachments(
+        self,
+        typedid: str,
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._dispatch["model_attachments"].list_attachments(typedid)
+
+    async def attach_file(
+        self,
+        typedid: str,
+        name: str,
+        content: IO,
+    ) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        await self._dispatch["model_attachments"].attach_file(typedid, name, content)
+
+    async def pull_file(
+        self,
+        owner_typedid: str,
+        attachment_typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+    ) -> AsyncIterator[bytes]:
+        """See `ConnectionAsync` corresponding method."""
+        async for chunk in self._dispatch["model_attachments"].pull_file(
+            owner_typedid, attachment_typedid, chunk_size
+        ):
+            yield chunk
+
+    async def create_table(
+        self,
+        name: str,
+        fields_spec: list[dict],
+        content: AvroStream,
+        label: str | None = None,
+        owner_typedid: str | None = None,
+        replace_existing: bool = True,
+    ) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        await self._dispatch["model_tables"].create_table(
+            name, fields_spec, content, label, owner_typedid, replace_existing
+        )
+
+    async def update_table(self, typedid: str, data: AvroStream) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        await self._dispatch["model_tables"].update_table(typedid, data)
+
+    async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._dispatch["model_parameters"].get_calcitems(typedid)
+
+    async def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        await self._dispatch["model_parameters"].push_calcitem(typedid, key1, key2, value)
+
+
+T = TypeVar("T")
+
+
+def _run_sync(coro: Coroutine[Any, Any, T]) -> T:
+    """Execute an async coroutine synchronously."""
+    return asyncio.run(coro)
+
+
+def _sync_iterator(async_iter: AsyncIterator[T]) -> Iterator[T]:
+    """Convert an async iterator to a sync one."""
+    loop = asyncio.new_event_loop()
+    try:
+        while True:
+            try:
+                yield loop.run_until_complete(async_iter.__anext__())
+            except StopAsyncIteration:
+                break
+    finally:
+        loop.close()
+
+
+class ConnectionSync:
+    """Synchronous wrapper around an async Connection.
+
+    Adapts an async Connection for use in synchronous code (e.g. Python Engine)
+    by running each async call through `_run_sync` or `_sync_iterator`.
+    """
+
+    def __init__(self, conn: ConnectionAsync):
+        self._conn = conn
+        # Disable keep-alive: close is needed for sync usage because asyncio.run() creates/destroys
+        # the event loop on each call, making keep-alive connections try to reuse a closed
+        # event loop.
+        if hasattr(conn, "session"):
+            conn.session.set_header("Connection", "close")
+
     def update_status(
         self,
         jst_id: int,
         status_code: JobStatus,
-        progress: Optional[int],
-        msg: Optional[str] = None,
-        results: Optional[Dict[str, Any]] = None,
+        progress: int | None,
+        msg: str | None = None,
+        results: dict[str, Any] | None = None,
     ) -> None:
-        """See `Connection` corresponding method."""
-        self._dispatch["job_updates"].update_status(jst_id, status_code, progress, msg, results)
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.update_status(jst_id, status_code, progress, msg, results))
 
     def get_fcs(
         self,
         typedid: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """See `Connection` corresponding method."""
-        return self._default.get_fcs(typedid)
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.get_fcs(typedid, params))
 
     def list_fcs(
         self,
         type_code: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
-        """See `Connection` corresponding method."""
-        return self._default.list_fcs(type_code, params)
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.list_fcs(type_code, params))
 
     def get_object(
         self,
         typedid: str,
-    ) -> Dict[str, Any]:
-        """See `Connection` corresponding method."""
-        return self._default.get_object(typedid)
+    ) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.get_object(typedid))
 
     def list_objects(
         self,
         type_code: str,
-    ) -> List[Dict[str, Any]]:
-        """See `Connection` corresponding method."""
-        return self._default.list_objects(type_code)
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.list_objects(type_code))
 
-    def add_object(self, type_code: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
-        """See `Connection` corresponding method."""
-        return self._default.add_object(type_code, attributes)
+    def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.add_object(type_code, attributes))
 
-    def update_object(self, type_code: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
-        """See `Connection` corresponding method."""
-        return self._default.update_object(type_code, attributes)
+    def update_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.update_object(type_code, attributes))
 
-    def stream_fcs(self, typedid: str, chunk_size: int = 128) -> Iterator[bytes]:
-        """See `Connection` corresponding method."""
-        return self._dispatch["pa_tables"].stream_fcs(typedid, chunk_size)
+    def stream_fcs(
+        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+    ) -> Iterator[bytes]:
+        """See `ConnectionAsync` corresponding method."""
+        return _sync_iterator(self._conn.stream_fcs(typedid, chunk_size))
+
+    def fetch_paginated_fcs(
+        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+    ) -> Iterator[list[dict[str, Any]]]:
+        """See `ConnectionAsync` corresponding method."""
+        return _sync_iterator(self._conn.fetch_paginated_fcs(typedid, page_size))
 
     def list_attachments(
         self,
         typedid: str,
-    ) -> List[Dict[str, Any]]:
-        """See `Connection` corresponding method."""
-        return self._dispatch["model_attachments"].list_attachments(typedid)
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.list_attachments(typedid))
 
     def attach_file(
         self,
@@ -845,40 +1024,42 @@ class ConnectionComposed(Connection):
         name: str,
         content: IO,
     ) -> None:
-        """See `Connection` corresponding method."""
-        self._dispatch["model_attachments"].attach_file(typedid, name, content)
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.attach_file(typedid, name, content))
 
     def pull_file(
-        self, owner_typedid: str, attachment_typedid: str, chunk_size: int = 128
+        self,
+        owner_typedid: str,
+        attachment_typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
     ) -> Iterator[bytes]:
-        """See `Connection` corresponding method."""
-        return self._dispatch["model_attachments"].pull_file(
-            owner_typedid, attachment_typedid, chunk_size
-        )
+        """See `ConnectionAsync` corresponding method."""
+        return _sync_iterator(self._conn.pull_file(owner_typedid, attachment_typedid, chunk_size))
 
     def create_table(
         self,
         name: str,
-        fields_spec: List[Dict],
+        fields_spec: list[dict],
         content: AvroStream,
-        label: Optional[str] = None,
-        owner_typedid: Optional[str] = None,
+        label: str | None = None,
+        owner_typedid: str | None = None,
         replace_existing: bool = True,
     ) -> None:
-        """See `Connection` corresponding method."""
-        self._dispatch["model_tables"].create_table(
-            name, fields_spec, content, label, owner_typedid, replace_existing
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(
+            self._conn.create_table(
+                name, fields_spec, content, label, owner_typedid, replace_existing
+            )
         )
 
     def update_table(self, typedid: str, data: AvroStream) -> None:
-        """See `Connection` corresponding method."""
-        self._dispatch["model_tables"].update_table(typedid, data)
-        pass
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.update_table(typedid, data))
 
-    def get_calcitems(self, typedid: str) -> List[Dict[str, Any]]:
-        """See `Connection` corresponding method."""
-        return self._dispatch["model_parameters"].get_calcitems(typedid)
+    def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.get_calcitems(typedid))
 
     def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
-        """See `Connection` corresponding method."""
-        self._dispatch["model_parameters"].push_calcitem(typedid, key1, key2, value)
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.push_calcitem(typedid, key1, key2, value))

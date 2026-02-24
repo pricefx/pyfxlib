@@ -1,12 +1,14 @@
+from collections.abc import Iterable
 from io import StringIO
 import json
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import pytest
 
 from pyfxlib._testtooling.conftest import (
+    _async_conn,
     _auth,
     _conn,
     _connection_with_raising_session,
@@ -20,18 +22,19 @@ from pyfxlib._testtooling.conftest import (
     _remote,
     _retry_and_raising_session,
     _session,
+    _setup_datamart,
 )
 from pyfxlib._testtooling.helpers import (
     _calculation_results_as_dict,
     _csv_stream_to_dataframe,
-    _IntegrationRemote,
 )
 from pyfxlib.api.domain import Instance, ModelObject, PlatformJob
 from pyfxlib.lowlevel.avro import AvroStream
-from pyfxlib.lowlevel.connection import Connection
+from pyfxlib.lowlevel.connection import ConnectionAsync
 from pyfxlib.lowlevel.pandasutil import FieldSpecs
 
 __all__ = [
+    "_async_conn",
     "_auth",
     "_conn",
     "_connection_with_raising_session",
@@ -44,6 +47,7 @@ __all__ = [
     "_remote",
     "_retry_and_raising_session",
     "_session",
+    "_setup_datamart",
 ]
 
 
@@ -56,10 +60,10 @@ __all__ = [
     ],
 )
 def test_platform_job_should_be_able_to_update_the_state_of_the_corresponding_jst(
-    _conn: Connection,
-    _job_jst: Dict[str, Any],
-    msg: Optional[str],
-    results: Optional[Dict[str, Any]],
+    _conn: ConnectionAsync,
+    _job_jst: dict[str, Any],
+    msg: str | None,
+    results: dict[str, Any] | None,
 ):
     # given a PlatformJob
     job = PlatformJob(_conn, _job_jst["id"])
@@ -88,10 +92,10 @@ def test_platform_job_should_be_able_to_update_the_state_of_the_corresponding_js
 
 
 def test_platform_job_should_be_able_to_update_progress_messages_to_the_corresponding_jst(
-    _conn: Connection,
-    _job_jst: Dict[str, Any],
+    _conn: ConnectionAsync,
+    _job_jst: dict[str, Any],
 ):
-    def assert_jst_has_progress_and_messages(progress: int, messages: List[str]):
+    def assert_jst_has_progress_and_messages(progress: int, messages: list[str]):
         # then the underlying jst is updated
         jst = _conn.get_object(f"{_job_jst['id']}.JST")
         assert jst is not None
@@ -123,10 +127,10 @@ def test_platform_job_should_be_able_to_update_progress_messages_to_the_correspo
 
 
 def test_platform_job_should_be_able_to_set_results_to_the_corresponding_jst(
-    _conn: Connection,
-    _job_jst: Dict[str, Any],
+    _conn: ConnectionAsync,
+    _job_jst: dict[str, Any],
 ):
-    def assert_jst_has_result(result: Dict[str, Any]):
+    def assert_jst_has_result(result: dict[str, Any]):
         # then the underlying jst is updated
         jst = _conn.get_object(
             f"{_job_jst['id']}.JST",
@@ -154,7 +158,7 @@ def test_platform_job_should_be_able_to_set_results_to_the_corresponding_jst(
 
 
 def test_model_object_should_be_able_to_create_and_read_owned_tables(
-    _conn: Connection, _model_object: Dict[str, Any], tmp_path
+    _conn: ConnectionAsync, _model_object: dict[str, Any], tmp_path
 ):
     # given an instance without any model tables
     mo = ModelObject.from_conn(_conn, _model_object["typedId"])
@@ -235,7 +239,7 @@ _VALID_DATAFRAME_CONTENT = [
     [(data, parser, pd_dtype) for data, parser, pd_dtype in _VALID_DATAFRAME_CONTENT],
 )
 def test_instance_should_be_able_to_push_a_dataframe_to_a_model_table(
-    _conn: Connection, _model_object: Dict[str, Any], column_data, value_parser, pd_dtype
+    _conn: ConnectionAsync, _model_object: dict[str, Any], column_data, value_parser, pd_dtype
 ):
     # given an instance without any model tables
     mo = ModelObject.from_conn(_conn, _model_object["typedId"])
@@ -287,7 +291,7 @@ def test_instance_should_be_able_to_push_a_dataframe_to_a_model_table(
     [None, ["foo", "bar"]],
 )
 def test_model_object_should_be_able_to_push_and_update_multiindex_dataframes(
-    _conn: Connection, _model_object: Dict[str, Any], idx_names
+    _conn: ConnectionAsync, _model_object: dict[str, Any], idx_names
 ):
     # given an instance without any model tables
     mo = ModelObject.from_conn(_conn, _model_object["typedId"])
@@ -354,7 +358,7 @@ def test_model_object_should_be_able_to_push_and_update_multiindex_dataframes(
 
 
 def test_model_object_should_be_able_to_update_data_of_an_owned_tables(
-    _conn: Connection, _model_object: Dict[str, Any]
+    _conn: ConnectionAsync, _model_object: dict[str, Any]
 ):
     # given an instance without an owned tables
     mo = ModelObject.from_conn(_conn, _model_object["typedId"])
@@ -397,7 +401,7 @@ def test_model_object_should_be_able_to_update_data_of_an_owned_tables(
     [(data, parser, pd_dtype) for data, parser, pd_dtype in _VALID_DATAFRAME_CONTENT],
 )
 def test_model_object_should_be_able_to_update_data_of_an_owned_tables_from_pandas(
-    _conn: Connection, _model_object: Dict[str, Any], column_data, value_parser, pd_dtype
+    _conn: ConnectionAsync, _model_object: dict[str, Any], column_data, value_parser, pd_dtype
 ):
     # given an instance without an owned tables
     mo = ModelObject.from_conn(_conn, _model_object["typedId"])
@@ -441,8 +445,8 @@ def test_model_object_should_be_able_to_update_data_of_an_owned_tables_from_pand
 
 
 def test_model_object_should_be_able_to_create_and_read_an_attachment(
-    _conn: Connection,
-    _model_object: Dict[str, Any],
+    _conn: ConnectionAsync,
+    _model_object: dict[str, Any],
 ):
     # when getting an empty model object
     mo = ModelObject.from_conn(_conn, _model_object["typedId"])
@@ -466,7 +470,7 @@ def test_model_object_should_be_able_to_create_and_read_an_attachment(
     assert mo.attachments()[attachment_name].typedid == attachment.typedid
 
     # and its is possible to fetch its content as a stream
-    data = next(attachment.download_file(chunk_size=128)).decode("utf-8")
+    data = next(attachment.download_file()).decode("utf-8")
     assert data == attachment_content
 
 
@@ -689,21 +693,9 @@ def assert_equal_dataframes_with_na_on_cols(
 
 
 def test_instance_should_be_able_to_create_and_read_datamarts(
-    _remote: _IntegrationRemote, _instance: Instance, tmp_path
+    _setup_datamart: tuple[Instance, str, list[str]], tmp_path: str
 ):
-    # expecting an initial empty list of datamart
-    assert len(list(_instance.datamarts())) == 0
-
-    # when a datamart is created
-    dm_name = "aDatamartName"
-    col_names = ["column1", "column2"]
-    _remote.new_empty_datamart(
-        dm_name,
-        [
-            {"name": col_names[0], "type": "TEXT", "key": True},
-            {"name": col_names[1], "type": "NUMBER"},
-        ],
-    )
+    _instance, dm_name, col_names = _setup_datamart
 
     # then it has been added to the datamarts
     assert len(list(_instance.datamarts())) == 1
@@ -734,16 +726,10 @@ def test_instance_should_be_able_to_create_and_read_datamarts(
 
 
 def test_intance_should_give_access_to_model_objects(
-    _remote: _IntegrationRemote, _instance: Instance
+    _instance: Instance, _model_object: dict[str, Any]
 ):
-    # expecting an initial empty list of models
-    assert len(list(_instance.models())) == 0
-
-    # when adding a model
-    mo_name = "aModelObject"
-    (mc, mo) = _remote.new_model_object(mo_name)
-
-    # then it has been added to the models
+    # A model object has been added by _model_object
+    mo_name = _model_object["uniqueName"]
     model_objects = list(_instance.model_objects())
     assert len(model_objects) == 1
     modelobject = model_objects[0]
@@ -762,8 +748,8 @@ def test_intance_should_give_access_to_model_objects(
     [(data, parser, pd_dtype) for data, parser, pd_dtype in _VALID_DATAFRAME_CONTENT],
 )
 def test_instance_should_retry_to_push_a_dataframe_to_a_model_table(
-    _connection_with_raising_session: tuple[Connection, _RaisingExceptionSession],
-    _model_object: Dict[str, Any],
+    _connection_with_raising_session: tuple[ConnectionAsync, _RaisingExceptionSession],
+    _model_object: dict[str, Any],
     column_data,
     value_parser,
     pd_dtype,
@@ -820,8 +806,8 @@ def test_instance_should_retry_to_push_a_dataframe_to_a_model_table(
     [(data, parser, pd_dtype) for data, parser, pd_dtype in _VALID_DATAFRAME_CONTENT],
 )
 def test_model_object_should_retry_to_update_data_of_an_owned_tables_from_pandas(
-    _connection_with_raising_session: tuple[Connection, _RaisingExceptionSession],
-    _model_object: Dict[str, Any],
+    _connection_with_raising_session: tuple[ConnectionAsync, _RaisingExceptionSession],
+    _model_object: dict[str, Any],
     column_data,
     value_parser,
     pd_dtype,
@@ -871,7 +857,7 @@ def test_model_object_should_retry_to_update_data_of_an_owned_tables_from_pandas
 
 
 def test_push_pandas_should_be_able_to_define_field_types(
-    _conn: Connection,
+    _conn: ConnectionAsync,
     _instance: Instance,
 ):
     # given an instance without any datasource

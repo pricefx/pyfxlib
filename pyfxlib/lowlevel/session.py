@@ -4,16 +4,20 @@ A session is used to manager persistent authentication with the platform.
 """
 
 from abc import ABC, abstractmethod
+import asyncio
 import base64
+from collections.abc import AsyncIterator, Awaitable, Callable
 import getpass
+import json
 import logging
 import os
 import subprocess
 import time
-from typing import Any, Callable, Dict, List, Optional, overload, cast
+from typing import Any, cast, overload
 
-from requests import Response, Session
-from requests.exceptions import HTTPError, JSONDecodeError, RequestException, Timeout
+from httpx import AsyncClient, HTTPError, HTTPStatusError, Response, TimeoutException
+
+from pyfxlib.lowlevel import _DEFAULT_STREAM_CHUNK_SIZE
 
 LOGGER = logging.getLogger(__name__)
 
@@ -22,22 +26,22 @@ class PfxSession(ABC):
     """Formal interface of a PfxSession."""
 
     @abstractmethod
-    def get(self, url: str, **kwargs: Any) -> Response:
-        """See `requests.Session.get`."""
+    async def get(self, url: str, **kwargs: Any) -> Response:
+        """See `httpx.AsyncClient.get`."""
         raise NotImplementedError
 
     @abstractmethod
-    def post(self, url: str, **kwargs: Any) -> Response:
-        """See `requests.Session.post`."""
+    async def post(self, url: str, **kwargs: Any) -> Response:
+        """See `httpx.AsyncClient.post`."""
         raise NotImplementedError
 
     @abstractmethod
-    def post_simple(self, url: str, **kwargs: Any) -> Response:
-        """See `requests.Session.post`."""
+    async def post_simple(self, url: str, **kwargs: Any) -> Response:
+        """See `httpx.AsyncClient.post`."""
         raise NotImplementedError
 
     @abstractmethod
-    def add_request_hook(self, hook: Callable[[str, str, Dict[str, Any]], None]) -> None:
+    def add_request_hook(self, hook: Callable[[str, str, dict[str, Any]], None]) -> None:
         """Add a hook to be executed before sending request."""
         raise NotImplementedError
 
@@ -46,12 +50,34 @@ class PfxSession(ABC):
         """Add a hook to be executed after receiving a response."""
         raise NotImplementedError
 
+    @abstractmethod
+    async def get_stream(
+        self, url: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE, **kwargs: Any
+    ) -> AsyncIterator[bytes]:
+        """Get a stream from the given URL."""
+        yield b""
+
+    @abstractmethod
+    def has_header(self, key: str) -> bool:
+        """Check if a header is set in the session."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def set_header(self, key: str, value: str) -> None:
+        """Set a header to be used for all requests."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def remove_header(self, key: str) -> None:
+        """Remove a header from the session."""
+        raise NotImplementedError
+
 
 class PfxAuthMethod(ABC):
     """Formal interface of a PfxAuthMethod."""
 
     @abstractmethod
-    def before_request(self, session: Session) -> None:
+    async def before_request(self, session: AsyncClient) -> None:
         """
         Method called before each request.
 
@@ -62,7 +88,7 @@ class PfxAuthMethod(ABC):
         """
         raise NotImplementedError
 
-    def after_response(self, session: Session, response: Response) -> None:
+    async def after_response(self, session: AsyncClient, response: Response) -> None:
         """
         Method called after each response.
 
@@ -75,37 +101,37 @@ class PfxAuthMethod(ABC):
         raise NotImplementedError
 
 
-def pfx_session(auth: PfxAuthMethod, session: Optional[Session] = None) -> PfxSession:
+def pfx_session(auth: PfxAuthMethod, session: AsyncClient | None = None) -> PfxSession:
     """
     Default PfxSession constructor.
 
     Args:
             auth: the authentication method to be used
-            session: the requests Session to use, if not set a new one will be created.
+            session: the httpx AsyncClient to use, if not set a new one will be created.
     """
     return RetryPfxSession(SimplePfxSession(auth, session))
 
 
 def pfx_session_from_token_file(
-    token_file_path: str, session: Optional[Session] = None
+    token_file_path: str, session: AsyncClient | None = None
 ) -> PfxSession:
     """
     Default PfxSession constructor using a token file as auth method.
 
     Args:
             token_file_path: the token file path
-            session: the requests Session to use, if not set a new one will be created.
+            session: the httpx AsyncClient to use, if not set a new one will be created.
     """
     return pfx_session(PfxAuthTokenFile(token_file_path), session)
 
 
-def pfx_session_from_token(token: str, session: Optional[Session] = None) -> PfxSession:
+def pfx_session_from_token(token: str, session: AsyncClient | None = None) -> PfxSession:
     """
     Default PfxSession constructor using a static token.
 
     Args:
             token: the token to use
-            session: the requests Session to use, if not set a new one will be created.
+            session: the httpx AsyncClient to use, if not set a new one will be created.
     """
     return pfx_session(PfxAuthStaticToken(token), session)
 
@@ -137,7 +163,7 @@ class RetryPfxSession(PfxSession):
     Args:
             wrapped: the used PfxSession to execute the requests
             retry_predicate: a predicate which define a request should be retried when the given
-                             RequestException happens
+                             HTTPError happens
             retry_delays: the sequence of delays in seconds to apply between each trial. The first
                           value is the first delay to wait before the second retry. The next value
                           will be waited after a second failure and so on. Consequently, the number
@@ -148,32 +174,32 @@ class RetryPfxSession(PfxSession):
     def __init__(
         self,
         wrapped: PfxSession,
-        retry_predicate: Optional[Callable[[RequestException], bool]] = None,
-        retry_delays: Optional[List[int]] = None,
+        retry_predicate: Callable[[HTTPError], bool] | None = None,
+        retry_delays: list[int] | None = None,
     ) -> None:
         self._wrapped: PfxSession = wrapped
-        self._retry_predicate: Callable[[RequestException], bool] = (
+        self._retry_predicate: Callable[[HTTPError], bool] = (
             retry_predicate if retry_predicate is not None else _default_retry_predicate
         )
         # by default 3 retries with respectively 3s, 10s and 30s between retries
-        self._retry_delays: List[int] = retry_delays if retry_delays is not None else [3, 10, 30]
+        self._retry_delays: list[int] = retry_delays if retry_delays is not None else [3, 10, 30]
 
-    def _try(self, method: Callable[[], Response]) -> Response:
-        return retry(method, 0, self._retry_delays, self._retry_predicate)
+    async def _try(self, method: Callable[[], Awaitable[Response]]) -> Response:
+        return await async_retry(method, 0, self._retry_delays, self._retry_predicate)
 
-    def post(self, url: str, **kwargs: Any) -> Response:
-        """See `requests.Session.post`."""
-        return self._try(lambda: self._wrapped.post(url, **kwargs))
+    async def post(self, url: str, **kwargs: Any) -> Response:
+        """See `httpx.AsyncClient.post`."""
+        return await self._try(lambda: self._wrapped.post(url, **kwargs))
 
-    def post_simple(self, url: str, **kwargs: Any) -> Response:
-        """See `requests.Session.post`."""
-        return self._wrapped.post(url, **kwargs)
+    async def post_simple(self, url: str, **kwargs: Any) -> Response:
+        """See `httpx.AsyncClient.post`."""
+        return await self._wrapped.post(url, **kwargs)
 
-    def get(self, url: str, **kwargs: Any) -> Response:
-        """See `requests.Session.get`."""
-        return self._try(lambda: self._wrapped.get(url, **kwargs))
+    async def get(self, url: str, **kwargs: Any) -> Response:
+        """See `httpx.AsyncClient.get`."""
+        return await self._try(lambda: self._wrapped.get(url, **kwargs))
 
-    def add_request_hook(self, hook: Callable[[str, str, Dict[str, Any]], None]) -> None:
+    def add_request_hook(self, hook: Callable[[str, str, dict[str, Any]], None]) -> None:
         """Add a hook to be executed before sending request."""
         self._wrapped.add_request_hook(hook)
 
@@ -181,10 +207,29 @@ class RetryPfxSession(PfxSession):
         """Add a hook to be executed after receiving a response."""
         self._wrapped.add_response_hook(hook)
 
+    async def get_stream(
+        self, url: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE, **kwargs: Any
+    ) -> AsyncIterator[bytes]:
+        """Stream bytes from the given URL. See `httpx.AsyncClient.stream`."""
+        async for chunk in self._wrapped.get_stream(url, chunk_size=chunk_size, **kwargs):
+            yield chunk
 
-def _default_retry_predicate(exception: RequestException) -> bool:
-    return isinstance(exception, Timeout) or (
-        isinstance(exception, HTTPError)
+    def has_header(self, key: str) -> bool:
+        """Check if a header is set in the session."""
+        return self._wrapped.has_header(key)
+
+    def set_header(self, key: str, value: str) -> None:
+        """Set a header to be used for all requests."""
+        self._wrapped.set_header(key, value)
+
+    def remove_header(self, key: str) -> None:
+        """Remove a header from the session."""
+        self._wrapped.remove_header(key)
+
+
+def _default_retry_predicate(exception: HTTPError) -> bool:
+    return isinstance(exception, TimeoutException) or (
+        isinstance(exception, HTTPStatusError)
         and (
             (exception.response.status_code >= 500 and exception.response.status_code < 600)
             or exception.response.status_code == 409
@@ -193,37 +238,28 @@ def _default_retry_predicate(exception: RequestException) -> bool:
 
 
 @overload
-def retry(  # noqa: E704
-    method: Callable[[], Response],
+async def async_retry(  # noqa: E704
+    method: Callable[[], Awaitable[Response]],
     nb_tries: int,
-    retry_delays: List[int],
-    retry_predicate: Callable[[RequestException], bool],
+    retry_delays: list[int],
+    retry_predicate: Callable[[HTTPError], bool],
 ) -> Response: ...
 
 
 @overload
-def retry(  # noqa: E704
-    method: Callable[[], None],
+async def async_retry(  # noqa: E704
+    method: Callable[[], Awaitable[None]],
     nb_tries: int,
-    retry_delays: List[int],
-    retry_predicate: Callable[[RequestException], bool],
+    retry_delays: list[int] = ...,
+    retry_predicate: Callable[[HTTPError], bool] = ...,
 ) -> None: ...
 
 
-@overload
-def retry(  # noqa: E704
-    method: Callable[[], None],
+async def async_retry(
+    method: Callable[[], Awaitable[Response]] | Callable[[], Awaitable[None]],
     nb_tries: int,
-    retry_delays: List[int] = ...,
-    retry_predicate: Callable[[RequestException], bool] = ...,
-) -> None: ...
-
-
-def retry(
-    method: Callable[[], Response] | Callable[[], None],
-    nb_tries: int,
-    retry_delays: List[int] = [3, 10, 30],
-    retry_predicate: Callable[[RequestException], bool] = _default_retry_predicate,
+    retry_delays: list[int] = [3, 10, 30],
+    retry_predicate: Callable[[HTTPError], bool] = _default_retry_predicate,
 ) -> Response | None:
     """
     Wrapper function that retries requests a given number of time before failing.
@@ -232,7 +268,78 @@ def retry(
             method: the executed request function
             nb_tries: number of current try
             retry_predicate: a predicate which define a request should be retried when the given
-                RequestException happens
+                HTTPError happens
+            retry_delays: the sequence of delays in seconds to apply between each trial. The first
+                value is the first delay to wait before the second retry. The next value
+                will be waited after a second failure and so on. Consequently, the number
+                of retry done before aborting is equal to the size of this list
+                (excluding the initial request).
+
+    Returns:
+        Returns either Response or None, depending on what's `method` returning.
+    """
+    try:
+        return await method()
+    except HTTPError as exception:
+        if retry_predicate(exception):
+            exception.add_note(
+                "Exception occurred during transfer of data from/to backend.\n"
+                "For more details, see partition BE logs and Python logs (Job trigger calculation"
+                " logs, where pricefx_job_trigger_jst is set to this jobs ID).\n"
+                "If calculation failed due to timeout, adjusting partition settings for"
+                " `datamart.query.externalMaxTimeout` might help."
+            )
+            LOGGER.error("Caught a retryable error: %s", repr(exception))
+            if len(retry_delays) > nb_tries:
+                delay = retry_delays[nb_tries]
+                LOGGER.error(
+                    "Will retry in %d seconds (%d/%d retries)...",
+                    delay,
+                    nb_tries + 1,
+                    len(retry_delays),
+                )
+                await asyncio.sleep(delay)
+                return await async_retry(method, nb_tries + 1, retry_delays, retry_predicate)
+            else:
+                LOGGER.error("Aborting after %d retries", nb_tries)
+                raise exception
+        else:
+            LOGGER.error("Caught a non retryable error: %s", repr(exception))
+            raise exception
+
+
+@overload
+def retry(  # noqa: E704
+    method: Callable[[], Response],
+    nb_tries: int,
+    retry_delays: list[int],
+    retry_predicate: Callable[[HTTPError], bool],
+) -> Response: ...
+
+
+@overload
+def retry(  # noqa: E704
+    method: Callable[[], None],
+    nb_tries: int,
+    retry_delays: list[int] = ...,
+    retry_predicate: Callable[[HTTPError], bool] = ...,
+) -> None: ...
+
+
+def retry(
+    method: Callable[[], Response] | Callable[[], None],
+    nb_tries: int,
+    retry_delays: list[int] = [3, 10, 30],
+    retry_predicate: Callable[[HTTPError], bool] = _default_retry_predicate,
+) -> Response | None:
+    """
+    Wrapper function that retries requests a given number of time before failing.
+
+    Args:
+            method: the executed request function
+            nb_tries: number of current try
+            retry_predicate: a predicate which define a request should be retried when the given
+                HTTPError happens
             retry_delays: the sequence of delays in seconds to apply between each trial. The first
                 value is the first delay to wait before the second retry. The next value
                 will be waited after a second failure and so on. Consequently, the number
@@ -244,7 +351,7 @@ def retry(
     """
     try:
         return method()
-    except RequestException as exception:
+    except HTTPError as exception:
         if retry_predicate(exception):
             exception.add_note(
                 "Exception occurred during transfer of data from/to backend.\n"
@@ -278,67 +385,63 @@ class SimplePfxSession(PfxSession):
     By default, it raises an error for client error or server error responses.
     """
 
-    def __init__(self, auth: PfxAuthMethod, session: Optional[Session] = None) -> None:
+    def __init__(self, auth: PfxAuthMethod, session: AsyncClient | None = None) -> None:
         """
         Constructor of SimplePfxSession.
 
         Args:
             auth: handler used to set up the session for authentication purpose.
-            session: the requests Session to use, if not set a new one will be created.
+            session: the httpx AsyncClient to use, if not set a new one will be created.
         """
         if not session:
-            session = Session()
-        self._session: Session = session
+            session = AsyncClient(timeout=None)
+        self._session: AsyncClient = session
         self._auth = auth
-        # disable keep-alive, this makes the connection pool a bit useless,
-        #  but it's impossible to disable it, cf https://github.com/urllib3/urllib3/issues/383
-        self._session.headers.update({"Connection": "close"})
         # initialize authentication method
-        self._auth.before_request(session)
-        self._before_request_hooks: List[Callable[[str, str, Dict[str, Any]], None]] = []
-        self._after_response_hooks: List[Callable[[Response], None]] = []
+        self._before_request_hooks: list[Callable[[str, str, dict[str, Any]], None]] = []
+        self._after_response_hooks: list[Callable[[Response], None]] = []
 
-    def get(self, url: str, **kwargs: Any) -> Response:
-        """See `requests.Session.get`."""
-        self._auth.before_request(self._session)
+    async def get(self, url: str, **kwargs: Any) -> Response:
+        """See `httpx.AsyncClient.get`."""
+        await self._auth.before_request(self._session)
         try:
             for hook_before in self._before_request_hooks:
                 hook_before("get", url, kwargs)
-            response = self._session.get(url, **kwargs)
+            response = await self._session.get(url, **kwargs)
             for hook_after in self._after_response_hooks:
                 hook_after(response)
             _check_for_pfx_error(response)
             response.raise_for_status()
-            self._auth.after_response(self._session, response)
+            await self._auth.after_response(self._session, response)
             return response
-        except HTTPError as err:
+        except HTTPStatusError as err:
             if (body := _error_response_body(err)) is not None:
                 LOGGER.error("Error response body: %s", body)
             raise err
 
-    def post(self, url: str, **kwargs: Any) -> Response:
-        """See `requests.Session.post`."""
-        self._auth.before_request(self._session)
+    async def post(self, url: str, **kwargs: Any) -> Response:
+        """See `httpx.AsyncClient.post`."""
+        await self._auth.before_request(self._session)
         try:
             for hook_before in self._before_request_hooks:
                 hook_before("post", url, kwargs)
-            response = self._session.post(url, **kwargs)
+            response = await self._session.post(url, **kwargs)
             for hook_after in self._after_response_hooks:
                 hook_after(response)
             _check_for_pfx_error(response)
             response.raise_for_status()
-            self._auth.after_response(self._session, response)
+            await self._auth.after_response(self._session, response)
             return response
-        except HTTPError as err:
+        except HTTPStatusError as err:
             if (body := _error_response_body(err)) is not None:
                 LOGGER.error("Error response body: %s", body)
             raise err
 
-    def post_simple(self, url: str, **kwargs: Any) -> Response:
-        """See `requests.Session.post`."""
-        return self.post(url, **kwargs)
+    async def post_simple(self, url: str, **kwargs: Any) -> Response:
+        """See `httpx.AsyncClient.post`."""
+        return await self.post(url, **kwargs)
 
-    def add_request_hook(self, hook: Callable[[str, str, Dict[str, Any]], None]) -> None:
+    def add_request_hook(self, hook: Callable[[str, str, dict[str, Any]], None]) -> None:
         """Add a hook to be executed before sending request."""
         self._before_request_hooks.append(hook)
 
@@ -346,8 +449,31 @@ class SimplePfxSession(PfxSession):
         """Add a hook to be executed after receiving a response."""
         self._after_response_hooks.append(hook)
 
+    async def get_stream(
+        self, url: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE, **kwargs: Any
+    ) -> AsyncIterator[bytes]:
+        """Stream bytes from the given URL. See `httpx.AsyncClient.stream`."""
+        await self._auth.before_request(self._session)
+        async with self._session.stream("GET", url, **kwargs) as response:
+            response.raise_for_status()
+            async for chunk in response.aiter_bytes(chunk_size=chunk_size):
+                yield chunk
 
-def _error_response_body(err: HTTPError) -> Optional[str]:
+    def has_header(self, key: str) -> bool:
+        """Check if a header is set in the session."""
+        return key in self._session.headers
+
+    def set_header(self, key: str, value: str) -> None:
+        """Set a header to be used for all requests."""
+        self._session.headers.update({key: value})
+
+    def remove_header(self, key: str) -> None:
+        """Remove a header from the session."""
+        if key in self._session.headers:
+            del self._session.headers[key]
+
+
+def _error_response_body(err: HTTPStatusError) -> str | None:
     if err.response is not None and err.response.text is not None:
         return err.response.text
     return None
@@ -356,7 +482,7 @@ def _error_response_body(err: HTTPError) -> Optional[str]:
 def _check_for_pfx_error(response: Response) -> None:
     try:
         response_json = response.json()
-    except JSONDecodeError:
+    except json.JSONDecodeError:
         # Some messages just don't have any content. That's Ok.
         return
 
@@ -367,18 +493,18 @@ def _check_for_pfx_error(response: Response) -> None:
         return
 
     if "response" not in response_json:
-        LOGGER.error(
-            'The following Response does not contains a "response" key : '
-            f"{response} {response_json}"
+        message = (
+            f'The following Response does not contain a "response" key : {response} {response_json}'
         )
-        raise HTTPError(response=response)
+        LOGGER.error(message)
+        raise HTTPStatusError(message=message, request=response.request, response=response)
 
     if "status" not in response_json["response"]:
-        LOGGER.error(
-            'The following Response does not contains a "status" key : '
-            f"{response} {response_json}"
+        message = (
+            f'The following Response does not contain a "status" key : {response} {response_json}'
         )
-        raise HTTPError(response=response)
+        LOGGER.error(message)
+        raise HTTPStatusError(message=message, request=response.request, response=response)
 
     status = response_json["response"]["status"]
     # Note: for more info about app status code, see
@@ -387,8 +513,9 @@ def _check_for_pfx_error(response: Response) -> None:
         0,  # `STATUS_SUCCESS`
         -8,  # `LOGIN_SUCCESS`
     ]:
-        LOGGER.error("Application error in response : %s %s", response, response_json)
-        raise HTTPError(response=response)
+        message = f"Application error in response : {response} {response_json}"
+        LOGGER.error(message)
+        raise HTTPStatusError(message=message, request=response.request, response=response)
 
 
 class PfxAuthStaticToken(PfxAuthMethod):
@@ -397,11 +524,11 @@ class PfxAuthStaticToken(PfxAuthMethod):
     def __init__(self, token: str) -> None:
         self.pfxtoken = token
 
-    def before_request(self, session: Session) -> None:
+    async def before_request(self, session: AsyncClient) -> None:
         """See `PfxAuthMethod.before_request`."""
         session.headers.update({"Cookie": f"X-PriceFx-jwt={self.pfxtoken}"})
 
-    def after_response(self, session: Session, response: Response) -> None:
+    async def after_response(self, session: AsyncClient, response: Response) -> None:
         """See `PfxAuthMethod.after_response`."""
         pass
 
@@ -415,13 +542,13 @@ class PfxAuthTokenFile(PfxAuthMethod):
     def __init__(self, token_file_path: str) -> None:
         self.pfxtoken_file_path = token_file_path
 
-    def before_request(self, session: Session) -> None:
+    async def before_request(self, session: AsyncClient) -> None:
         """See `PfxAuthMethod.before_request`."""
         with open(self.pfxtoken_file_path, "r") as token_file:
             token = token_file.read().replace("\n", "")
             session.headers.update({"Cookie": f"X-PriceFx-jwt={token}"})
 
-    def after_response(self, session: Session, response: Response) -> None:
+    async def after_response(self, session: AsyncClient, response: Response) -> None:
         """See `PfxAuthMethod.after_response`."""
         pass
 
@@ -454,30 +581,32 @@ class PfxAuthUserPass(PfxAuthMethod):
         self._credential = base64.urlsafe_b64encode(
             bytes(f"{partition}/{user}:{passwd_provider()}", "utf-8")
         )
-        self.pfxtoken: Optional[str] = None
+        self.pfxtoken: str | None = None
 
-    def _refresh_token(self, session: Session, response: Response) -> None:
+    def _refresh_token(self, session: AsyncClient, response: Response) -> None:
         if "X-PriceFx-jwt" in response.cookies:
             self.pfxtoken = response.cookies["X-PriceFx-jwt"]
             session.headers.update({"Cookie": f"X-PriceFx-jwt={self.pfxtoken}"})
 
-    def before_request(self, session: Session) -> None:
+    async def before_request(self, session: AsyncClient) -> None:
         """See `PfxAuthMethod.before_request`."""
         if self.pfxtoken is None:
             try:
-                response = session.post(
+                response = await session.post(
                     self._auth_url,
                     headers={"Authorization": "Basic " + self._credential.decode()},
                 )
                 _check_for_pfx_error(response)
                 self._refresh_token(session, response)
                 del self._credential
-            except HTTPError as err:
+            except HTTPStatusError as err:
                 if (body := _error_response_body(err)) is not None:
                     LOGGER.error("Error response body: %s", body)
                 raise err
+        else:
+            session.headers.update({"Cookie": f"X-PriceFx-jwt={self.pfxtoken}"})
 
-    def after_response(self, session: Session, response: Response) -> None:
+    async def after_response(self, session: AsyncClient, response: Response) -> None:
         """See `PfxAuthMethod.after_response`."""
         self._refresh_token(session, response)
 
