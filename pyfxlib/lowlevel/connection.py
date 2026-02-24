@@ -170,6 +170,21 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
+    async def update_lpg(
+        self,
+        lpg_id: int,
+        field_to_update: str,
+        new_value: float,
+        product: dict[str, Any],
+        comment: str,
+    ) -> None:
+        """Update the value of a field of a product in an LPG.
+
+        Raise ValueError if an LPG of type MATRIX is passed without a secondary key.
+        """
+        pass
+
+    @abstractmethod
     async def get_object_metadata(
         self,
         type_code: str,
@@ -526,6 +541,27 @@ class ConnectionRemote(ConnectionAsync):
             json={"data": self._build_criteria(criteria, "and")},
         )
         return response.json()["response"]["data"]
+
+    async def update_lpg(
+        self,
+        lpg_id: int,
+        field_to_update: str,
+        new_value: float,
+        product: dict[str, Any],
+        comment: str,
+    ) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        payload = {
+            "data": {
+                "typedId": product["typedId"],
+                field_to_update: new_value,
+                "comments": comment,
+            },
+            "oldValues": product,
+            "operationType": "update",
+            "textMatchStyle": "exact",
+        }
+        await self.session.post(f"{self.endpoint}/pricegridmanager.update/{lpg_id}", json=payload)
 
     async def get_object_metadata(
         self,
@@ -906,6 +942,17 @@ class ConnectionLocal(ConnectionAsync):
         """
         return []
 
+    async def update_lpg(
+        self,
+        lpg_id: int,
+        field_to_update: str,
+        new_value: float,
+        product: dict[str, Any],
+        comment: str,
+    ) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        return None
+
     async def get_object_metadata(
         self,
         type_code: str,
@@ -1144,6 +1191,17 @@ class ConnectionComposed(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return await self._default.list_lpg_items(lpg_id, filters)
 
+    async def update_lpg(
+        self,
+        lpg_id: int,
+        field_to_update: str,
+        new_value: float,
+        product: dict[str, Any],
+        comment: str,
+    ) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.update_lpg(lpg_id, field_to_update, new_value, product, comment)
+
     async def get_object_metadata(
         self,
         type_code: str,
@@ -1333,6 +1391,19 @@ class ConnectionSync:
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.list_lpg_items(lpg_id, filters))
+
+    def update_lpg(
+        self,
+        lpg_id: int,
+        field_to_update: str,
+        new_value: float,
+        product: dict[str, Any],
+        comment: str,
+    ) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(
+            self._conn.update_lpg(lpg_id, field_to_update, new_value, product, comment)
+        )
 
     def get_object_metadata(
         self,
