@@ -5,18 +5,9 @@ from this package will *not* update the corresponding platform entity.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 import io
-from typing import (
-    Any,
-    Dict,
-    Generic,
-    IO,
-    Iterator,
-    List,
-    Optional,
-    TypeVar,
-    Union,
-)
+from typing import Any, Generic, IO, TypeVar
 
 import pandas as pd
 
@@ -53,9 +44,9 @@ class PlatformJob:
 
     def update_status(
         self,
-        progress: Optional[int] = None,
-        msg: Optional[str] = None,
-        results: Optional[Dict[str, Any]] = None,
+        progress: int | None = None,
+        msg: str | None = None,
+        results: dict[str, Any] | None = None,
     ) -> None:
         """Update the job status on the platform.
 
@@ -69,13 +60,13 @@ class PlatformJob:
 
     def update_progress(
         self,
-        progress: Optional[int],
-        msg: Optional[str] = None,
+        progress: int | None,
+        msg: str | None = None,
     ) -> None:
         """Update job status progress."""
         self.update_status(progress, msg)
 
-    def set_results(self, results: Dict[str, Any]) -> None:
+    def set_results(self, results: dict[str, Any]) -> None:
         """Set the job results."""
         self.update_status(results=results)
 
@@ -119,12 +110,12 @@ class BasicEntity(IdentifiableEntity):
         self,
         conn: ConnectionSync,
         typedid: str,
-        unique_name: Optional[str] = None,
-        label: Optional[str] = None,
-        created_by: Optional[int] = None,
-        created_date: Optional[str] = None,
-        last_update_by: Optional[int] = None,
-        last_update_date: Optional[str] = None,
+        unique_name: str | None = None,
+        label: str | None = None,
+        created_by: int | None = None,
+        created_date: str | None = None,
+        last_update_by: int | None = None,
+        last_update_date: str | None = None,
     ):
         """Get the representation corresponding to a pricefx Entity."""
         IdentifiableEntity.__init__(self, conn, typedid)
@@ -155,7 +146,7 @@ class AbstractTable(BasicEntity, ABC):
 
     def fetch_paginated(
         self, page_size: int = _DEFAULT_PAGE_SIZE
-    ) -> Iterator[List[Dict[str, Any]]]:
+    ) -> Iterator[list[dict[str, Any]]]:
         """Fetch the content of the table page by page."""
         return self._conn.fetch_paginated_fcs(self.typedid, page_size)
 
@@ -168,7 +159,7 @@ class AbstractTable(BasicEntity, ABC):
             for buffer in self.stream():
                 outfile.write(buffer)
 
-    def to_pandas(self, **args: Dict[str, Any]) -> pd.DataFrame:
+    def to_pandas(self, **args: dict[str, Any]) -> pd.DataFrame:
         """Get a `pd.DataFrame` with the table content."""
         with io.BytesIO() as buff:
             for data in self.stream():
@@ -191,13 +182,13 @@ class TableImmutable(AbstractTable):
         self,
         conn: ConnectionSync,
         typedid: str,
-        unique_name: Optional[str] = None,
-        name: Optional[str] = None,
-        label: Optional[str] = None,
-        created_by: Optional[int] = None,
-        created_date: Optional[str] = None,
-        last_update_by: Optional[int] = None,
-        last_update_date: Optional[str] = None,
+        unique_name: str | None = None,
+        name: str | None = None,
+        label: str | None = None,
+        created_by: int | None = None,
+        created_date: str | None = None,
+        last_update_by: int | None = None,
+        last_update_date: str | None = None,
     ) -> None:
         """Get the representation corresponding to a Model Type."""
         BasicEntity.__init__(
@@ -218,7 +209,7 @@ class TableImmutable(AbstractTable):
     def from_dict(
         cls,
         conn: ConnectionSync,
-        attrs: Dict[str, Any],
+        attrs: dict[str, Any],
     ) -> "TableImmutable":
         """Create a table from a dict of properties."""
         return TableImmutable(
@@ -241,13 +232,13 @@ class TableMutable(AbstractTable):
         self,
         conn: ConnectionSync,
         typedid: str,
-        unique_name: Optional[str] = None,
-        name: Optional[str] = None,
-        label: Optional[str] = None,
-        created_by: Optional[int] = None,
-        created_date: Optional[str] = None,
-        last_update_by: Optional[int] = None,
-        last_update_date: Optional[str] = None,
+        unique_name: str | None = None,
+        name: str | None = None,
+        label: str | None = None,
+        created_by: int | None = None,
+        created_date: str | None = None,
+        last_update_by: int | None = None,
+        last_update_date: str | None = None,
     ) -> None:
         """Get the representation corresponding to a Model Type."""
         BasicEntity.__init__(
@@ -268,7 +259,7 @@ class TableMutable(AbstractTable):
     def from_dict(
         cls,
         conn: ConnectionSync,
-        attrs: Dict[str, Any],
+        attrs: dict[str, Any],
     ) -> "TableMutable":
         """Create a table from a dict of properties."""
         return TableMutable(
@@ -341,7 +332,7 @@ class ItemCollection(ABC, Generic[Item]):
     def __iter__(self) -> Iterator[Item]:
         pass
 
-    def __getitem__(self, i: Union[int, str]) -> Optional[Item]:
+    def __getitem__(self, i: int | str) -> Item | None:
         if isinstance(i, int):
             return list(self)[i]
         return self.get_by_name(i)
@@ -354,7 +345,7 @@ class ItemCollection(ABC, Generic[Item]):
         """Get the item with the given typedid."""
         pass
 
-    def get_by_name(self, name: str) -> Optional[Item]:
+    def get_by_name(self, name: str) -> Item | None:
         """Get an item by name.
 
         Returns:
@@ -375,14 +366,14 @@ class TableSource(ItemCollection[TableType], ABC):
         self,
         conn: ConnectionSync,
         type_code: str,
-        req_params: Optional[Dict[str, Any]] = None,
+        req_params: dict[str, Any] | None = None,
     ) -> None:
         self._conn = conn
         self.type_code = type_code
         self._params = req_params
 
     @abstractmethod
-    def _table_constructor(self, attrs: Dict[str, Any]) -> TableType:
+    def _table_constructor(self, attrs: dict[str, Any]) -> TableType:
         pass
 
     def __iter__(self) -> Iterator[TableType]:
@@ -401,11 +392,11 @@ class TableImmutableSource(TableSource[TableImmutable]):
         self,
         conn: ConnectionSync,
         type_code: str,
-        req_params: Optional[Dict[str, Any]] = None,
+        req_params: dict[str, Any] | None = None,
     ) -> None:
         TableSource.__init__(self, conn, type_code, req_params)
 
-    def _table_constructor(self, attrs: Dict[str, Any]) -> TableImmutable:
+    def _table_constructor(self, attrs: dict[str, Any]) -> TableImmutable:
         return TableImmutable.from_dict(self._conn, attrs)
 
 
@@ -416,19 +407,19 @@ class TableMutableSource(TableSource[TableMutable]):
         self,
         conn: ConnectionSync,
         type_code: str,
-        req_params: Optional[Dict[str, Any]] = None,
+        req_params: dict[str, Any] | None = None,
     ) -> None:
         TableSource.__init__(self, conn, type_code, req_params)
 
-    def _table_constructor(self, attrs: Dict[str, Any]) -> TableMutable:
+    def _table_constructor(self, attrs: dict[str, Any]) -> TableMutable:
         return TableMutable.from_dict(self._conn, attrs)
 
     def push(
         self,
         name: str,
-        fields_spec: List[Dict],
+        fields_spec: list[dict],
         content: AvroStream,
-        label: Optional[str] = None,
+        label: str | None = None,
         replace_existing: bool = True,
     ) -> None:
         """Add a new table to the collection of tables on the platform.
@@ -466,13 +457,13 @@ class TableMutableSource(TableSource[TableMutable]):
         self,
         table_name: str,
         dataframe: pd.DataFrame,
-        table_label: Optional[str] = None,
-        dimensions: Optional[List[str]] = None,
+        table_label: str | None = None,
+        dimensions: list[str] | None = None,
         on_unsupported_type: str = "error",
         replace_existing: bool = True,
         inplace: bool = False,
-        column_labels: Optional[Dict[str, str]] = None,
-        manual_fields_specs: Optional[pandasutil.FieldSpecs] = None,
+        column_labels: dict[str, str] | None = None,
+        manual_fields_specs: pandasutil.FieldSpecs | None = None,
         keep_index: bool = True,
     ) -> None:
         """Push a pandas dataframe as a new table.
@@ -585,7 +576,7 @@ class Attachment(BasicEntity, Owned):
         cls,
         conn: ConnectionSync,
         owner: IdentifiableEntity,
-        attrs: Dict[str, Any],
+        attrs: dict[str, Any],
     ) -> "Attachment":
         """Create an attachment from a dict of properties."""
         return Attachment(
@@ -658,8 +649,8 @@ class CalculationItem(IdentifiableEntity, Owned):
         typedid: str,
         key1: str,
         key2: str,
-        value: Optional[str],
-        status: Optional[str],
+        value: str | None,
+        status: str | None,
         created_by: int,
         created_date: str,
         last_update_by: int,
@@ -685,7 +676,7 @@ class CalculationItem(IdentifiableEntity, Owned):
         cls,
         conn: ConnectionSync,
         owner: IdentifiableEntity,
-        attrs: Dict[str, Any],
+        attrs: dict[str, Any],
     ) -> "CalculationItem":
         """Create an attachment from a dict of properties."""
         value = None
@@ -749,7 +740,7 @@ class ModelType(BasicEntity):
         conn: ConnectionSync,
         typedid: str,
         unique_name: str,
-        label: Optional[str],
+        label: str | None,
         created_by: int,
         created_date: str,
         last_update_by: int,
@@ -777,7 +768,7 @@ class ModelType(BasicEntity):
     def from_dict(
         cls,
         conn: ConnectionSync,
-        attrs: Dict[str, Any],
+        attrs: dict[str, Any],
     ) -> "ModelType":
         """Create a model type from a dict of properties."""
         return ModelType(
@@ -815,14 +806,14 @@ class DMModel(Model):
         self,
         conn: ConnectionSync,
         typedid: str,
-        unique_name: Optional[str] = None,
-        label: Optional[str] = None,
-        created_by: Optional[int] = None,
-        created_date: Optional[str] = None,
-        last_update_by: Optional[int] = None,
-        last_update_date: Optional[str] = None,
-        model_type: Optional[ModelType] = None,
-        calcitems_table_id: Optional[str] = None,
+        unique_name: str | None = None,
+        label: str | None = None,
+        created_by: int | None = None,
+        created_date: str | None = None,
+        last_update_by: int | None = None,
+        last_update_date: str | None = None,
+        model_type: ModelType | None = None,
+        calcitems_table_id: str | None = None,
     ):
         """Get the representation corresponding to a DM Model."""
         Model.__init__(
@@ -855,7 +846,7 @@ class DMModel(Model):
         """Get the tables owned by the model."""
         return self._tables
 
-    def calculation_items(self) -> Optional[CalculationItems]:
+    def calculation_items(self) -> CalculationItems | None:
         """Get the calculation items of the model."""
         return self._calc_items
 
@@ -863,7 +854,7 @@ class DMModel(Model):
     def from_dict(
         cls,
         conn: ConnectionSync,
-        attrs: Dict[str, Any],
+        attrs: dict[str, Any],
     ) -> "DMModel":
         """Create a model from a dict of properties."""
         model_type = None
@@ -919,13 +910,13 @@ class ModelObject(Model):
         self,
         conn: ConnectionSync,
         typedid: str,
-        unique_name: Optional[str] = None,
-        label: Optional[str] = None,
-        created_by: Optional[int] = None,
-        created_date: Optional[str] = None,
-        last_update_by: Optional[int] = None,
-        last_update_date: Optional[str] = None,
-        model_class: Optional[str] = None,
+        unique_name: str | None = None,
+        label: str | None = None,
+        created_by: int | None = None,
+        created_date: str | None = None,
+        last_update_by: int | None = None,
+        last_update_date: str | None = None,
+        model_class: str | None = None,
     ):
         """Get the representation corresponding to a ModelObject."""
         Model.__init__(
@@ -957,7 +948,7 @@ class ModelObject(Model):
     def from_dict(
         cls,
         conn: ConnectionSync,
-        attrs: Dict[str, Any],
+        attrs: dict[str, Any],
     ) -> "ModelObject":
         """Create a model from a dict of properties."""
         return ModelObject(
@@ -1016,7 +1007,7 @@ class Datamarts(TableImmutableSource):
 class Instance:
     """A platform instance."""
 
-    def __init__(self, conn: Union[ConnectionAsync, ConnectionSync]):
+    def __init__(self, conn: ConnectionAsync | ConnectionSync):
         if isinstance(conn, ConnectionSync):
             self._conn = conn
         else:

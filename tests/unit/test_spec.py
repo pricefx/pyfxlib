@@ -3,7 +3,6 @@
 from configparser import ConfigParser
 import json
 from tempfile import TemporaryDirectory
-from typing import List
 
 import pytest
 
@@ -39,7 +38,7 @@ def config():
 
 
 def test_unit_spec_valid(config: ConfigParser) -> None:
-    def diag(config: ConfigParser) -> List[str]:
+    def diag(config: ConfigParser) -> list[str]:
         return []
 
     my_spec = spec.UnitSpec(diag)
@@ -53,7 +52,7 @@ def test_unit_spec_valid(config: ConfigParser) -> None:
 
 
 def test_unit_spec_invalid(config: ConfigParser) -> None:
-    def diag(config: ConfigParser) -> List[str]:
+    def diag(config: ConfigParser) -> list[str]:
         return ["failure"]
 
     my_spec = spec.UnitSpec(diag)
@@ -65,7 +64,7 @@ def test_unit_spec_invalid(config: ConfigParser) -> None:
 
 
 def test_optional_spec(config: ConfigParser) -> None:
-    def diag(config: ConfigParser) -> List[str]:
+    def diag(config: ConfigParser) -> list[str]:
         return ["failure"]
 
     my_spec = spec.OptionalSpec(spec.UnitSpec(diag))
@@ -75,7 +74,7 @@ def test_optional_spec(config: ConfigParser) -> None:
 
 
 def test_conditional_spec_inactive(config: ConfigParser) -> None:
-    def diag(config: ConfigParser) -> List[str]:
+    def diag(config: ConfigParser) -> list[str]:
         return ["failure"]
 
     def cond(config: ConfigParser) -> bool:
@@ -88,7 +87,7 @@ def test_conditional_spec_inactive(config: ConfigParser) -> None:
 
 
 def test_conditional_spec_active(config: ConfigParser) -> None:
-    def diag(config: ConfigParser) -> List[str]:
+    def diag(config: ConfigParser) -> list[str]:
         return ["failure"]
 
     def cond(config: ConfigParser) -> bool:
@@ -101,10 +100,10 @@ def test_conditional_spec_active(config: ConfigParser) -> None:
 
 
 def test_composed_spec(config: ConfigParser) -> None:
-    def diag1(config: ConfigParser) -> List[str]:
+    def diag1(config: ConfigParser) -> list[str]:
         return ["failure1"]
 
-    def diag2(config: ConfigParser) -> List[str]:
+    def diag2(config: ConfigParser) -> list[str]:
         return ["failure2"]
 
     my_spec = spec.ComposedSpec(

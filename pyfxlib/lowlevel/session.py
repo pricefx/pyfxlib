@@ -6,14 +6,14 @@ A session is used to manager persistent authentication with the platform.
 from abc import ABC, abstractmethod
 import asyncio
 import base64
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 import getpass
 import json
 import logging
 import os
 import subprocess
 import time
-from typing import Any, Awaitable, Callable, cast, Dict, List, Optional, overload
+from typing import Any, cast, overload
 
 from httpx import AsyncClient, HTTPError, HTTPStatusError, Response, TimeoutException
 
@@ -41,7 +41,7 @@ class PfxSession(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def add_request_hook(self, hook: Callable[[str, str, Dict[str, Any]], None]) -> None:
+    def add_request_hook(self, hook: Callable[[str, str, dict[str, Any]], None]) -> None:
         """Add a hook to be executed before sending request."""
         raise NotImplementedError
 
@@ -101,7 +101,7 @@ class PfxAuthMethod(ABC):
         raise NotImplementedError
 
 
-def pfx_session(auth: PfxAuthMethod, session: Optional[AsyncClient] = None) -> PfxSession:
+def pfx_session(auth: PfxAuthMethod, session: AsyncClient | None = None) -> PfxSession:
     """
     Default PfxSession constructor.
 
@@ -113,7 +113,7 @@ def pfx_session(auth: PfxAuthMethod, session: Optional[AsyncClient] = None) -> P
 
 
 def pfx_session_from_token_file(
-    token_file_path: str, session: Optional[AsyncClient] = None
+    token_file_path: str, session: AsyncClient | None = None
 ) -> PfxSession:
     """
     Default PfxSession constructor using a token file as auth method.
@@ -125,7 +125,7 @@ def pfx_session_from_token_file(
     return pfx_session(PfxAuthTokenFile(token_file_path), session)
 
 
-def pfx_session_from_token(token: str, session: Optional[AsyncClient] = None) -> PfxSession:
+def pfx_session_from_token(token: str, session: AsyncClient | None = None) -> PfxSession:
     """
     Default PfxSession constructor using a static token.
 
@@ -174,15 +174,15 @@ class RetryPfxSession(PfxSession):
     def __init__(
         self,
         wrapped: PfxSession,
-        retry_predicate: Optional[Callable[[HTTPError], bool]] = None,
-        retry_delays: Optional[List[int]] = None,
+        retry_predicate: Callable[[HTTPError], bool] | None = None,
+        retry_delays: list[int] | None = None,
     ) -> None:
         self._wrapped: PfxSession = wrapped
         self._retry_predicate: Callable[[HTTPError], bool] = (
             retry_predicate if retry_predicate is not None else _default_retry_predicate
         )
         # by default 3 retries with respectively 3s, 10s and 30s between retries
-        self._retry_delays: List[int] = retry_delays if retry_delays is not None else [3, 10, 30]
+        self._retry_delays: list[int] = retry_delays if retry_delays is not None else [3, 10, 30]
 
     async def _try(self, method: Callable[[], Awaitable[Response]]) -> Response:
         return await async_retry(method, 0, self._retry_delays, self._retry_predicate)
@@ -199,7 +199,7 @@ class RetryPfxSession(PfxSession):
         """See `httpx.AsyncClient.get`."""
         return await self._try(lambda: self._wrapped.get(url, **kwargs))
 
-    def add_request_hook(self, hook: Callable[[str, str, Dict[str, Any]], None]) -> None:
+    def add_request_hook(self, hook: Callable[[str, str, dict[str, Any]], None]) -> None:
         """Add a hook to be executed before sending request."""
         self._wrapped.add_request_hook(hook)
 
@@ -241,7 +241,7 @@ def _default_retry_predicate(exception: HTTPError) -> bool:
 async def async_retry(  # noqa: E704
     method: Callable[[], Awaitable[Response]],
     nb_tries: int,
-    retry_delays: List[int],
+    retry_delays: list[int],
     retry_predicate: Callable[[HTTPError], bool],
 ) -> Response: ...
 
@@ -250,7 +250,7 @@ async def async_retry(  # noqa: E704
 async def async_retry(  # noqa: E704
     method: Callable[[], Awaitable[None]],
     nb_tries: int,
-    retry_delays: List[int] = ...,
+    retry_delays: list[int] = ...,
     retry_predicate: Callable[[HTTPError], bool] = ...,
 ) -> None: ...
 
@@ -258,7 +258,7 @@ async def async_retry(  # noqa: E704
 async def async_retry(
     method: Callable[[], Awaitable[Response]] | Callable[[], Awaitable[None]],
     nb_tries: int,
-    retry_delays: List[int] = [3, 10, 30],
+    retry_delays: list[int] = [3, 10, 30],
     retry_predicate: Callable[[HTTPError], bool] = _default_retry_predicate,
 ) -> Response | None:
     """
@@ -312,7 +312,7 @@ async def async_retry(
 def retry(  # noqa: E704
     method: Callable[[], Response],
     nb_tries: int,
-    retry_delays: List[int],
+    retry_delays: list[int],
     retry_predicate: Callable[[HTTPError], bool],
 ) -> Response: ...
 
@@ -321,7 +321,7 @@ def retry(  # noqa: E704
 def retry(  # noqa: E704
     method: Callable[[], None],
     nb_tries: int,
-    retry_delays: List[int] = ...,
+    retry_delays: list[int] = ...,
     retry_predicate: Callable[[HTTPError], bool] = ...,
 ) -> None: ...
 
@@ -329,7 +329,7 @@ def retry(  # noqa: E704
 def retry(
     method: Callable[[], Response] | Callable[[], None],
     nb_tries: int,
-    retry_delays: List[int] = [3, 10, 30],
+    retry_delays: list[int] = [3, 10, 30],
     retry_predicate: Callable[[HTTPError], bool] = _default_retry_predicate,
 ) -> Response | None:
     """
@@ -385,7 +385,7 @@ class SimplePfxSession(PfxSession):
     By default, it raises an error for client error or server error responses.
     """
 
-    def __init__(self, auth: PfxAuthMethod, session: Optional[AsyncClient] = None) -> None:
+    def __init__(self, auth: PfxAuthMethod, session: AsyncClient | None = None) -> None:
         """
         Constructor of SimplePfxSession.
 
@@ -398,8 +398,8 @@ class SimplePfxSession(PfxSession):
         self._session: AsyncClient = session
         self._auth = auth
         # initialize authentication method
-        self._before_request_hooks: List[Callable[[str, str, Dict[str, Any]], None]] = []
-        self._after_response_hooks: List[Callable[[Response], None]] = []
+        self._before_request_hooks: list[Callable[[str, str, dict[str, Any]], None]] = []
+        self._after_response_hooks: list[Callable[[Response], None]] = []
 
     async def get(self, url: str, **kwargs: Any) -> Response:
         """See `httpx.AsyncClient.get`."""
@@ -441,7 +441,7 @@ class SimplePfxSession(PfxSession):
         """See `httpx.AsyncClient.post`."""
         return await self.post(url, **kwargs)
 
-    def add_request_hook(self, hook: Callable[[str, str, Dict[str, Any]], None]) -> None:
+    def add_request_hook(self, hook: Callable[[str, str, dict[str, Any]], None]) -> None:
         """Add a hook to be executed before sending request."""
         self._before_request_hooks.append(hook)
 
@@ -473,7 +473,7 @@ class SimplePfxSession(PfxSession):
             del self._session.headers[key]
 
 
-def _error_response_body(err: HTTPStatusError) -> Optional[str]:
+def _error_response_body(err: HTTPStatusError) -> str | None:
     if err.response is not None and err.response.text is not None:
         return err.response.text
     return None
@@ -581,7 +581,7 @@ class PfxAuthUserPass(PfxAuthMethod):
         self._credential = base64.urlsafe_b64encode(
             bytes(f"{partition}/{user}:{passwd_provider()}", "utf-8")
         )
-        self.pfxtoken: Optional[str] = None
+        self.pfxtoken: str | None = None
 
     def _refresh_token(self, session: AsyncClient, response: Response) -> None:
         if "X-PriceFx-jwt" in response.cookies:

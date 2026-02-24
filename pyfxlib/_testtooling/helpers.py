@@ -1,6 +1,7 @@
+from collections.abc import Iterator
 from io import TextIOBase
 import json
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any
 from urllib.parse import ParseResult
 
 import pandas as pd
@@ -33,7 +34,7 @@ class _IntegrationRemote:
         await self._auth.before_request(self._session)
         return self._auth.pfxtoken
 
-    async def trigger_job(self, mo: Dict[str, Any]) -> None:
+    async def trigger_job(self, mo: dict[str, Any]) -> None:
         await self._session.post(
             self.endpoint_url(f"remoteintegrationtestmanager/createJobTriggerTask/{mo['typedId']}"),
             json={
@@ -47,7 +48,7 @@ class _IntegrationRemote:
             },
         )
 
-    async def jobs(self, mo_typedid: str) -> List[Dict[str, Any]]:
+    async def jobs(self, mo_typedid: str) -> list[dict[str, Any]]:
         response = await self._session.post(
             self._pfx_base_url._replace(
                 path="/pricefx/system/admin.fetchjst",
@@ -56,7 +57,7 @@ class _IntegrationRemote:
         )
         return response.json()["response"]["data"]
 
-    async def job(self, mo_typedid: str) -> Dict[str, Any]:
+    async def job(self, mo_typedid: str) -> dict[str, Any]:
         jobs = await self.jobs(mo_typedid)
         if len(jobs) != 1:
             raise Exception(f"Should have only one job for {mo_typedid}, got {len(jobs)}")
@@ -65,8 +66,8 @@ class _IntegrationRemote:
     async def new_model_object(
         self,
         unique_name: str,
-        model_class: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        model_class: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         mc = model_class if model_class is not None else await self.new_model_class()
         return (
             mc,
@@ -81,7 +82,7 @@ class _IntegrationRemote:
             ),
         )
 
-    async def new_model_class(self, unique_name: str = "aModelClass") -> Dict[str, Any]:
+    async def new_model_class(self, unique_name: str = "aModelClass") -> dict[str, Any]:
         return await self._conn.add_object(
             "MC",
             {
@@ -95,7 +96,7 @@ class _IntegrationRemote:
             },
         )
 
-    async def new_empty_datamart(self, name: str, fields_spec: Optional[List[Dict]]):
+    async def new_empty_datamart(self, name: str, fields_spec: list[dict] | None):
         response = await self._session.post(
             self.endpoint_url("datamart.newfc/DM"),
             json={"data": {"uniqueName": name, "label": name}},
@@ -119,7 +120,7 @@ class _IntegrationRemote:
 
 def _calculation_results_as_dict(
     calc_results_as_json: str,
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     return {
         calc_res["resultName"]: calc_res["result"] for calc_res in json.loads(calc_results_as_json)
     }
@@ -133,7 +134,7 @@ class _StringIteratorIO(TextIOBase):
     def readable(self):
         return True
 
-    def read(self, n: Optional[int] = None):
+    def read(self, n: int | None = None):
         while not self._buffer:
             try:
                 self._buffer = next(self._iterator).decode("utf-8")

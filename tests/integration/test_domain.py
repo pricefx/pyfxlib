@@ -1,6 +1,7 @@
+from collections.abc import Iterable
 from io import StringIO
 import json
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -60,9 +61,9 @@ __all__ = [
 )
 def test_platform_job_should_be_able_to_update_the_state_of_the_corresponding_jst(
     _conn: ConnectionAsync,
-    _job_jst: Dict[str, Any],
-    msg: Optional[str],
-    results: Optional[Dict[str, Any]],
+    _job_jst: dict[str, Any],
+    msg: str | None,
+    results: dict[str, Any] | None,
 ):
     # given a PlatformJob
     job = PlatformJob(_conn, _job_jst["id"])
@@ -92,9 +93,9 @@ def test_platform_job_should_be_able_to_update_the_state_of_the_corresponding_js
 
 def test_platform_job_should_be_able_to_update_progress_messages_to_the_corresponding_jst(
     _conn: ConnectionAsync,
-    _job_jst: Dict[str, Any],
+    _job_jst: dict[str, Any],
 ):
-    def assert_jst_has_progress_and_messages(progress: int, messages: List[str]):
+    def assert_jst_has_progress_and_messages(progress: int, messages: list[str]):
         # then the underlying jst is updated
         jst = _conn.get_object(f"{_job_jst['id']}.JST")
         assert jst is not None
@@ -127,9 +128,9 @@ def test_platform_job_should_be_able_to_update_progress_messages_to_the_correspo
 
 def test_platform_job_should_be_able_to_set_results_to_the_corresponding_jst(
     _conn: ConnectionAsync,
-    _job_jst: Dict[str, Any],
+    _job_jst: dict[str, Any],
 ):
-    def assert_jst_has_result(result: Dict[str, Any]):
+    def assert_jst_has_result(result: dict[str, Any]):
         # then the underlying jst is updated
         jst = _conn.get_object(
             f"{_job_jst['id']}.JST",
@@ -157,7 +158,7 @@ def test_platform_job_should_be_able_to_set_results_to_the_corresponding_jst(
 
 
 def test_model_object_should_be_able_to_create_and_read_owned_tables(
-    _conn: ConnectionAsync, _model_object: Dict[str, Any], tmp_path
+    _conn: ConnectionAsync, _model_object: dict[str, Any], tmp_path
 ):
     # given an instance without any model tables
     mo = ModelObject.from_conn(_conn, _model_object["typedId"])
@@ -238,7 +239,7 @@ _VALID_DATAFRAME_CONTENT = [
     [(data, parser, pd_dtype) for data, parser, pd_dtype in _VALID_DATAFRAME_CONTENT],
 )
 def test_instance_should_be_able_to_push_a_dataframe_to_a_model_table(
-    _conn: ConnectionAsync, _model_object: Dict[str, Any], column_data, value_parser, pd_dtype
+    _conn: ConnectionAsync, _model_object: dict[str, Any], column_data, value_parser, pd_dtype
 ):
     # given an instance without any model tables
     mo = ModelObject.from_conn(_conn, _model_object["typedId"])
@@ -290,7 +291,7 @@ def test_instance_should_be_able_to_push_a_dataframe_to_a_model_table(
     [None, ["foo", "bar"]],
 )
 def test_model_object_should_be_able_to_push_and_update_multiindex_dataframes(
-    _conn: ConnectionAsync, _model_object: Dict[str, Any], idx_names
+    _conn: ConnectionAsync, _model_object: dict[str, Any], idx_names
 ):
     # given an instance without any model tables
     mo = ModelObject.from_conn(_conn, _model_object["typedId"])
@@ -357,7 +358,7 @@ def test_model_object_should_be_able_to_push_and_update_multiindex_dataframes(
 
 
 def test_model_object_should_be_able_to_update_data_of_an_owned_tables(
-    _conn: ConnectionAsync, _model_object: Dict[str, Any]
+    _conn: ConnectionAsync, _model_object: dict[str, Any]
 ):
     # given an instance without an owned tables
     mo = ModelObject.from_conn(_conn, _model_object["typedId"])
@@ -400,7 +401,7 @@ def test_model_object_should_be_able_to_update_data_of_an_owned_tables(
     [(data, parser, pd_dtype) for data, parser, pd_dtype in _VALID_DATAFRAME_CONTENT],
 )
 def test_model_object_should_be_able_to_update_data_of_an_owned_tables_from_pandas(
-    _conn: ConnectionAsync, _model_object: Dict[str, Any], column_data, value_parser, pd_dtype
+    _conn: ConnectionAsync, _model_object: dict[str, Any], column_data, value_parser, pd_dtype
 ):
     # given an instance without an owned tables
     mo = ModelObject.from_conn(_conn, _model_object["typedId"])
@@ -445,7 +446,7 @@ def test_model_object_should_be_able_to_update_data_of_an_owned_tables_from_pand
 
 def test_model_object_should_be_able_to_create_and_read_an_attachment(
     _conn: ConnectionAsync,
-    _model_object: Dict[str, Any],
+    _model_object: dict[str, Any],
 ):
     # when getting an empty model object
     mo = ModelObject.from_conn(_conn, _model_object["typedId"])
@@ -725,7 +726,7 @@ def test_instance_should_be_able_to_create_and_read_datamarts(
 
 
 def test_intance_should_give_access_to_model_objects(
-    _instance: Instance, _model_object: Dict[str, Any]
+    _instance: Instance, _model_object: dict[str, Any]
 ):
     # A model object has been added by _model_object
     mo_name = _model_object["uniqueName"]
@@ -748,7 +749,7 @@ def test_intance_should_give_access_to_model_objects(
 )
 def test_instance_should_retry_to_push_a_dataframe_to_a_model_table(
     _connection_with_raising_session: tuple[ConnectionAsync, _RaisingExceptionSession],
-    _model_object: Dict[str, Any],
+    _model_object: dict[str, Any],
     column_data,
     value_parser,
     pd_dtype,
@@ -806,7 +807,7 @@ def test_instance_should_retry_to_push_a_dataframe_to_a_model_table(
 )
 def test_model_object_should_retry_to_update_data_of_an_owned_tables_from_pandas(
     _connection_with_raising_session: tuple[ConnectionAsync, _RaisingExceptionSession],
-    _model_object: Dict[str, Any],
+    _model_object: dict[str, Any],
     column_data,
     value_parser,
     pd_dtype,

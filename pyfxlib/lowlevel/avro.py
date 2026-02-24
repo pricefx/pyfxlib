@@ -1,8 +1,9 @@
 """Utility functions to convert pandas DataFrames to avro."""
 
+from collections.abc import Generator
 import datetime
 from io import BytesIO
-from typing import Any, Dict, Generator, NamedTuple, Union
+from typing import Any, NamedTuple
 
 import fastavro
 import numpy as np
@@ -36,8 +37,8 @@ class AvroStream:
 
     def __init__(
         self,
-        schema: Dict[str, Any],
-        records_stream: Generator[Dict[str, Any], None, None],
+        schema: dict[str, Any],
+        records_stream: Generator[dict[str, Any], None, None],
     ) -> None:
         self._records = records_stream
         self._buffer = BytesIO()
@@ -82,8 +83,8 @@ class AvroStream:
         self._buffer.seek(0)
 
 
-def _infer_schema(data_frame: pd.DataFrame) -> Dict[str, Any]:
-    def avro_type(column: pd.Series) -> Union[str, Dict[str, Any]]:
+def _infer_schema(data_frame: pd.DataFrame) -> dict[str, Any]:
+    def avro_type(column: pd.Series) -> str | dict[str, Any]:
         avro_type = to_avro_type(column)
         if avro_type is not None:
             return avro_type
@@ -99,10 +100,10 @@ def _infer_schema(data_frame: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-def _as_records(df: pd.DataFrame) -> Generator[Dict[str, Any], None, None]:
+def _as_records(df: pd.DataFrame) -> Generator[dict[str, Any], None, None]:
     cols_with_na = df.columns[df.isna().any()]
 
-    def to_pandavro_row(row: NamedTuple) -> Dict[str, Any]:
+    def to_pandavro_row(row: NamedTuple) -> dict[str, Any]:
         record = row._asdict()
         for k, v in record.items():
             # Replace pd.NA with None so fastavro can write it

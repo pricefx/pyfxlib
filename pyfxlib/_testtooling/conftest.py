@@ -1,7 +1,7 @@
 import asyncio
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
 import os
-from typing import Any, Callable, Dict, Optional
+from typing import Any
 from urllib.parse import ParseResult, urlparse
 
 from _pytest.fixtures import fixture
@@ -41,8 +41,8 @@ class _RaisingExceptionSession(RetryPfxSession):
         self,
         wrapped: PfxSession,
         retries: int,
-        exception_to_raise: Optional[Exception] = TimeoutException("timeout"),
-        endpoints_to_fail: Optional[list] = ["datamart.createfc", "datamart.loadfc"],
+        exception_to_raise: Exception | None = TimeoutException("timeout"),
+        endpoints_to_fail: list | None = ["datamart.createfc", "datamart.loadfc"],
     ) -> None:
         self._wrapped: PfxSession = wrapped
         self._retries: int = retries
@@ -70,7 +70,7 @@ class _RaisingExceptionSession(RetryPfxSession):
         """See `httpx.AsyncClient.get`."""
         return await self._wrapped.get(url, **kwargs)
 
-    def add_request_hook(self, hook: Callable[[str, str, Dict[str, Any]], None]) -> None:
+    def add_request_hook(self, hook: Callable[[str, str, dict[str, Any]], None]) -> None:
         """Add a hook to be executed before sending request."""
         self._wrapped.add_request_hook(hook)
 
@@ -155,12 +155,12 @@ def _instance(_async_conn: ConnectionAsync) -> Instance:
 
 
 @pytest_asyncio.fixture(scope="function")
-async def _model_object(_remote: _IntegrationRemote) -> Dict[str, Any]:
+async def _model_object(_remote: _IntegrationRemote) -> dict[str, Any]:
     return (await _remote.new_model_object("aModelObjectName"))[1]
 
 
 @pytest_asyncio.fixture(scope="function")
-async def _job_jst(_remote: _IntegrationRemote, _model_object: Dict[str, Any]) -> Dict[str, Any]:
+async def _job_jst(_remote: _IntegrationRemote, _model_object: dict[str, Any]) -> dict[str, Any]:
     await _remote.trigger_job(_model_object)
     return await _remote.job(_model_object["typedId"])
 

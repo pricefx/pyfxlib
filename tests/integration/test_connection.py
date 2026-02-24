@@ -1,8 +1,8 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 import inspect
 from io import BytesIO, StringIO
 import json
-from typing import Any, Dict, Iterator
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -36,10 +36,10 @@ __all__ = [
 ]
 
 
-def assert_are_equal_for_common_dict_keys(dict_1: Dict[str, Any], dict_2: Dict[str, Any]) -> None:
+def assert_are_equal_for_common_dict_keys(dict_1: dict[str, Any], dict_2: dict[str, Any]) -> None:
     common_keys = set(dict_1.keys()).intersection(dict_2.keys())
 
-    def common_key_dict(dic: Dict[str, Any]) -> Dict[str, Any]:
+    def common_key_dict(dic: dict[str, Any]) -> dict[str, Any]:
         return {key: value for key, value in dic.items() if key in common_keys}
 
     assert len(common_keys) > 0, "at least one common key required, none found"
@@ -284,7 +284,7 @@ async def test_should_be_able_to_update_the_existing_rows_on_a_data_source(
 
 @pytest.mark.asyncio
 async def test_should_be_able_to_attach_a_file_list_attachments_and_pull_an_attachment(
-    _async_conn: ConnectionAsync, _model_object: Dict[str, Any]
+    _async_conn: ConnectionAsync, _model_object: dict[str, Any]
 ):
     # given an empty model object and an attachment content
     mo_typedid = _model_object["typedId"]
@@ -306,7 +306,7 @@ async def test_should_be_able_to_attach_a_file_list_attachments_and_pull_an_atta
 
 @pytest.mark.asyncio
 async def test_should_be_able_to_push_an_owned_table_and_read_it_back(
-    _async_conn: ConnectionAsync, _model_object: Dict[str, Any]
+    _async_conn: ConnectionAsync, _model_object: dict[str, Any]
 ):
     # given an empty model
     mo_typedid = _model_object["typedId"]
@@ -345,7 +345,7 @@ async def test_should_be_able_to_push_an_owned_table_and_read_it_back(
 
 @pytest.mark.asyncio
 async def test_should_be_able_to_update_model_table(
-    _async_conn: ConnectionAsync, _model_object: Dict[str, Any]
+    _async_conn: ConnectionAsync, _model_object: dict[str, Any]
 ):
     # given a model
     mo_typedid = _model_object["typedId"]
@@ -393,7 +393,7 @@ async def test_should_be_able_to_update_model_table(
 
 @pytest.mark.asyncio
 async def test_should_fail_to_update_model_table_when_duplicates(
-    _async_conn: ConnectionAsync, _model_object: Dict[str, Any]
+    _async_conn: ConnectionAsync, _model_object: dict[str, Any]
 ):
     # given a model
     mo_typedid = _model_object["typedId"]
@@ -443,7 +443,7 @@ async def test_should_fail_to_update_model_table_when_duplicates(
 
 @pytest.mark.asyncio
 async def test_should_be_able_update_the_existing_rows_on_a_model_table(
-    _async_conn: ConnectionAsync, _model_object: Dict[str, Any]
+    _async_conn: ConnectionAsync, _model_object: dict[str, Any]
 ):
     # given a model
     mo_typedid = _model_object["typedId"]
@@ -493,8 +493,8 @@ async def test_should_be_able_update_the_existing_rows_on_a_model_table(
 async def test_should_be_able_to_update_a_job_status(
     _remote: _IntegrationRemote,
     _async_conn: ConnectionAsync,
-    _model_object: Dict[str, Any],
-    _job_jst: Dict[str, Any],
+    _model_object: dict[str, Any],
+    _job_jst: dict[str, Any],
 ):
     job_id = _job_jst["id"]
     calc_results = {"foo": 12, "bar": "baz"}

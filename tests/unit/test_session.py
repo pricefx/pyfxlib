@@ -1,7 +1,7 @@
 from datetime import datetime
 import math
 from tempfile import NamedTemporaryFile
-from typing import Any, List
+from typing import Any
 
 from httpx import HTTPError, HTTPStatusError, Request, Response, TimeoutException
 import pytest
@@ -62,7 +62,7 @@ async def test_pfxsession_tokenfile_update():
 
 
 class RaisingExceptionSession:
-    def __init__(self, exceptions: List[HTTPError]) -> None:
+    def __init__(self, exceptions: list[HTTPError]) -> None:
         self.headers = {}
         self._exceptions = exceptions.copy()
         self.post_timestamps = []

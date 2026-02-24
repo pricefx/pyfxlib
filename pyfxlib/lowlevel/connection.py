@@ -7,7 +7,7 @@ For a higher level API, see the `pyfxlib.api.domain` package.
 
 from abc import ABC, abstractmethod
 import asyncio
-from collections.abc import AsyncIterator, Coroutine
+from collections.abc import AsyncIterator, Coroutine, Iterator
 import csv
 from enum import Enum, unique
 from io import BytesIO, TextIOBase
@@ -17,7 +17,7 @@ import mimetypes
 import os
 from pathlib import Path
 import re
-from typing import Any, Dict, IO, Iterator, List, Optional, Tuple, TypeVar
+from typing import Any, IO, TypeVar
 
 from httpx import HTTPStatusError
 import pandas as pd
@@ -51,9 +51,9 @@ class ConnectionAsync(ABC):
         self,
         jst_id: int,
         status_code: JobStatus,
-        progress: Optional[int],
-        msg: Optional[str] = None,
-        results: Optional[Dict[str, Any]] = None,
+        progress: int | None,
+        msg: str | None = None,
+        results: dict[str, Any] | None = None,
     ) -> None:
         """Update the job status on the backend.
 
@@ -71,8 +71,8 @@ class ConnectionAsync(ABC):
     async def get_fcs(
         self,
         typedid: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Get the attributes of a specific fields collection."""
         pass
 
@@ -80,8 +80,8 @@ class ConnectionAsync(ABC):
     async def list_fcs(
         self,
         type_code: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """List all the fields collections of a given type."""
         pass
 
@@ -89,7 +89,7 @@ class ConnectionAsync(ABC):
     async def get_object(
         self,
         typedid: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get the attributes of a specific element."""
         pass
 
@@ -97,7 +97,7 @@ class ConnectionAsync(ABC):
     async def list_objects(
         self,
         type_code: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """List all the elements of a given type."""
         pass
 
@@ -105,8 +105,8 @@ class ConnectionAsync(ABC):
     async def add_object(
         self,
         type_code: str,
-        attributes: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        attributes: dict[str, Any],
+    ) -> dict[str, Any]:
         """Add an object and returns its actual attributes."""
         pass
 
@@ -114,8 +114,8 @@ class ConnectionAsync(ABC):
     async def update_object(
         self,
         type_code: str,
-        attributes: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        attributes: dict[str, Any],
+    ) -> dict[str, Any]:
         """Update an object and returns its actual attributes."""
         pass
 
@@ -129,7 +129,7 @@ class ConnectionAsync(ABC):
     @abstractmethod
     async def fetch_paginated_fcs(
         self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
-    ) -> AsyncIterator[List[Dict[str, Any]]]:
+    ) -> AsyncIterator[list[dict[str, Any]]]:
         """Fetch the content of a data source using paginated requests.
 
         More reliable than stream_fcs for large datasets.
@@ -140,7 +140,7 @@ class ConnectionAsync(ABC):
     async def list_attachments(
         self,
         typedid: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get the information about attachments of the model."""
         pass
 
@@ -168,10 +168,10 @@ class ConnectionAsync(ABC):
     async def create_table(
         self,
         name: str,
-        fields_spec: List[Dict],
+        fields_spec: list[dict],
         content: AvroStream,
-        label: Optional[str] = None,
-        owner_typedid: Optional[str] = None,
+        label: str | None = None,
+        owner_typedid: str | None = None,
         replace_existing: bool = True,
     ) -> None:
         """Create a table in the backend.
@@ -208,7 +208,7 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
-    async def get_calcitems(self, typedid: str) -> List[Dict[str, Any]]:
+    async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
         """Get the calculation items associated with a specific typedid."""
         pass
 
@@ -245,12 +245,12 @@ class ConnectionRemote(ConnectionAsync):
         self,
         jst_id: int,
         status_code: JobStatus,
-        progress: Optional[int],
-        msg: Optional[str] = None,
-        results: Optional[Dict[str, Any]] = None,
+        progress: int | None,
+        msg: str | None = None,
+        results: dict[str, Any] | None = None,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "jstId": jst_id,
             "status": status_code.value,
             "progress": progress,
@@ -275,9 +275,7 @@ class ConnectionRemote(ConnectionAsync):
             json={"data": data},
         )
 
-    async def get_fcs(
-        self, typedid: str, params: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+    async def get_fcs(self, typedid: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(
             f"{self.endpoint}/datamart.getfcs/{typedid}",
@@ -286,8 +284,8 @@ class ConnectionRemote(ConnectionAsync):
         return response.json()["response"]["data"][0]
 
     async def list_fcs(
-        self, type_code: str, params: Optional[Dict[str, Any]] = None
-    ) -> List[Dict[str, Any]]:
+        self, type_code: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(
             f"{self.endpoint}/datamart.getfcs/{type_code}", json={"data": params}
@@ -297,7 +295,7 @@ class ConnectionRemote(ConnectionAsync):
     async def get_object(
         self,
         typedid: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         id, type_code = _split_typedid(typedid)
         response = await self.session.post(f"{self.endpoint}/fetch/{type_code}/{id}")
@@ -306,12 +304,12 @@ class ConnectionRemote(ConnectionAsync):
     async def list_objects(
         self,
         type_code: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(f"{self.endpoint}/fetch/{type_code}")
         return response.json()["response"]["data"]
 
-    async def add_object(self, type_code: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
+    async def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(
             f"{self.endpoint}/add/{type_code}",
@@ -319,7 +317,7 @@ class ConnectionRemote(ConnectionAsync):
         )
         return response.json()["response"]["data"][0]
 
-    async def update_object(self, type_code: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(
             f"{self.endpoint}/update/{type_code}",
@@ -340,9 +338,9 @@ class ConnectionRemote(ConnectionAsync):
 
     async def fetch_paginated_fcs(
         self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
-    ) -> AsyncIterator[List[Dict[str, Any]]]:
+    ) -> AsyncIterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method."""
-        sort_by: List[str] = []
+        sort_by: list[str] = []
         fc_meta = await self.get_fcs(typedid)
         sort_by = [field["name"] for field in fc_meta.get("fields", []) if field.get("key", False)]
 
@@ -361,7 +359,7 @@ class ConnectionRemote(ConnectionAsync):
     async def list_attachments(
         self,
         typedid: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(f"{self.endpoint}/bdmanager.list/{typedid}")
         return response.json()["response"]["data"]
@@ -425,16 +423,16 @@ class ConnectionRemote(ConnectionAsync):
     async def create_table(
         self,
         name: str,
-        fields_spec: List[Dict],
+        fields_spec: list[dict],
         content: AvroStream,
-        label: Optional[str] = None,
-        owner_typedid: Optional[str] = None,
+        label: str | None = None,
+        owner_typedid: str | None = None,
         replace_existing: bool = True,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
         typecode = "DMT" if owner_typedid is not None else "DMDS"
 
-        schema: Dict[str, Any] = {
+        schema: dict[str, Any] = {
             "label": label if label is not None else name,
             "fields": fields_spec,
         }
@@ -462,7 +460,7 @@ class ConnectionRemote(ConnectionAsync):
             files=files,
         )
 
-    async def _fc_spec(self, typedid: str) -> Optional[Dict]:
+    async def _fc_spec(self, typedid: str) -> dict | None:
         objectid = typedid.split(".")[0]
         fc_type = typedid.split(".")[1]
         response_value = await self.session.post(
@@ -500,7 +498,7 @@ class ConnectionRemote(ConnectionAsync):
         finally:
             await self.session.post(f"{self.endpoint}/uploadmanager.deleteslot/{uploadslot}")
 
-    async def get_calcitems(self, typedid: str) -> List[Dict[str, Any]]:
+    async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         url = f"{self.endpoint}/lookuptablemanager.fetch/{_split_typedid(typedid)[0]}"
         response = await self.session.post(url)
@@ -521,7 +519,7 @@ class ConnectionRemote(ConnectionAsync):
         )
 
 
-def _split_typedid(typed_id: str) -> Tuple[int, str]:
+def _split_typedid(typed_id: str) -> tuple[int, str]:
     match = re.search(r"^(?P<id>[0-9]+)\.(?P<type_code>[A-Z]+)$", typed_id)
     if match:
         return (int(match.group("id")), match.group("type_code"))
@@ -538,7 +536,7 @@ class ConnectionLocal(ConnectionAsync):
     def __init__(
         self,
         path: Path,
-        logformat: Optional[str] = None,
+        logformat: str | None = None,
     ) -> None:
         self.path = path
 
@@ -570,9 +568,9 @@ class ConnectionLocal(ConnectionAsync):
         self,
         jst_id: int,
         status_code: JobStatus,
-        progress: Optional[int],
-        msg: Optional[str] = None,
-        results: Optional[Dict[str, Any]] = None,
+        progress: int | None,
+        msg: str | None = None,
+        results: dict[str, Any] | None = None,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
         logfile = self._logs_path / f"{str(jst_id)}.txt"
@@ -599,8 +597,8 @@ class ConnectionLocal(ConnectionAsync):
     async def get_fcs(
         self,
         typedid: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method.
 
         This implementation will return a minimal dict.
@@ -610,8 +608,8 @@ class ConnectionLocal(ConnectionAsync):
     async def list_fcs(
         self,
         type_code: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method.
 
         This implementation of the methods always returns an empty list.
@@ -621,7 +619,7 @@ class ConnectionLocal(ConnectionAsync):
     async def get_object(
         self,
         typedid: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method.
 
         This implementation will return a minimal dict.
@@ -631,21 +629,21 @@ class ConnectionLocal(ConnectionAsync):
     async def list_objects(
         self,
         type_code: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method.
 
         This implementation of the methods always returns an empty list.
         """
         return []
 
-    async def add_object(self, type_code: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
+    async def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method.
 
         This implementation of the methods always returns the attributes.
         """
         return attributes
 
-    async def update_object(self, type_code: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method.
 
         This implementation of the methods always returns the attributes.
@@ -662,7 +660,7 @@ class ConnectionLocal(ConnectionAsync):
 
     async def fetch_paginated_fcs(
         self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
-    ) -> AsyncIterator[List[Dict[str, Any]]]:
+    ) -> AsyncIterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method."""
         for chunk in pd.read_csv(self._data_sources_path / f"{typedid}.csv", chunksize=page_size):
             yield chunk.to_dict(orient="records")
@@ -670,7 +668,7 @@ class ConnectionLocal(ConnectionAsync):
     async def list_attachments(
         self,
         typedid: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         attachments_path = self._attachments_path(typedid)
         res = []
@@ -721,10 +719,10 @@ class ConnectionLocal(ConnectionAsync):
     async def create_table(
         self,
         name: str,
-        fields_spec: List[Dict],
+        fields_spec: list[dict],
         content: AvroStream,
-        label: Optional[str] = None,
-        owner_typedid: Optional[str] = None,
+        label: str | None = None,
+        owner_typedid: str | None = None,
         replace_existing: bool = True,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
@@ -747,9 +745,9 @@ class ConnectionLocal(ConnectionAsync):
             while buffer := data.read(4096):
                 file.write(buffer)
 
-    async def get_calcitems(self, typedid: str) -> List[Dict[str, Any]]:
+    async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        res: List[Dict[str, Any]] = []
+        res: list[dict[str, Any]] = []
         with open(self.calcitems_path) as csvfile:
             csvcontent = csv.reader(csvfile)
             header = csvcontent.__next__()
@@ -787,7 +785,7 @@ class ConnectionComposed(ConnectionAsync):
 
     def __init__(
         self,
-        dispatch: Dict[str, ConnectionAsync],
+        dispatch: dict[str, ConnectionAsync],
         default_connection: ConnectionAsync,
     ) -> None:
         self._dispatch = dispatch
@@ -800,9 +798,9 @@ class ConnectionComposed(ConnectionAsync):
         self,
         jst_id: int,
         status_code: JobStatus,
-        progress: Optional[int],
-        msg: Optional[str] = None,
-        results: Optional[Dict[str, Any]] = None,
+        progress: int | None,
+        msg: str | None = None,
+        results: dict[str, Any] | None = None,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
         await self._dispatch["job_updates"].update_status(
@@ -812,38 +810,38 @@ class ConnectionComposed(ConnectionAsync):
     async def get_fcs(
         self,
         typedid: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.get_fcs(typedid)
 
     async def list_fcs(
         self,
         type_code: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.list_fcs(type_code, params)
 
     async def get_object(
         self,
         typedid: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.get_object(typedid)
 
     async def list_objects(
         self,
         type_code: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.list_objects(type_code)
 
-    async def add_object(self, type_code: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
+    async def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.add_object(type_code, attributes)
 
-    async def update_object(self, type_code: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.update_object(type_code, attributes)
 
@@ -856,7 +854,7 @@ class ConnectionComposed(ConnectionAsync):
 
     async def fetch_paginated_fcs(
         self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
-    ) -> AsyncIterator[List[Dict[str, Any]]]:
+    ) -> AsyncIterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method."""
         async for page in self._dispatch["pa_tables"].fetch_paginated_fcs(typedid, page_size):
             yield page
@@ -864,7 +862,7 @@ class ConnectionComposed(ConnectionAsync):
     async def list_attachments(
         self,
         typedid: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return await self._dispatch["model_attachments"].list_attachments(typedid)
 
@@ -892,10 +890,10 @@ class ConnectionComposed(ConnectionAsync):
     async def create_table(
         self,
         name: str,
-        fields_spec: List[Dict],
+        fields_spec: list[dict],
         content: AvroStream,
-        label: Optional[str] = None,
-        owner_typedid: Optional[str] = None,
+        label: str | None = None,
+        owner_typedid: str | None = None,
         replace_existing: bool = True,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
@@ -907,7 +905,7 @@ class ConnectionComposed(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         await self._dispatch["model_tables"].update_table(typedid, data)
 
-    async def get_calcitems(self, typedid: str) -> List[Dict[str, Any]]:
+    async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return await self._dispatch["model_parameters"].get_calcitems(typedid)
 
@@ -956,9 +954,9 @@ class ConnectionSync:
         self,
         jst_id: int,
         status_code: JobStatus,
-        progress: Optional[int],
-        msg: Optional[str] = None,
-        results: Optional[Dict[str, Any]] = None,
+        progress: int | None,
+        msg: str | None = None,
+        results: dict[str, Any] | None = None,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.update_status(jst_id, status_code, progress, msg, results))
@@ -966,38 +964,38 @@ class ConnectionSync:
     def get_fcs(
         self,
         typedid: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.get_fcs(typedid, params))
 
     def list_fcs(
         self,
         type_code: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.list_fcs(type_code, params))
 
     def get_object(
         self,
         typedid: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.get_object(typedid))
 
     def list_objects(
         self,
         type_code: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.list_objects(type_code))
 
-    def add_object(self, type_code: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
+    def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.add_object(type_code, attributes))
 
-    def update_object(self, type_code: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
+    def update_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.update_object(type_code, attributes))
 
@@ -1009,14 +1007,14 @@ class ConnectionSync:
 
     def fetch_paginated_fcs(
         self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
-    ) -> Iterator[List[Dict[str, Any]]]:
+    ) -> Iterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method."""
         return _sync_iterator(self._conn.fetch_paginated_fcs(typedid, page_size))
 
     def list_attachments(
         self,
         typedid: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.list_attachments(typedid))
 
@@ -1041,10 +1039,10 @@ class ConnectionSync:
     def create_table(
         self,
         name: str,
-        fields_spec: List[Dict],
+        fields_spec: list[dict],
         content: AvroStream,
-        label: Optional[str] = None,
-        owner_typedid: Optional[str] = None,
+        label: str | None = None,
+        owner_typedid: str | None = None,
         replace_existing: bool = True,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
@@ -1058,7 +1056,7 @@ class ConnectionSync:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.update_table(typedid, data))
 
-    def get_calcitems(self, typedid: str) -> List[Dict[str, Any]]:
+    def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.get_calcitems(typedid))
 
