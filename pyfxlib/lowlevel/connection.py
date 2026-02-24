@@ -280,6 +280,19 @@ class ConnectionAsync(ABC):
         """Push a new calculation item associated with a specific typedid."""
         pass
 
+    @abstractmethod
+    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+        """Send a notification to the user via the backend.
+
+        See https://pricefx.atlassian.net/wiki/spaces/UNITY/pages/5482283105/App+Notifications
+        and https://api.pricefx.com/openapi/reference/pricefx-server_openapi/notifications/post-notification.send # noqa: E501
+        for details on allowed values in the request body.
+
+        Returns the backend response as a dictionary.
+        Notifications are not supported by the BE versions < 15.2 (raises an error)
+        """
+        pass
+
 
 # By default, stream download timeout is 60s which may cause errors when the table is large.
 # (see https://pricefx.atlassian.net/browse/PFUN-14665)
@@ -465,6 +478,17 @@ class ConnectionRemote(ConnectionAsync):
             "sortBy": [sort_by] if sort_by else None,
         }
         response = await self.session.post(f"{self.endpoint}/fetch/{type_code}", json=body)
+        return response.json()["response"]["data"]
+
+    async def get_object_metadata(
+        self,
+        type_code: str,
+        payload_key: str,
+        object_id: int,
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        payload = {"data": {payload_key: str(object_id)}}
+        response = await self.session.post(f"{self.endpoint}/fetch/{type_code}", json=payload)
         return response.json()["response"]["data"]
 
     async def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
@@ -675,6 +699,22 @@ class ConnectionRemote(ConnectionAsync):
                 },
             },
         )
+
+    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        backend_version = await self.backend_version()
+        if ((backend_version["major"] or 0) < 15) or (
+            (backend_version["major"] or 0) == 15 and (backend_version["minor"] or 0) < 2
+        ):
+            raise RuntimeError(
+                "Notifications are not supported by backend versions below 15.2. "
+                f"Current backend version: {backend_version}"
+            )
+        response = await self.session.post(
+            f"{self.endpoint}/notification.send",
+            json={"data": {"notification": notification}},
+        )
+        return response.json()["response"]
 
 
 def _split_typedid(typed_id: str) -> tuple[int, str]:
@@ -954,6 +994,10 @@ class ConnectionLocal(ConnectionAsync):
         # Nothing to do
         return
 
+    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return {}
+
 
 class ConnectionComposed(ConnectionAsync):
     """A connection that composes a remote and local connections.
@@ -1111,6 +1155,10 @@ class ConnectionComposed(ConnectionAsync):
     async def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
         """See `ConnectionAsync` corresponding method."""
         await self._dispatch["model_parameters"].push_calcitem(typedid, key1, key2, value)
+
+    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.send_notification(notification)
 
 
 T = TypeVar("T")
@@ -1284,3 +1332,7 @@ class ConnectionSync:
     def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.push_calcitem(typedid, key1, key2, value))
+
+    def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.send_notification(notification))
