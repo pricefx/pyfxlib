@@ -185,6 +185,26 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
+    async def submit_lpg(self, lpg_id: int, product_typedids: list[str]) -> list[dict[str, Any]]:
+        """Accept changes to LPG items in the workflow.
+
+        Unsubmitted items will be submitted.
+        Already submitted items will be approved.
+
+        Note: the endpoint only returns data when
+        a single id is passed, otherwise "data" is null
+
+        Args:
+            lpg_id: Id of the LPG
+            product_typedids: list of typedIds of the products to submit,
+                              in the format "{id}.{typeCode}"
+        Returns:
+            A dict representing a product, as defined in the Pricefx REST API public documentation
+            if a single typedId is passed, otherwise an empty list.
+        """
+        pass
+
+    @abstractmethod
     async def get_object_metadata(
         self,
         type_code: str,
@@ -562,6 +582,13 @@ class ConnectionRemote(ConnectionAsync):
             "textMatchStyle": "exact",
         }
         await self.session.post(f"{self.endpoint}/pricegridmanager.update/{lpg_id}", json=payload)
+
+    async def submit_lpg(self, lpg_id: int, product_typedids: list[str]) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        payload = {
+            "data": {"ids": product_typedids        }}
+        response = await self.session.post(f"{self.endpoint}/pricegridmanager.accept/{lpg_id}", json=payload)
+        return response.json()["response"]["data"]
 
     async def get_object_metadata(
         self,
@@ -953,6 +980,10 @@ class ConnectionLocal(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return None
 
+    async def submit_lpg(self, lpg_id: int, product_typedids: list[str]) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return []
+
     async def get_object_metadata(
         self,
         type_code: str,
@@ -1202,6 +1233,10 @@ class ConnectionComposed(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return await self._default.update_lpg(lpg_id, field_to_update, new_value, product, comment)
 
+    async def submit_lpg(self, lpg_id: int, product_typedids: list[str]) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.submit_lpg(lpg_id, product_typedids)
+
     async def get_object_metadata(
         self,
         type_code: str,
@@ -1404,6 +1439,10 @@ class ConnectionSync:
         return _run_sync(
             self._conn.update_lpg(lpg_id, field_to_update, new_value, product, comment)
         )
+
+    def submit_lpg(self, lpg_id: int, product_typedids: list[str]) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.submit_lpg(lpg_id, product_typedids))
 
     def get_object_metadata(
         self,
