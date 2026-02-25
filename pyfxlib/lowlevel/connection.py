@@ -357,6 +357,22 @@ class ConnectionAsync(ABC):
         """
         pass
 
+    @abstractmethod
+    async def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
+        """Import files to the backend.
+
+        Args:
+            files:
+                - for core < 15.0.0:
+                    {"data": (None, json dump of file metadata, "application/json")}
+                    with file metadata in the format {"uniqueName": ..., "label": ...}
+                - for core >= 15.0.0:
+                    {"file": (filename, file content as bytes, "application/zip")}
+        Returns:
+            The typed id of the imported object
+        """
+        pass
+
 
 # By default, stream download timeout is 60s which may cause errors when the table is large.
 # (see https://pricefx.atlassian.net/browse/PFUN-14665)
@@ -841,6 +857,14 @@ class ConnectionRemote(ConnectionAsync):
         )
         return response.json()["response"]
 
+    async def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post_simple(
+            f"{self.endpoint}/optimization.modelimport",
+            files=files,
+        )
+        return response.json()["response"]["data"][0]["typedId"]
+
 
 def _split_typedid(typed_id: str) -> tuple[int, str]:
     match = re.search(r"^(?P<id>[0-9]+)\.(?P<type_code>[A-Z]+)$", typed_id)
@@ -1158,6 +1182,10 @@ class ConnectionLocal(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return {}
 
+    async def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
+        """See `ConnectionAsync` corresponding method."""
+        return ""
+
 
 class ConnectionComposed(ConnectionAsync):
     """A connection that composes a remote and local connections.
@@ -1348,6 +1376,10 @@ class ConnectionComposed(ConnectionAsync):
     async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.send_notification(notification)
+
+    async def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.import_files(files)
 
 
 T = TypeVar("T")
@@ -1556,3 +1588,7 @@ class ConnectionSync:
     def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.send_notification(notification))
+
+    def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.import_files(files))
