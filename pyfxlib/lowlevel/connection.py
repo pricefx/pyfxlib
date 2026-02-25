@@ -79,6 +79,11 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
+    async def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
+        """List all users available in the system."""
+        pass
+
+    @abstractmethod
     async def get_fcs(
         self,
         typedid: str,
@@ -462,6 +467,15 @@ class ConnectionRemote(ConnectionAsync):
             json={"data": data},
         )
 
+    async def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(f"{self.endpoint}/accountmanager.fetchusers", **kwargs)
+        return [
+            user_info
+            for user_info in response.json()["response"]["data"]
+            if user_info.get("email") is not None
+        ]
+
     async def get_fcs(self, typedid: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(
@@ -585,9 +599,10 @@ class ConnectionRemote(ConnectionAsync):
 
     async def submit_lpg(self, lpg_id: int, product_typedids: list[str]) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        payload = {
-            "data": {"ids": product_typedids        }}
-        response = await self.session.post(f"{self.endpoint}/pricegridmanager.accept/{lpg_id}", json=payload)
+        payload = {"data": {"ids": product_typedids}}
+        response = await self.session.post(
+            f"{self.endpoint}/pricegridmanager.accept/{lpg_id}", json=payload
+        )
         return response.json()["response"]["data"]
 
     async def get_object_metadata(
@@ -906,6 +921,10 @@ class ConnectionLocal(ConnectionAsync):
             },
         )
 
+    async def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return []
+
     async def get_fcs(
         self,
         typedid: str,
@@ -1175,6 +1194,10 @@ class ConnectionComposed(ConnectionAsync):
             jst_id, status_code, progress, msg, results
         )
 
+    async def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.list_users(**kwargs)
+
     async def get_fcs(
         self,
         typedid: str,
@@ -1377,6 +1400,10 @@ class ConnectionSync:
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.update_status(jst_id, status_code, progress, msg, results))
+
+    def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.list_users(**kwargs))
 
     def get_fcs(
         self,
