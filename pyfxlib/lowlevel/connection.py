@@ -373,6 +373,32 @@ class ConnectionAsync(ABC):
         """
         pass
 
+    @abstractmethod
+    async def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
+        """Fetches the schema of a queryAPI query result: column names and types.
+
+        See: https://pricefx.atlassian.net/wiki/spaces/KB/pages/5753667585/Pipeline+Queries+QueryAPI
+
+        Args:
+            query: The queryAPI query definition.
+        Returns:
+            The query result metadata (column names and types) as returned by the backend.
+        """
+        pass
+
+    @abstractmethod
+    async def query_execute(self, query: dict[str, Any]) -> list[list[Any]]:
+        """Executes a queryAPI and returns the result rows.
+
+        See: https://pricefx.atlassian.net/wiki/spaces/KB/pages/5753667585/Pipeline+Queries+QueryAPI
+
+        Args:
+            query: The queryAPI query definition.
+        Returns:
+            The query results as a list of rows, each row being a list of values.
+        """
+        pass
+
 
 # By default, stream download timeout is 60s which may cause errors when the table is large.
 # (see https://pricefx.atlassian.net/browse/PFUN-14665)
@@ -859,11 +885,27 @@ class ConnectionRemote(ConnectionAsync):
 
     async def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
         """See `ConnectionAsync` corresponding method."""
-        response = await self.session.post_simple(
+        response = await self.session.post(
             f"{self.endpoint}/optimization.modelimport",
             files=files,
         )
         return response.json()["response"]["data"][0]["typedId"]
+
+    async def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(
+            f"{self.endpoint}/queryapi.meta",
+            json={"data": {"query": query}},
+        )
+        return response.json()["response"]["data"][0]
+
+    async def query_execute(self, query: dict[str, Any]) -> list[list[Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(
+            f"{self.endpoint}/queryapi.execute",
+            json={"data": {"query": query}},
+        )
+        return response.json()["response"]["data"]
 
 
 def _split_typedid(typed_id: str) -> tuple[int, str]:
@@ -1186,6 +1228,14 @@ class ConnectionLocal(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return ""
 
+    async def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return {"columns": []}
+
+    async def query_execute(self, query: dict[str, Any]) -> list[list[Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return []
+
 
 class ConnectionComposed(ConnectionAsync):
     """A connection that composes a remote and local connections.
@@ -1380,6 +1430,14 @@ class ConnectionComposed(ConnectionAsync):
     async def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.import_files(files)
+
+    async def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.query_meta(query)
+
+    async def query_execute(self, query: dict[str, Any]) -> list[list[Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.query_execute(query)
 
 
 T = TypeVar("T")
@@ -1592,3 +1650,11 @@ class ConnectionSync:
     def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.import_files(files))
+
+    def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.query_meta(query))
+
+    def query_execute(self, query: dict[str, Any]) -> list[list[Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.query_execute(query))
