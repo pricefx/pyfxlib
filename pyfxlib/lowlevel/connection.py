@@ -47,6 +47,17 @@ class ConnectionAsync(ABC):
     """
 
     @abstractmethod
+    async def backend_version(self) -> dict[str, int | None]:
+        """Fetch the backend version information.
+
+        Returns:
+            A dict containing at least the major version,
+            optionally the minor and the patch values,
+             e.g. {"major": 15, "minor": 2, "patch": 0}.
+        """
+        pass
+
+    @abstractmethod
     async def update_status(
         self,
         jst_id: int,
@@ -328,6 +339,22 @@ class ConnectionRemote(ConnectionAsync):
 
     def __repr__(self) -> str:
         return f"ConnectionRemote({self.endpoint})"
+
+    async def backend_version(self) -> dict[str, int | None]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(f"{self.endpoint}/login/extended")
+        backend_version = str(response.json()["response"]["data"][0]["extendedData"]["Release"])
+        try:
+            if backend_version.endswith("-SNAPSHOT"):
+                backend_version = backend_version[: -len("-SNAPSHOT")]
+            splitted = [int(v) for v in backend_version.split(".")]
+            return {"major": None, "minor": None, "patch": None} | {
+                k: v for k, v in zip(["major", "minor", "patch"], splitted)
+            }
+        except ValueError as err:
+            raise ValueError(
+                f"Invalid version format: {backend_version}. Expected format is 'major.minor.patch' or 'major.minor' or 'major' with int values.",  # noqa: E501
+            ) from err
 
     async def update_status(
         self,
@@ -695,6 +722,10 @@ class ConnectionLocal(ConnectionAsync):
         os.makedirs(self.path / model_typedid / "attachments", exist_ok=True)
         return self.path / model_typedid / "attachments"
 
+    async def backend_version(self) -> dict[str, int | None]:
+        """See `ConnectionAsync` corresponding method."""
+        return {"major": 99, "minor": None, "patch": None}
+
     async def update_status(
         self,
         jst_id: int,
@@ -942,6 +973,10 @@ class ConnectionComposed(ConnectionAsync):
     def __repr__(self) -> str:
         return f"ConnectionDispatch(default={self._default})"
 
+    async def backend_version(self) -> dict[str, int | None]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.backend_version()
+
     async def update_status(
         self,
         jst_id: int,
@@ -1113,6 +1148,10 @@ class ConnectionSync:
         # event loop.
         if hasattr(conn, "session"):
             conn.session.set_header("Connection", "close")
+
+    def backend_version(self) -> dict[str, int | None]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.backend_version())
 
     def update_status(
         self,

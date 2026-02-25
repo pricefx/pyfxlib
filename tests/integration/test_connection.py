@@ -611,3 +611,12 @@ def test_connection_sync_returns_values_not_coroutines(_conn: ConnectionSync):
     chunks = _conn.stream_fcs(list_dmds[0]["typedId"])
     assert not inspect.iscoroutine(chunks)
     assert isinstance(chunks, Iterator)
+
+
+@pytest.mark.asyncio
+async def test_backend_version_should_return_version_dict(_async_conn: ConnectionAsync):
+    version = await _async_conn.backend_version()
+    print(f"Backend version: {version}")
+    assert isinstance(version["major"], int)
+    assert version["minor"] is None or isinstance(version["minor"], int)
+    assert version["patch"] is None or isinstance(version["patch"], int)
