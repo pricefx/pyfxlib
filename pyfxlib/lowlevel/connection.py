@@ -47,6 +47,15 @@ class ConnectionAsync(ABC):
     """
 
     @abstractmethod
+    async def login_extended(self) -> dict[str, Any]:
+        """Calls POST login/extended and returns the raw JSON response.
+
+        Usually used to validate the authentication token (raises an error if the token is invalid)
+        or for the backen_version method to get the backend version from the response.
+        """
+        pass
+
+    @abstractmethod
     async def backend_version(self) -> dict[str, int | None]:
         """Fetch the backend version information.
 
@@ -459,10 +468,15 @@ class ConnectionRemote(ConnectionAsync):
     def __repr__(self) -> str:
         return f"ConnectionRemote({self.endpoint})"
 
-    async def backend_version(self) -> dict[str, int | None]:
+    async def login_extended(self) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(f"{self.endpoint}/login/extended")
-        backend_version = str(response.json()["response"]["data"][0]["extendedData"]["Release"])
+        return response.json()
+
+    async def backend_version(self) -> dict[str, int | None]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.login_extended()
+        backend_version = str(response["response"]["data"][0]["extendedData"]["Release"])
         try:
             if backend_version.endswith("-SNAPSHOT"):
                 backend_version = backend_version[: -len("-SNAPSHOT")]
@@ -953,6 +967,10 @@ class ConnectionLocal(ConnectionAsync):
         os.makedirs(self.path / model_typedid / "attachments", exist_ok=True)
         return self.path / model_typedid / "attachments"
 
+    async def login_extended(self) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return {"response": {"data": [{"extendedData": {"Release": "99.0-SNAPSHOT"}}]}}
+
     async def backend_version(self) -> dict[str, int | None]:
         """See `ConnectionAsync` corresponding method."""
         return {"major": 99, "minor": None, "patch": None}
@@ -1255,6 +1273,10 @@ class ConnectionComposed(ConnectionAsync):
     def __repr__(self) -> str:
         return f"ConnectionDispatch(default={self._default})"
 
+    async def login_extended(self) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.login_extended()
+
     async def backend_version(self) -> dict[str, int | None]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.backend_version()
@@ -1475,6 +1497,10 @@ class ConnectionSync:
         # event loop.
         if hasattr(conn, "session"):
             conn.session.set_header("Connection", "close")
+
+    def login_extended(self) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.login_extended())
 
     def backend_version(self) -> dict[str, int | None]:
         """See `ConnectionAsync` corresponding method."""
