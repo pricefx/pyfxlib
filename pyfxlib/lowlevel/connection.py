@@ -93,12 +93,12 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
-    async def get_fcs(
+    async def get_fc(
         self,
         typedid: str,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Get the attributes of a specific fields collection."""
+        """Get the attributes of a specific field collection."""
         pass
 
     @abstractmethod
@@ -256,19 +256,19 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
-    async def stream_fcs(
+    async def stream_dm_data(
         self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
     ) -> AsyncIterator[bytes]:
         """Stream the content of a data source."""
         yield b""
 
     @abstractmethod
-    async def fetch_paginated_fcs(
+    async def fetch_paginated_dm_data(
         self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
     ) -> AsyncIterator[list[dict[str, Any]]]:
         """Fetch the content of a data source using paginated requests.
 
-        More reliable than stream_fcs for large datasets.
+        More reliable than stream_dm_data for large datasets.
         """
         yield []
 
@@ -565,7 +565,7 @@ class ConnectionRemote(ConnectionAsync):
             if user_info.get("email") is not None
         ]
 
-    async def get_fcs(self, typedid: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def get_fc(self, typedid: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(
             f"{self.endpoint}/datamart.getfcs/{typedid}",
@@ -721,7 +721,7 @@ class ConnectionRemote(ConnectionAsync):
         )
         return response.json()["response"]["data"][0]
 
-    async def stream_fcs(
+    async def stream_dm_data(
         self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
     ) -> AsyncIterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
@@ -732,12 +732,12 @@ class ConnectionRemote(ConnectionAsync):
         ):
             yield chunk
 
-    async def fetch_paginated_fcs(
+    async def fetch_paginated_dm_data(
         self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
     ) -> AsyncIterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method."""
         sort_by: list[str] = []
-        fc_meta = await self.get_fcs(typedid)
+        fc_meta = await self.get_fc(typedid)
         sort_by = [field["name"] for field in fc_meta.get("fields", []) if field.get("key", False)]
 
         start_row = 0
@@ -1087,7 +1087,7 @@ class ConnectionLocal(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return []
 
-    async def get_fcs(
+    async def get_fc(
         self,
         typedid: str,
         params: dict[str, Any] | None = None,
@@ -1191,7 +1191,7 @@ class ConnectionLocal(ConnectionAsync):
         """
         return attributes
 
-    async def stream_fcs(
+    async def stream_dm_data(
         self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
     ) -> AsyncIterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
@@ -1199,7 +1199,7 @@ class ConnectionLocal(ConnectionAsync):
             while chunk := fin.read(chunk_size):
                 yield chunk
 
-    async def fetch_paginated_fcs(
+    async def fetch_paginated_dm_data(
         self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
     ) -> AsyncIterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method."""
@@ -1395,13 +1395,13 @@ class ConnectionComposed(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return await self._default.list_users(**kwargs)
 
-    async def get_fcs(
+    async def get_fc(
         self,
         typedid: str,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        return await self._default.get_fcs(typedid)
+        return await self._default.get_fc(typedid)
 
     async def list_fcs(
         self,
@@ -1474,18 +1474,18 @@ class ConnectionComposed(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return await self._default.update_object(type_code, attributes)
 
-    async def stream_fcs(
+    async def stream_dm_data(
         self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
     ) -> AsyncIterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
-        async for chunk in self._dispatch["pa_tables"].stream_fcs(typedid, chunk_size):
+        async for chunk in self._dispatch["pa_tables"].stream_dm_data(typedid, chunk_size):
             yield chunk
 
-    async def fetch_paginated_fcs(
+    async def fetch_paginated_dm_data(
         self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
     ) -> AsyncIterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method."""
-        async for page in self._dispatch["pa_tables"].fetch_paginated_fcs(typedid, page_size):
+        async for page in self._dispatch["pa_tables"].fetch_paginated_dm_data(typedid, page_size):
             yield page
 
     async def list_attachments(
@@ -1647,13 +1647,13 @@ class ConnectionSync:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.list_users(**kwargs))
 
-    def get_fcs(
+    def get_fc(
         self,
         typedid: str,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.get_fcs(typedid, params))
+        return _run_sync(self._conn.get_fc(typedid, params))
 
     def list_fcs(
         self,
@@ -1730,17 +1730,17 @@ class ConnectionSync:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.update_object(type_code, attributes))
 
-    def stream_fcs(
+    def stream_dm_data(
         self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
     ) -> Iterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
-        return _sync_iterator(self._conn.stream_fcs(typedid, chunk_size))
+        return _sync_iterator(self._conn.stream_dm_data(typedid, chunk_size))
 
-    def fetch_paginated_fcs(
+    def fetch_paginated_dm_data(
         self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
     ) -> Iterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method."""
-        return _sync_iterator(self._conn.fetch_paginated_fcs(typedid, page_size))
+        return _sync_iterator(self._conn.fetch_paginated_dm_data(typedid, page_size))
 
     def list_attachments(
         self,

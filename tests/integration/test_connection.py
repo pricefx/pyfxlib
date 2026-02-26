@@ -118,8 +118,8 @@ async def test_push_pull_and_list_data_source_should_work_as_expected(_async_con
     assert fcs[0]["label"] == data_source_label
     assert fcs[0]["uniqueName"] == data_source_name
 
-    # and it can be fetched using its typedId via get_fcs
-    data_souce = await _async_conn.get_fcs(fcs[0]["typedId"])
+    # and it can be fetched using its typedId via get_fc
+    data_souce = await _async_conn.get_fc(fcs[0]["typedId"])
     assert data_souce["label"] == data_source_label
     assert data_souce["uniqueName"] == data_source_name
 
@@ -130,7 +130,7 @@ async def test_push_pull_and_list_data_source_should_work_as_expected(_async_con
     assert data_souces[0]["uniqueName"] == data_source_name
 
     # and it can be pulled with stream_datasource with same content as initial pushed one
-    downloaded_content = await collect_csv(_async_conn.stream_fcs(data_souces[0]["typedId"]))
+    downloaded_content = await collect_csv(_async_conn.stream_dm_data(data_souces[0]["typedId"]))
     assert (dataframe[list(data.keys())] == downloaded_content[list(data.keys())]).all().all()
 
 
@@ -178,7 +178,7 @@ async def test_should_be_able_to_update_a_data_source(_async_conn: ConnectionAsy
         "column2": [1, 12, 2, 24],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(ds_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_dm_data(ds_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
@@ -228,7 +228,7 @@ async def test_should_fail_to_update_a_data_source_when_duplicates(_async_conn: 
         "column2": [1, 12],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(ds_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_dm_data(ds_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
@@ -278,7 +278,7 @@ async def test_should_be_able_to_update_the_existing_rows_on_a_data_source(
         "column2": [2, 24],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(ds_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_dm_data(ds_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
@@ -339,7 +339,7 @@ async def test_should_be_able_to_push_an_owned_table_and_read_it_back(
     assert [x["name"] for x in fcs[0]["fields"]] == list(data.keys())
 
     # and we can fetch its content
-    downloaded_content = await collect_csv(_async_conn.stream_fcs(fcs[0]["typedId"], 128))
+    downloaded_content = await collect_csv(_async_conn.stream_dm_data(fcs[0]["typedId"], 128))
     assert (dataframe[list(data.keys())] == downloaded_content[list(data.keys())]).all().all()
 
 
@@ -387,7 +387,7 @@ async def test_should_be_able_to_update_model_table(
         "column2": [1, 42, 24],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(table_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_dm_data(table_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
@@ -437,7 +437,7 @@ async def test_should_fail_to_update_model_table_when_duplicates(
         "column2": [1, 12],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(table_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_dm_data(table_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
@@ -485,7 +485,7 @@ async def test_should_be_able_update_the_existing_rows_on_a_model_table(
         "column2": [2, 24],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(table_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_dm_data(table_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
@@ -566,7 +566,7 @@ async def test_create_table_should_work_with_ten_million_lines_df(_async_conn: C
 
     # and it can be pulled with stream_datasource with same content as initial pushed one
     dataframes = []
-    async for page in _async_conn.fetch_paginated_fcs(data_sources[0]["typedId"]):
+    async for page in _async_conn.fetch_paginated_dm_data(data_sources[0]["typedId"]):
         dataframes.append(pd.DataFrame(page))
 
     downloaded_content = pd.concat(dataframes, ignore_index=True) if dataframes else pd.DataFrame()
@@ -608,7 +608,7 @@ def test_connection_sync_returns_values_not_coroutines(_conn: ConnectionSync):
     assert "typedId" in list_dmds[0]
 
     # when using a method of the connection using _sync_iterator
-    chunks = _conn.stream_fcs(list_dmds[0]["typedId"])
+    chunks = _conn.stream_dm_data(list_dmds[0]["typedId"])
     assert not inspect.iscoroutine(chunks)
     assert isinstance(chunks, Iterator)
 
