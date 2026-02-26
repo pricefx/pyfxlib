@@ -408,6 +408,27 @@ class ConnectionAsync(ABC):
         """
         pass
 
+    @abstractmethod
+    async def create_action(
+        self,
+        title: str,
+        assignee_id: int,
+        due_date: str,
+        description: str,
+        recommendations: str | None = None,
+        originator_typed_id: str | None = None,
+        dashboard_inputs: dict[str, Any] | None = None,
+        dashboard_preferences: dict[str, Any] | None = None,
+        action_item_type: str = "__DEFAULT__",
+    ) -> dict[str, Any]:
+        """Create an action item.
+
+        Args:
+            recommendations: in HTML format
+        Returns:
+            A dictionary representing the created action item as returned by the backend.
+        """
+        pass
 
 # By default, stream download timeout is 60s which may cause errors when the table is large.
 # (see https://pricefx.atlassian.net/browse/PFUN-14665)
@@ -921,6 +942,43 @@ class ConnectionRemote(ConnectionAsync):
         )
         return response.json()["response"]["data"]
 
+    async def create_action(
+        self,
+        title: str,
+        assignee_id: int,
+        due_date: str,
+        description: str,
+        recommendations: str | None = None,
+        originator_typed_id: str | None = None,
+        dashboard_inputs: dict[str, Any] | None = None,
+        dashboard_preferences: dict[str, Any] | None = None,
+        action_item_type: str = "__DEFAULT__",
+    ) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        dashboard_config = {
+            "userInputs": dashboard_inputs,
+            "userPreferences": dashboard_preferences,
+        }
+        response = await self.session.post(
+            f"{self.endpoint}/add/AI",
+            json={
+                "data": {
+                    "summary": title,
+                    "assignedTo": assignee_id,
+                    "originatorTypedId": originator_typed_id,
+                    "dueDate": due_date,
+                    "description": description,
+                    "actionItemType": action_item_type,
+                    "parentTypedId": None,
+                    "targetContext": (
+                        f"""{{"recommendations": {json.dumps(recommendations)}, "quickActionsMatrix": "", "dashboardConfig": {json.dumps(dashboard_config)}}}"""  # noqa: E501
+                        if recommendations
+                        else None
+                    ),
+                }
+            },
+        )
+        return response.json()["response"]["data"][0]
 
 def _split_typedid(typed_id: str) -> tuple[int, str]:
     match = re.search(r"^(?P<id>[0-9]+)\.(?P<type_code>[A-Z]+)$", typed_id)
@@ -1254,6 +1312,20 @@ class ConnectionLocal(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return []
 
+    async def create_action(
+        self,
+        title: str,
+        assignee_id: int,
+        due_date: str,
+        description: str,
+        recommendations: str | None = None,
+        originator_typed_id: str | None = None,
+        dashboard_inputs: dict[str, Any] | None = None,
+        dashboard_preferences: dict[str, Any] | None = None,
+        action_item_type: str = "__DEFAULT__",
+    ) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return {}
 
 class ConnectionComposed(ConnectionAsync):
     """A connection that composes a remote and local connections.
@@ -1461,6 +1533,29 @@ class ConnectionComposed(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return await self._default.query_execute(query)
 
+    async def create_action(
+        self,
+        title: str,
+        assignee_id: int,
+        due_date: str,
+        description: str,
+        recommendations: str | None = None,
+        originator_typed_id: str | None = None,
+        dashboard_inputs: dict[str, Any] | None = None,
+        dashboard_preferences: dict[str, Any] | None = None,
+        action_item_type: str = "__DEFAULT__",
+    ) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.create_action(
+            title,
+            assignee_id,
+            due_date,
+            description,
+            recommendations,
+            originator_typed_id,
+            dashboard_inputs,
+            dashboard_preferences,
+            action_item_type,
 
 T = TypeVar("T")
 
@@ -1684,3 +1779,30 @@ class ConnectionSync:
     def query_execute(self, query: dict[str, Any]) -> list[list[Any]]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.query_execute(query))
+    def create_action(
+        self,
+        title: str,
+        assignee_id: int,
+        due_date: str,
+        description: str,
+        recommendations: str | None = None,
+        originator_typed_id: str | None = None,
+        dashboard_inputs: dict[str, Any] | None = None,
+        dashboard_preferences: dict[str, Any] | None = None,
+        action_item_type: str = "__DEFAULT__",
+    ) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(
+            self._conn.create_action(
+                title,
+                assignee_id,
+                due_date,
+                description,
+                recommendations,
+                originator_typed_id,
+                dashboard_inputs,
+                dashboard_preferences,
+                action_item_type,
+            )
+        )
+
