@@ -67,23 +67,15 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
-    async def update_status(
-        self,
-        jst_id: int,
-        status_code: JobStatus,
-        progress: int | None,
-        msg: str | None = None,
-        results: dict[str, Any] | None = None,
-    ) -> None:
-        """Update the job status on the backend.
+    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+        """Send a notification to the user via the backend.
 
-        Args:
-            jst_id: the id of the jst
-            status_code: the new job status
-            progress: the new job progress percent (optional)
-            msg: a message for the new status change (optional)
-            results: a dictionary associating result names to their value (optional).
-                     Will be available to next evaluations and calculations.
+        See https://pricefx.atlassian.net/wiki/spaces/UNITY/pages/5482283105/App+Notifications
+        and https://api.pricefx.com/openapi/reference/pricefx-server_openapi/notifications/post-notification.send # noqa: E501
+        for details on allowed values in the request body.
+
+        Returns the backend response as a dictionary.
+        Notifications are not supported by the BE versions < 15.2 (raises an error)
         """
         pass
 
@@ -93,21 +85,14 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
-    async def get_fc(
-        self,
-        typedid: str,
-        params: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Get the attributes of a specific field collection."""
-        pass
+    async def get_advanced_property(self, property_name: str) -> list[str]:
+        """Fetches the values of an advanced property by name.
 
-    @abstractmethod
-    async def list_fcs(
-        self,
-        type_code: str,
-        params: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        """List all the fields collections of a given type."""
+        Args:
+            property_name: The name of the advanced property.
+        Returns:
+            The list of values associated with the property.
+        """
         pass
 
     @abstractmethod
@@ -124,14 +109,6 @@ class ConnectionAsync(ABC):
             as defined in the Pricefx REST API public documentation.
         Raises:
             ValueError: if no object is found for the given typedId
-        """
-        pass
-
-    @abstractmethod
-    async def quick_search(self, sku_or_label: str) -> list[dict[str, Any]]:
-        """Search for all lists containing a product designated by its sku or label.
-
-        Note that the search is case-sensitive.
         """
         pass
 
@@ -165,6 +142,140 @@ class ConnectionAsync(ABC):
             List of entity objects with all fields,
             as defined in the Pricefx REST API public documentation.
         """
+        pass
+
+    @abstractmethod
+    async def get_object_metadata(
+        self,
+        type_code: str,
+        payload_key: str,
+        object_id: int,
+    ) -> list[dict[str, Any]]:
+        """Get the metadata of a specific element.
+
+        Common type: PGIM (Price Grid Item Attribute Meta)
+        If you need the full list of TypeCodes, search the knowledge base for "Type Codes".
+
+        Args:
+            type_code: Entity TypeCode
+            payload_key: the key corresponding to the type_code to put in the body of the request
+            object_id: Id of the object
+        """
+        pass
+
+    @abstractmethod
+    async def add_object(
+        self,
+        type_code: str,
+        attributes: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Add an object and returns its actual attributes."""
+        pass
+
+    @abstractmethod
+    async def update_object(
+        self,
+        type_code: str,
+        attributes: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Update an object and returns its actual attributes."""
+        pass
+
+    @abstractmethod
+    async def quick_search(self, sku_or_label: str) -> list[dict[str, Any]]:
+        """Search for all lists containing a product designated by its sku or label.
+
+        Note that the search is case-sensitive.
+        """
+        pass
+
+    @abstractmethod
+    async def get_fc(
+        self,
+        typedid: str,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Get the attributes of a specific field collection."""
+        pass
+
+    @abstractmethod
+    async def list_fcs(
+        self,
+        type_code: str,
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """List all the fields collections of a given type."""
+        pass
+
+    @abstractmethod
+    async def create_table(
+        self,
+        name: str,
+        fields_spec: list[dict],
+        content: AvroStream,
+        label: str | None = None,
+        owner_typedid: str | None = None,
+        replace_existing: bool = True,
+    ) -> None:
+        """Create a table in the backend.
+
+        Args:
+            name: the name of the table to push
+            fields_spec: a list of dictionaries that describe the columns of the data source
+            ```json
+            [
+               { name:"productId", label:"Product ID", type:"TEXT", key:true},
+               { name:"productGroup", label:"ProductGroup", type:"TEXT", dimension:true},
+               { name:"revenue", label:"Revenue", type:"MONEY"},
+            ]
+            ```
+            content: the content of the source file to push in avro format
+            label: the label of the table (optional, defaults to name)
+            owner_typedid: the name of the table owner (optional, set it to create a DMT)
+            replace_existing: if True then removes the preceding data source having the same name if
+                              it exists before pushing the data (default = True).
+        """
+        pass
+
+    @abstractmethod
+    async def update_table(self, typedid: str, data: AvroStream) -> None:
+        """Update data of an already existing DMTable or DMDataSource.
+
+        Values of rows with same keys will be updated.
+        Rows with new keys will be appended.
+
+        Args:
+            typedid: the typed id of the table to append
+            data: the content of the data to push in avro format
+        """
+        pass
+
+
+    @abstractmethod
+    async def stream_dm_data(
+        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+    ) -> AsyncIterator[bytes]:
+        """Stream the content of a data source."""
+        yield b""
+
+    @abstractmethod
+    async def fetch_paginated_dm_data(
+        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+    ) -> AsyncIterator[list[dict[str, Any]]]:
+        """Fetch the content of a data source using paginated requests.
+
+        More reliable than stream_dm_data for large datasets.
+        """
+        yield []
+
+    @abstractmethod
+    async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
+        """Get the calculation items associated with a specific typedid."""
+        pass
+
+    @abstractmethod
+    async def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
+        """Push a new calculation item associated with a specific typedid."""
         pass
 
     @abstractmethod
@@ -219,60 +330,6 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
-    async def get_object_metadata(
-        self,
-        type_code: str,
-        payload_key: str,
-        object_id: int,
-    ) -> list[dict[str, Any]]:
-        """Get the metadata of a specific element.
-
-        Common type: PGIM (Price Grid Item Attribute Meta)
-        If you need the full list of TypeCodes, search the knowledge base for "Type Codes".
-
-        Args:
-            type_code: Entity TypeCode
-            payload_key: the key corresponding to the type_code to put in the body of the request
-            object_id: Id of the object
-        """
-        pass
-
-    @abstractmethod
-    async def add_object(
-        self,
-        type_code: str,
-        attributes: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Add an object and returns its actual attributes."""
-        pass
-
-    @abstractmethod
-    async def update_object(
-        self,
-        type_code: str,
-        attributes: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Update an object and returns its actual attributes."""
-        pass
-
-    @abstractmethod
-    async def stream_dm_data(
-        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
-    ) -> AsyncIterator[bytes]:
-        """Stream the content of a data source."""
-        yield b""
-
-    @abstractmethod
-    async def fetch_paginated_dm_data(
-        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
-    ) -> AsyncIterator[list[dict[str, Any]]]:
-        """Fetch the content of a data source using paginated requests.
-
-        More reliable than stream_dm_data for large datasets.
-        """
-        yield []
-
-    @abstractmethod
     async def list_attachments(
         self,
         typedid: str,
@@ -301,72 +358,6 @@ class ConnectionAsync(ABC):
         yield b""
 
     @abstractmethod
-    async def create_table(
-        self,
-        name: str,
-        fields_spec: list[dict],
-        content: AvroStream,
-        label: str | None = None,
-        owner_typedid: str | None = None,
-        replace_existing: bool = True,
-    ) -> None:
-        """Create a table in the backend.
-
-        Args:
-            name: the name of the table to push
-            fields_spec: a list of dictionaries that describe the columns of the data source
-            ```json
-            [
-               { name:"productId", label:"Product ID", type:"TEXT", key:true},
-               { name:"productGroup", label:"ProductGroup", type:"TEXT", dimension:true},
-               { name:"revenue", label:"Revenue", type:"MONEY"},
-            ]
-            ```
-            content: the content of the source file to push in avro format
-            label: the label of the table (optional, defaults to name)
-            owner_typedid: the name of the table owner (optional, set it to create a DMT)
-            replace_existing: if True then removes the preceding data source having the same name if
-                              it exists before pushing the data (default = True).
-        """
-        pass
-
-    @abstractmethod
-    async def update_table(self, typedid: str, data: AvroStream) -> None:
-        """Update data of an already existing DMTable or DMDataSource.
-
-        Values of rows with same keys will be updated.
-        Rows with new keys will be appended.
-
-        Args:
-            typedid: the typed id of the table to append
-            data: the content of the data to push in avro format
-        """
-        pass
-
-    @abstractmethod
-    async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
-        """Get the calculation items associated with a specific typedid."""
-        pass
-
-    @abstractmethod
-    async def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
-        """Push a new calculation item associated with a specific typedid."""
-        pass
-
-    @abstractmethod
-    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
-        """Send a notification to the user via the backend.
-
-        See https://pricefx.atlassian.net/wiki/spaces/UNITY/pages/5482283105/App+Notifications
-        and https://api.pricefx.com/openapi/reference/pricefx-server_openapi/notifications/post-notification.send # noqa: E501
-        for details on allowed values in the request body.
-
-        Returns the backend response as a dictionary.
-        Notifications are not supported by the BE versions < 15.2 (raises an error)
-        """
-        pass
-
-    @abstractmethod
     async def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
         """Import files to the backend.
 
@@ -379,6 +370,27 @@ class ConnectionAsync(ABC):
                     {"file": (filename, file content as bytes, "application/zip")}
         Returns:
             The typed id of the imported object
+        """
+        pass
+
+    @abstractmethod
+    async def update_status(
+        self,
+        jst_id: int,
+        status_code: JobStatus,
+        progress: int | None,
+        msg: str | None = None,
+        results: dict[str, Any] | None = None,
+    ) -> None:
+        """Update the job status on the backend.
+
+        Args:
+            jst_id: the id of the jst
+            status_code: the new job status
+            progress: the new job progress percent (optional)
+            msg: a message for the new status change (optional)
+            results: a dictionary associating result names to their value (optional).
+                     Will be available to next evaluations and calculations.
         """
         pass
 
@@ -430,17 +442,6 @@ class ConnectionAsync(ABC):
         """
         pass
 
-    @abstractmethod
-    async def get_advanced_property(self, property_name: str) -> list[str]:
-        """Fetches the values of an advanced property by name.
-
-        Args:
-            property_name: The name of the advanced property.
-        Returns:
-            The list of values associated with the property.
-        """
-        pass
-
 
 # By default, stream download timeout is 60s which may cause errors when the table is large.
 # (see https://pricefx.atlassian.net/browse/PFUN-14665)
@@ -451,7 +452,6 @@ class ConnectionAsync(ABC):
 _DATAMART_FETCH_TIMEOUT = 3600
 
 
-# TODO: copy from genfx, remove duplication
 class FilterOperator(StrEnum):
     """Filter operators for search criteria."""
 
@@ -487,6 +487,13 @@ class FilterOperator(StrEnum):
     NOTINSET = "notInSet"
 
 
+def _split_typedid(typed_id: str) -> tuple[int, str]:
+    match = re.search(r"^(?P<id>[0-9]+)\.(?P<type_code>[A-Z]+)$", typed_id)
+    if match:
+        return (int(match.group("id")), match.group("type_code"))
+    raise ValueError(f"'{typed_id}' is not a valid typedId")
+
+
 class ConnectionRemote(ConnectionAsync):
     """A connection to a remote instance.
 
@@ -500,107 +507,6 @@ class ConnectionRemote(ConnectionAsync):
 
     def __repr__(self) -> str:
         return f"ConnectionRemote({self.endpoint})"
-
-    async def login_extended(self) -> dict[str, Any]:
-        """See `ConnectionAsync` corresponding method."""
-        response = await self.session.post(f"{self.endpoint}/login/extended")
-        return response.json()
-
-    async def backend_version(self) -> dict[str, int | None]:
-        """See `ConnectionAsync` corresponding method."""
-        response = await self.login_extended()
-        backend_version = str(response["response"]["data"][0]["extendedData"]["Release"])
-        try:
-            if backend_version.endswith("-SNAPSHOT"):
-                backend_version = backend_version[: -len("-SNAPSHOT")]
-            splitted = [int(v) for v in backend_version.split(".")]
-            return {"major": None, "minor": None, "patch": None} | {
-                k: v for k, v in zip(["major", "minor", "patch"], splitted)
-            }
-        except ValueError as err:
-            raise ValueError(
-                f"Invalid version format: {backend_version}. Expected format is 'major.minor.patch' or 'major.minor' or 'major' with int values.",  # noqa: E501
-            ) from err
-
-    async def update_status(
-        self,
-        jst_id: int,
-        status_code: JobStatus,
-        progress: int | None,
-        msg: str | None = None,
-        results: dict[str, Any] | None = None,
-    ) -> None:
-        """See `ConnectionAsync` corresponding method."""
-        data: dict[str, Any] = {
-            "jstId": jst_id,
-            "status": status_code.value,
-            "progress": progress,
-        }
-
-        if msg:
-            data["calculationMessages"] = [msg]
-
-        if results is not None:
-            data["calculationResults"] = [
-                {
-                    "resultName": name,
-                    "resultLabel": name,
-                    "result": value,
-                    "resultType": "SIMPLE",
-                }
-                for (name, value) in results.items()
-            ]
-
-        await self.session.post(
-            f"{self.endpoint}/optimization.updatejst",
-            json={"data": data},
-        )
-
-    async def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method."""
-        response = await self.session.post(f"{self.endpoint}/accountmanager.fetchusers", **kwargs)
-        return [
-            user_info
-            for user_info in response.json()["response"]["data"]
-            if user_info.get("email") is not None
-        ]
-
-    async def get_fc(self, typedid: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        """See `ConnectionAsync` corresponding method."""
-        response = await self.session.post(
-            f"{self.endpoint}/datamart.getfcs/{typedid}",
-            json={"data": params},
-        )
-        return response.json()["response"]["data"][0]
-
-    async def list_fcs(
-        self, type_code: str, params: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method."""
-        response = await self.session.post(
-            f"{self.endpoint}/datamart.getfcs/{type_code}", json={"data": params}
-        )
-        return response.json()["response"]["data"]
-
-    async def get_object(
-        self,
-        typedid: str,
-    ) -> dict[str, Any]:
-        """See `ConnectionAsync` corresponding method."""
-        id, type_code = _split_typedid(typedid)
-        response = await self.session.post(f"{self.endpoint}/fetch/{type_code}/{id}")
-        data = response.json()["response"]["data"]
-        if data is not None:
-            return data[0]
-        else:
-            raise ValueError(f"Object with typedId '{typedid}' not found")
-
-    async def quick_search(self, sku_or_label: str) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method."""
-        response = await self.session.post(
-            f"{self.endpoint}/productmanager.quicksearch/{sku_or_label}"
-        )
-        return response.json()["response"]["data"]
 
     @staticmethod
     def _build_criteria(
@@ -626,6 +532,88 @@ class ConnectionRemote(ConnectionAsync):
             "criteria": filters,
         }
 
+    async def _fc_spec(self, typedid: str) -> dict | None:
+        objectid = typedid.split(".")[0]
+        fc_type = typedid.split(".")[1]
+        response_value = await self.session.post(
+            f"{self.endpoint}/datamart.getfcs/{fc_type}",
+            json={
+                "data": {
+                    "id": objectid,
+                }
+            },
+        )
+        response = response_value.json()
+        if len(response["response"]["data"]) > 0:
+            return response["response"]["data"][0]
+        return None
+
+    async def login_extended(self) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(f"{self.endpoint}/login/extended")
+        return response.json()
+
+    async def backend_version(self) -> dict[str, int | None]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.login_extended()
+        backend_version = str(response["response"]["data"][0]["extendedData"]["Release"])
+        try:
+            if backend_version.endswith("-SNAPSHOT"):
+                backend_version = backend_version[: -len("-SNAPSHOT")]
+            splitted = [int(v) for v in backend_version.split(".")]
+            return {"major": None, "minor": None, "patch": None} | {
+                k: v for k, v in zip(["major", "minor", "patch"], splitted)
+            }
+        except ValueError as err:
+            raise ValueError(
+                f"Invalid version format: {backend_version}. Expected format is 'major.minor.patch' or 'major.minor' or 'major' with int values.",  # noqa: E501
+            ) from err
+
+    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        backend_version = await self.backend_version()
+        if ((backend_version["major"] or 0) < 15) or (
+            (backend_version["major"] or 0) == 15 and (backend_version["minor"] or 0) < 2
+        ):
+            raise RuntimeError(
+                "Notifications are not supported by backend versions below 15.2. "
+                f"Current backend version: {backend_version}"
+            )
+        response = await self.session.post(
+            f"{self.endpoint}/notification.send",
+            json={"data": {"notification": notification}},
+        )
+        return response.json()["response"]
+
+    async def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(f"{self.endpoint}/accountmanager.fetchusers", **kwargs)
+        return [
+            user_info
+            for user_info in response.json()["response"]["data"]
+            if user_info.get("email") is not None
+        ]
+
+    async def get_advanced_property(self, property_name: str) -> list[str]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.get(
+            f"{self.endpoint}/configurationmanager.get/{property_name}"
+        )
+        return response.json()["response"]["data"]
+
+    async def get_object(
+        self,
+        typedid: str,
+    ) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        id, type_code = _split_typedid(typedid)
+        response = await self.session.post(f"{self.endpoint}/fetch/{type_code}/{id}")
+        data = response.json()["response"]["data"]
+        if data is not None:
+            return data[0]
+        else:
+            raise ValueError(f"Object with typedId '{typedid}' not found")
+
     async def list_objects(
         self,
         type_code: str,
@@ -648,6 +636,170 @@ class ConnectionRemote(ConnectionAsync):
         }
         response = await self.session.post(f"{self.endpoint}/fetch/{type_code}", json=body)
         return response.json()["response"]["data"]
+
+    async def get_object_metadata(
+        self,
+        type_code: str,
+        payload_key: str,
+        object_id: int,
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        payload = {"data": {payload_key: str(object_id)}}
+        response = await self.session.post(f"{self.endpoint}/fetch/{type_code}", json=payload)
+        return response.json()["response"]["data"]
+
+    async def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(
+            f"{self.endpoint}/add/{type_code}",
+            json={"data": attributes},
+        )
+        return response.json()["response"]["data"][0]
+
+    async def update_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(
+            f"{self.endpoint}/update/{type_code}",
+            json={"data": attributes},
+        )
+        return response.json()["response"]["data"][0]
+
+    async def quick_search(self, sku_or_label: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(
+            f"{self.endpoint}/productmanager.quicksearch/{sku_or_label}"
+        )
+        return response.json()["response"]["data"]
+
+    async def get_fc(self, typedid: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(
+            f"{self.endpoint}/datamart.getfcs/{typedid}",
+            json={"data": params},
+        )
+        return response.json()["response"]["data"][0]
+
+    async def list_fcs(
+        self, type_code: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(
+            f"{self.endpoint}/datamart.getfcs/{type_code}", json={"data": params}
+        )
+        return response.json()["response"]["data"]
+
+    async def create_table(
+        self,
+        name: str,
+        fields_spec: list[dict],
+        content: AvroStream,
+        label: str | None = None,
+        owner_typedid: str | None = None,
+        replace_existing: bool = True,
+    ) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        typecode = "DMT" if owner_typedid is not None else "DMDS"
+
+        schema: dict[str, Any] = {
+            "label": label if label is not None else name,
+            "fields": fields_spec,
+        }
+
+        if typecode == "DMT":
+            schema["name"] = name
+            schema["owner"] = owner_typedid
+        else:
+            schema["uniqueName"] = name
+
+        files = {
+            "DMFieldCollectionSpec": (
+                None,
+                json.dumps(schema),
+                "text/json; charset=UTF-8",
+            ),
+            "DMFieldCollectionData": (
+                None,
+                content,
+                "avro/binary",
+            ),
+        }
+        await self.session.post_simple(
+            f'{self.endpoint}/datamart.createfc/{typecode}{"/replace" if replace_existing else ""}',
+            files=files,
+        )
+
+    async def update_table(self, typedid: str, data: AvroStream) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        fc_entry = await self._fc_spec(typedid)
+        if fc_entry is None:
+            raise RuntimeError(f"Trying to append to non-existing table '{typedid}'")
+        response_value = await self.session.post(f"{self.endpoint}/uploadmanager.newuploadslot")
+        response = response_value.json()
+        uploadslot = response["response"]["data"][0]["id"]
+        try:
+            files = {"DMFieldCollectionData": ("data.avro", data, "avro/binary")}
+            await self.session.post_simple(
+                f"{self.endpoint}/datamart.loadfc/{typedid}", files=files
+            )
+        except HTTPStatusError as err:
+            error_value = await self.session.post(
+                f"{self.endpoint}/uploadmanager.progress/{uploadslot}",
+            )
+            error_desc = error_value.json()["response"]["data"][0]["data"]
+            raise Exception(f"Error while uploading file: {error_desc}") from err
+        finally:
+            await self.session.post(f"{self.endpoint}/uploadmanager.deleteslot/{uploadslot}")
+
+    async def stream_dm_data(
+        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+    ) -> AsyncIterator[bytes]:
+        """See `ConnectionAsync` corresponding method."""
+        async for chunk in self.session.get_stream(
+            f"{self.endpoint}/datamart.fetch/{typedid}?stream&timeout={_DATAMART_FETCH_TIMEOUT}",
+            chunk_size=chunk_size,
+            params={"output": "csv"},
+        ):
+            yield chunk
+
+    async def fetch_paginated_dm_data(
+        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+    ) -> AsyncIterator[list[dict[str, Any]]]:
+        """See `ConnectionAsync` corresponding method."""
+        sort_by: list[str] = []
+        fc_meta = await self.get_fc(typedid)
+        sort_by = [field["name"] for field in fc_meta.get("fields", []) if field.get("key", False)]
+
+        start_row = 0
+        while True:
+            response = await self.session.post(
+                f"{self.endpoint}/datamart.fetch/{typedid}",
+                json={"startRow": start_row, "endRow": start_row + page_size, "sortBy": sort_by},
+            )
+            data = response.json()["response"]["data"]
+            if not data:
+                break
+            yield data
+            start_row += page_size
+
+    async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        url = f"{self.endpoint}/lookuptablemanager.fetch/{_split_typedid(typedid)[0]}"
+        response = await self.session.post(url)
+        return response.json()["response"]["data"]
+
+    async def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        url = f"{self.endpoint}/lookuptablemanager.add/{_split_typedid(typedid)[0]}"
+        await self.session.post(
+            url,
+            json={
+                "data": {
+                    "key1": key1,
+                    "key2": key2,
+                    "attributeExtension___Value": value,
+                },
+            },
+        )
 
     async def list_lpg_items(
         self, lpg_id: int, filters: dict[str, Any] | None = None
@@ -693,64 +845,6 @@ class ConnectionRemote(ConnectionAsync):
             f"{self.endpoint}/pricegridmanager.accept/{lpg_id}", json=payload
         )
         return response.json()["response"]["data"]
-
-    async def get_object_metadata(
-        self,
-        type_code: str,
-        payload_key: str,
-        object_id: int,
-    ) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method."""
-        payload = {"data": {payload_key: str(object_id)}}
-        response = await self.session.post(f"{self.endpoint}/fetch/{type_code}", json=payload)
-        return response.json()["response"]["data"]
-
-    async def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
-        """See `ConnectionAsync` corresponding method."""
-        response = await self.session.post(
-            f"{self.endpoint}/add/{type_code}",
-            json={"data": attributes},
-        )
-        return response.json()["response"]["data"][0]
-
-    async def update_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
-        """See `ConnectionAsync` corresponding method."""
-        response = await self.session.post(
-            f"{self.endpoint}/update/{type_code}",
-            json={"data": attributes},
-        )
-        return response.json()["response"]["data"][0]
-
-    async def stream_dm_data(
-        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
-    ) -> AsyncIterator[bytes]:
-        """See `ConnectionAsync` corresponding method."""
-        async for chunk in self.session.get_stream(
-            f"{self.endpoint}/datamart.fetch/{typedid}?stream&timeout={_DATAMART_FETCH_TIMEOUT}",
-            chunk_size=chunk_size,
-            params={"output": "csv"},
-        ):
-            yield chunk
-
-    async def fetch_paginated_dm_data(
-        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
-    ) -> AsyncIterator[list[dict[str, Any]]]:
-        """See `ConnectionAsync` corresponding method."""
-        sort_by: list[str] = []
-        fc_meta = await self.get_fc(typedid)
-        sort_by = [field["name"] for field in fc_meta.get("fields", []) if field.get("key", False)]
-
-        start_row = 0
-        while True:
-            response = await self.session.post(
-                f"{self.endpoint}/datamart.fetch/{typedid}",
-                json={"startRow": start_row, "endRow": start_row + page_size, "sortBy": sort_by},
-            )
-            data = response.json()["response"]["data"]
-            if not data:
-                break
-            yield data
-            start_row += page_size
 
     async def list_attachments(
         self,
@@ -810,126 +904,6 @@ class ConnectionRemote(ConnectionAsync):
         except Exception as e:
             raise Exception(f"Error while fetching attached file '{attachment_typedid}'") from e
 
-    async def _delete_fc(self, fc_type: str, name: str) -> None:
-        await self.session.post(
-            f"{self.endpoint}/datamart.deletefc/{fc_type}",
-            json={"data": {"uniqueName": name}},
-        )
-
-    async def create_table(
-        self,
-        name: str,
-        fields_spec: list[dict],
-        content: AvroStream,
-        label: str | None = None,
-        owner_typedid: str | None = None,
-        replace_existing: bool = True,
-    ) -> None:
-        """See `ConnectionAsync` corresponding method."""
-        typecode = "DMT" if owner_typedid is not None else "DMDS"
-
-        schema: dict[str, Any] = {
-            "label": label if label is not None else name,
-            "fields": fields_spec,
-        }
-
-        if typecode == "DMT":
-            schema["name"] = name
-            schema["owner"] = owner_typedid
-        else:
-            schema["uniqueName"] = name
-
-        files = {
-            "DMFieldCollectionSpec": (
-                None,
-                json.dumps(schema),
-                "text/json; charset=UTF-8",
-            ),
-            "DMFieldCollectionData": (
-                None,
-                content,
-                "avro/binary",
-            ),
-        }
-        await self.session.post_simple(
-            f'{self.endpoint}/datamart.createfc/{typecode}{"/replace" if replace_existing else ""}',
-            files=files,
-        )
-
-    async def _fc_spec(self, typedid: str) -> dict | None:
-        objectid = typedid.split(".")[0]
-        fc_type = typedid.split(".")[1]
-        response_value = await self.session.post(
-            f"{self.endpoint}/datamart.getfcs/{fc_type}",
-            json={
-                "data": {
-                    "id": objectid,
-                }
-            },
-        )
-        response = response_value.json()
-        if len(response["response"]["data"]) > 0:
-            return response["response"]["data"][0]
-        return None
-
-    async def update_table(self, typedid: str, data: AvroStream) -> None:
-        """See `ConnectionAsync` corresponding method."""
-        fc_entry = await self._fc_spec(typedid)
-        if fc_entry is None:
-            raise RuntimeError(f"Trying to append to non-existing table '{typedid}'")
-        response_value = await self.session.post(f"{self.endpoint}/uploadmanager.newuploadslot")
-        response = response_value.json()
-        uploadslot = response["response"]["data"][0]["id"]
-        try:
-            files = {"DMFieldCollectionData": ("data.avro", data, "avro/binary")}
-            await self.session.post_simple(
-                f"{self.endpoint}/datamart.loadfc/{typedid}", files=files
-            )
-        except HTTPStatusError as err:
-            error_value = await self.session.post(
-                f"{self.endpoint}/uploadmanager.progress/{uploadslot}",
-            )
-            error_desc = error_value.json()["response"]["data"][0]["data"]
-            raise Exception(f"Error while uploading file: {error_desc}") from err
-        finally:
-            await self.session.post(f"{self.endpoint}/uploadmanager.deleteslot/{uploadslot}")
-
-    async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method."""
-        url = f"{self.endpoint}/lookuptablemanager.fetch/{_split_typedid(typedid)[0]}"
-        response = await self.session.post(url)
-        return response.json()["response"]["data"]
-
-    async def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
-        """See `ConnectionAsync` corresponding method."""
-        url = f"{self.endpoint}/lookuptablemanager.add/{_split_typedid(typedid)[0]}"
-        await self.session.post(
-            url,
-            json={
-                "data": {
-                    "key1": key1,
-                    "key2": key2,
-                    "attributeExtension___Value": value,
-                },
-            },
-        )
-
-    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
-        """See `ConnectionAsync` corresponding method."""
-        backend_version = await self.backend_version()
-        if ((backend_version["major"] or 0) < 15) or (
-            (backend_version["major"] or 0) == 15 and (backend_version["minor"] or 0) < 2
-        ):
-            raise RuntimeError(
-                "Notifications are not supported by backend versions below 15.2. "
-                f"Current backend version: {backend_version}"
-            )
-        response = await self.session.post(
-            f"{self.endpoint}/notification.send",
-            json={"data": {"notification": notification}},
-        )
-        return response.json()["response"]
-
     async def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(
@@ -937,6 +911,40 @@ class ConnectionRemote(ConnectionAsync):
             files=files,
         )
         return response.json()["response"]["data"][0]["typedId"]
+
+    async def update_status(
+        self,
+        jst_id: int,
+        status_code: JobStatus,
+        progress: int | None,
+        msg: str | None = None,
+        results: dict[str, Any] | None = None,
+    ) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        data: dict[str, Any] = {
+            "jstId": jst_id,
+            "status": status_code.value,
+            "progress": progress,
+        }
+
+        if msg:
+            data["calculationMessages"] = [msg]
+
+        if results is not None:
+            data["calculationResults"] = [
+                {
+                    "resultName": name,
+                    "resultLabel": name,
+                    "result": value,
+                    "resultType": "SIMPLE",
+                }
+                for (name, value) in results.items()
+            ]
+
+        await self.session.post(
+            f"{self.endpoint}/optimization.updatejst",
+            json={"data": data},
+        )
 
     async def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
@@ -992,20 +1000,6 @@ class ConnectionRemote(ConnectionAsync):
         )
         return response.json()["response"]["data"][0]
 
-    async def get_advanced_property(self, property_name: str) -> list[str]:
-        """See `ConnectionAsync` corresponding method."""
-        response = await self.session.get(
-            f"{self.endpoint}/configurationmanager.get/{property_name}"
-        )
-        return response.json()["response"]["data"]
-
-
-def _split_typedid(typed_id: str) -> tuple[int, str]:
-    match = re.search(r"^(?P<id>[0-9]+)\.(?P<type_code>[A-Z]+)$", typed_id)
-    if match:
-        return (int(match.group("id")), match.group("type_code"))
-    raise ValueError(f"'{typed_id}' is not a valid typedId")
-
 
 class ConnectionLocal(ConnectionAsync):
     """A connection that use the local filesystem.
@@ -1053,60 +1047,16 @@ class ConnectionLocal(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return {"major": 99, "minor": None, "patch": None}
 
-    async def update_status(
-        self,
-        jst_id: int,
-        status_code: JobStatus,
-        progress: int | None,
-        msg: str | None = None,
-        results: dict[str, Any] | None = None,
-    ) -> None:
+    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        logfile = self._logs_path / f"{str(jst_id)}.txt"
-        logger = logging.getLogger(str(logfile))
-        if len(logger.handlers) == 0:
-            loghandler = logging.FileHandler(logfile)
-            loghandler.setFormatter(logging.Formatter(self._logformat))
-            logger.addHandler(loghandler)
-            logger.setLevel(logging.DEBUG)
-        if status_code == JobStatus.FAILED:
-            log_level = logging.ERROR
-        else:
-            log_level = logging.INFO
-        logger.log(
-            log_level,
-            msg if msg is not None else "",
-            extra={
-                "status": status_code.name,
-                "progress": str(progress) + "%" if progress is not None else "",
-                "results": str(results) if results is not None else "",
-            },
-        )
+        return {}
 
     async def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return []
 
-    async def get_fc(
-        self,
-        typedid: str,
-        params: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """See `ConnectionAsync` corresponding method.
-
-        This implementation will return a minimal dict.
-        """
-        return {"typedId": typedid}
-
-    async def list_fcs(
-        self,
-        type_code: str,
-        params: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method.
-
-        This implementation of the methods always returns an empty list.
-        """
+    async def get_advanced_property(self, property_name: str) -> list[str]:
+        """See `ConnectionAsync` corresponding method."""
         return []
 
     async def get_object(
@@ -1118,13 +1068,6 @@ class ConnectionLocal(ConnectionAsync):
         This implementation will return a minimal dict.
         """
         return {"id": _split_typedid(typedid)[0], "typedId": f"{typedid}"}
-
-    async def quick_search(self, sku_or_label: str) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method.
-
-        This implementation of the methods always returns an empty list.
-        """
-        return []
 
     async def list_objects(
         self,
@@ -1139,30 +1082,6 @@ class ConnectionLocal(ConnectionAsync):
 
         This implementation of the methods always returns an empty list.
         """
-        return []
-
-    async def list_lpg_items(
-        self, lpg_id: int, filters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method.
-
-        This implementation of the methods always returns an empty list.
-        """
-        return []
-
-    async def update_lpg(
-        self,
-        lpg_id: int,
-        field_to_update: str,
-        new_value: float,
-        product: dict[str, Any],
-        comment: str,
-    ) -> None:
-        """See `ConnectionAsync` corresponding method."""
-        return None
-
-    async def submit_lpg(self, lpg_id: int, product_typedids: list[str]) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method."""
         return []
 
     async def get_object_metadata(
@@ -1191,6 +1110,64 @@ class ConnectionLocal(ConnectionAsync):
         """
         return attributes
 
+    async def quick_search(self, sku_or_label: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method.
+
+        This implementation of the methods always returns an empty list.
+        """
+        return []
+
+    async def get_fc(
+        self,
+        typedid: str,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method.
+
+        This implementation will return a minimal dict.
+        """
+        return {"typedId": typedid}
+
+    async def list_fcs(
+        self,
+        type_code: str,
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method.
+
+        This implementation of the methods always returns an empty list.
+        """
+        return []
+
+    async def create_table(
+        self,
+        name: str,
+        fields_spec: list[dict],
+        content: AvroStream,
+        label: str | None = None,
+        owner_typedid: str | None = None,
+        replace_existing: bool = True,
+    ) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        if owner_typedid is not None:
+            tablepath = self._owned_tables_path(owner_typedid) / f"{name}.avro"
+        else:
+            tablepath = self._data_sources_path / f"{name}.avro"
+
+        with open(tablepath, "wb") as binfile:
+            while buffer := binfile.read():
+                binfile.write(buffer)
+
+    async def update_table(self, typedid: str, data: AvroStream) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        filepath = self._data_sources_path / f"{typedid}.avro"
+        if not filepath.is_file():
+            raise RuntimeError(f"Trying to append to non-existing table '{typedid}'")
+
+        with open(filepath, "ab") as file:
+            while buffer := data.read(4096):
+                file.write(buffer)
+
     async def stream_dm_data(
         self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
     ) -> AsyncIterator[bytes]:
@@ -1205,6 +1182,52 @@ class ConnectionLocal(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         for chunk in pd.read_csv(self._data_sources_path / f"{typedid}.csv", chunksize=page_size):
             yield chunk.to_dict(orient="records")
+
+    async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        res: list[dict[str, Any]] = []
+        with open(self.calcitems_path) as csvfile:
+            csvcontent = csv.reader(csvfile)
+            header = csvcontent.__next__()
+            for row in csvcontent:
+                rowdict = {}
+                for i, e in enumerate(row):
+                    rowdict[header[i]] = e
+                res.append(rowdict)
+        return res
+
+    async def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        file_path = self.calcitems_path / f"{typedid}.csv"
+        if not os.path.exists(file_path):
+            with open(file_path, "w") as out:
+                out.write("key1,key2,value\n")
+        with open(file_path, "a") as out:
+            csv.writer(out).writerow([key1, key2, value])
+
+    async def list_lpg_items(
+        self, lpg_id: int, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method.
+
+        This implementation of the methods always returns an empty list.
+        """
+        return []
+
+    async def update_lpg(
+        self,
+        lpg_id: int,
+        field_to_update: str,
+        new_value: float,
+        product: dict[str, Any],
+        comment: str,
+    ) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        return None
+
+    async def submit_lpg(self, lpg_id: int, product_typedids: list[str]) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return []
 
     async def list_attachments(
         self,
@@ -1257,72 +1280,39 @@ class ConnectionLocal(ConnectionAsync):
             while chunk := fin.read(chunk_size):
                 yield chunk
 
-    async def create_table(
-        self,
-        name: str,
-        fields_spec: list[dict],
-        content: AvroStream,
-        label: str | None = None,
-        owner_typedid: str | None = None,
-        replace_existing: bool = True,
-    ) -> None:
-        """See `ConnectionAsync` corresponding method."""
-        if owner_typedid is not None:
-            tablepath = self._owned_tables_path(owner_typedid) / f"{name}.avro"
-        else:
-            tablepath = self._data_sources_path / f"{name}.avro"
-
-        with open(tablepath, "wb") as binfile:
-            while buffer := binfile.read():
-                binfile.write(buffer)
-
-    async def update_table(self, typedid: str, data: AvroStream) -> None:
-        """See `ConnectionAsync` corresponding method."""
-        filepath = self._data_sources_path / f"{typedid}.avro"
-        if not filepath.is_file():
-            raise RuntimeError(f"Trying to append to non-existing table '{typedid}'")
-
-        with open(filepath, "ab") as file:
-            while buffer := data.read(4096):
-                file.write(buffer)
-
-    async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method."""
-        res: list[dict[str, Any]] = []
-        with open(self.calcitems_path) as csvfile:
-            csvcontent = csv.reader(csvfile)
-            header = csvcontent.__next__()
-            for row in csvcontent:
-                rowdict = {}
-                for i, e in enumerate(row):
-                    rowdict[header[i]] = e
-                res.append(rowdict)
-        return res
-
-    async def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
-        """See `ConnectionAsync` corresponding method."""
-        file_path = self.calcitems_path / f"{typedid}.csv"
-        if not os.path.exists(file_path):
-            with open(file_path, "w") as out:
-                out.write("key1,key2,value\n")
-        with open(file_path, "a") as out:
-            csv.writer(out).writerow([key1, key2, value])
-
-    async def _pull_dir(self, dir_type: str, dir_path: str) -> None:
-        # Nothing to do
-        return
-
-    async def _push_result_files(self, result_dir_path: str) -> None:
-        # Nothing to do
-        return
-
-    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
-        """See `ConnectionAsync` corresponding method."""
-        return {}
-
     async def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
         """See `ConnectionAsync` corresponding method."""
         return ""
+
+    async def update_status(
+        self,
+        jst_id: int,
+        status_code: JobStatus,
+        progress: int | None,
+        msg: str | None = None,
+        results: dict[str, Any] | None = None,
+    ) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        logfile = self._logs_path / f"{str(jst_id)}.txt"
+        logger = logging.getLogger(str(logfile))
+        if len(logger.handlers) == 0:
+            loghandler = logging.FileHandler(logfile)
+            loghandler.setFormatter(logging.Formatter(self._logformat))
+            logger.addHandler(loghandler)
+            logger.setLevel(logging.DEBUG)
+        if status_code == JobStatus.FAILED:
+            log_level = logging.ERROR
+        else:
+            log_level = logging.INFO
+        logger.log(
+            log_level,
+            msg if msg is not None else "",
+            extra={
+                "status": status_code.name,
+                "progress": str(progress) + "%" if progress is not None else "",
+                "results": str(results) if results is not None else "",
+            },
+        )
 
     async def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
@@ -1346,10 +1336,6 @@ class ConnectionLocal(ConnectionAsync):
     ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return {}
-
-    async def get_advanced_property(self, property_name: str) -> list[str]:
-        """See `ConnectionAsync` corresponding method."""
-        return []
 
 
 class ConnectionComposed(ConnectionAsync):
@@ -1378,22 +1364,59 @@ class ConnectionComposed(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return await self._default.backend_version()
 
-    async def update_status(
-        self,
-        jst_id: int,
-        status_code: JobStatus,
-        progress: int | None,
-        msg: str | None = None,
-        results: dict[str, Any] | None = None,
-    ) -> None:
+    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        await self._dispatch["job_updates"].update_status(
-            jst_id, status_code, progress, msg, results
-        )
+        return await self._default.send_notification(notification)
 
     async def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.list_users(**kwargs)
+
+    async def get_advanced_property(self, property_name: str) -> list[str]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.get_advanced_property(property_name)
+
+    async def get_object(
+        self,
+        typedid: str,
+    ) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.get_object(typedid)
+
+    async def list_objects(
+        self,
+        type_code: str,
+        filters: list[dict[str, Any]] | None = None,
+        filter_aggregator: str | None = None,
+        start_row: int | None = None,
+        max_rows: int | None = None,
+        sort_by: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.list_objects(
+            type_code, filters, filter_aggregator, start_row, max_rows, sort_by
+        )
+
+    async def get_object_metadata(
+        self,
+        type_code: str,
+        payload_key: str,
+        object_id: int,
+    ) -> list[dict[str, Any]]:
+        """See `Connection` corresponding method."""
+        return await self._default.get_object_metadata(type_code, payload_key, object_id)
+
+    async def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.add_object(type_code, attributes)
+
+    async def update_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.update_object(type_code, attributes)
+
+    async def quick_search(self, sku_or_label: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.quick_search(sku_or_label)
 
     async def get_fc(
         self,
@@ -1411,30 +1434,45 @@ class ConnectionComposed(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return await self._default.list_fcs(type_code, params)
 
-    async def get_object(
+    async def create_table(
         self,
-        typedid: str,
-    ) -> dict[str, Any]:
+        name: str,
+        fields_spec: list[dict],
+        content: AvroStream,
+        label: str | None = None,
+        owner_typedid: str | None = None,
+        replace_existing: bool = True,
+    ) -> None:
         """See `ConnectionAsync` corresponding method."""
-        return await self._default.get_object(typedid)
-
-    async def quick_search(self, sku_or_label: str) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method."""
-        return await self._default.quick_search(sku_or_label)
-
-    async def list_objects(
-        self,
-        type_code: str,
-        filters: list[dict[str, Any]] | None = None,
-        filter_aggregator: str | None = None,
-        start_row: int | None = None,
-        max_rows: int | None = None,
-        sort_by: str | None = None,
-    ) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method."""
-        return await self._default.list_objects(
-            type_code, filters, filter_aggregator, start_row, max_rows, sort_by
+        await self._dispatch["model_tables"].create_table(
+            name, fields_spec, content, label, owner_typedid, replace_existing
         )
+
+    async def update_table(self, typedid: str, data: AvroStream) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        await self._dispatch["model_tables"].update_table(typedid, data)
+
+    async def stream_dm_data(
+            self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+    ) -> AsyncIterator[bytes]:
+        """See `ConnectionAsync` corresponding method."""
+        async for chunk in self._dispatch["pa_tables"].stream_dm_data(typedid, chunk_size):
+            yield chunk
+
+    async def fetch_paginated_dm_data(
+            self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+    ) -> AsyncIterator[list[dict[str, Any]]]:
+        """See `ConnectionAsync` corresponding method."""
+        async for page in self._dispatch["pa_tables"].fetch_paginated_dm_data(typedid, page_size):
+            yield page
+
+    async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._dispatch["model_parameters"].get_calcitems(typedid)
+
+    async def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        await self._dispatch["model_parameters"].push_calcitem(typedid, key1, key2, value)
 
     async def list_lpg_items(
         self, lpg_id: int, filters: dict[str, Any] | None = None
@@ -1456,37 +1494,6 @@ class ConnectionComposed(ConnectionAsync):
     async def submit_lpg(self, lpg_id: int, product_typedids: list[str]) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.submit_lpg(lpg_id, product_typedids)
-
-    async def get_object_metadata(
-        self,
-        type_code: str,
-        payload_key: str,
-        object_id: int,
-    ) -> list[dict[str, Any]]:
-        """See `Connection` corresponding method."""
-        return await self._default.get_object_metadata(type_code, payload_key, object_id)
-
-    async def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
-        """See `ConnectionAsync` corresponding method."""
-        return await self._default.add_object(type_code, attributes)
-
-    async def update_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
-        """See `ConnectionAsync` corresponding method."""
-        return await self._default.update_object(type_code, attributes)
-
-    async def stream_dm_data(
-        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
-    ) -> AsyncIterator[bytes]:
-        """See `ConnectionAsync` corresponding method."""
-        async for chunk in self._dispatch["pa_tables"].stream_dm_data(typedid, chunk_size):
-            yield chunk
-
-    async def fetch_paginated_dm_data(
-        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
-    ) -> AsyncIterator[list[dict[str, Any]]]:
-        """See `ConnectionAsync` corresponding method."""
-        async for page in self._dispatch["pa_tables"].fetch_paginated_dm_data(typedid, page_size):
-            yield page
 
     async def list_attachments(
         self,
@@ -1516,39 +1523,22 @@ class ConnectionComposed(ConnectionAsync):
         ):
             yield chunk
 
-    async def create_table(
-        self,
-        name: str,
-        fields_spec: list[dict],
-        content: AvroStream,
-        label: str | None = None,
-        owner_typedid: str | None = None,
-        replace_existing: bool = True,
-    ) -> None:
-        """See `ConnectionAsync` corresponding method."""
-        await self._dispatch["model_tables"].create_table(
-            name, fields_spec, content, label, owner_typedid, replace_existing
-        )
-
-    async def update_table(self, typedid: str, data: AvroStream) -> None:
-        """See `ConnectionAsync` corresponding method."""
-        await self._dispatch["model_tables"].update_table(typedid, data)
-
-    async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method."""
-        return await self._dispatch["model_parameters"].get_calcitems(typedid)
-
-    async def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
-        """See `ConnectionAsync` corresponding method."""
-        await self._dispatch["model_parameters"].push_calcitem(typedid, key1, key2, value)
-
-    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
-        """See `ConnectionAsync` corresponding method."""
-        return await self._default.send_notification(notification)
-
     async def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.import_files(files)
+
+    async def update_status(
+        self,
+        jst_id: int,
+        status_code: JobStatus,
+        progress: int | None,
+        msg: str | None = None,
+        results: dict[str, Any] | None = None,
+    ) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        await self._dispatch["job_updates"].update_status(
+            jst_id, status_code, progress, msg, results
+        )
 
     async def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
@@ -1582,10 +1572,6 @@ class ConnectionComposed(ConnectionAsync):
             dashboard_preferences,
             action_item_type,
         )
-
-    async def get_advanced_property(self, property_name: str) -> list[str]:
-        """See `ConnectionAsync` corresponding method."""
-        return await self._default.get_advanced_property(property_name)
 
 
 T = TypeVar("T")
@@ -1624,6 +1610,9 @@ class ConnectionSync:
         if hasattr(conn, "session"):
             conn.session.set_header("Connection", "close")
 
+    def __repr__(self) -> str:
+        return f"ConnectionSync({self._conn})"
+
     def login_extended(self) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.login_extended())
@@ -1632,36 +1621,17 @@ class ConnectionSync:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.backend_version())
 
-    def update_status(
-        self,
-        jst_id: int,
-        status_code: JobStatus,
-        progress: int | None,
-        msg: str | None = None,
-        results: dict[str, Any] | None = None,
-    ) -> None:
+    def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.update_status(jst_id, status_code, progress, msg, results))
+        return _run_sync(self._conn.send_notification(notification))
 
     def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.list_users(**kwargs))
 
-    def get_fc(
-        self,
-        typedid: str,
-        params: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    def get_advanced_property(self, property_name: str) -> list[str]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.get_fc(typedid, params))
-
-    def list_fcs(
-        self,
-        type_code: str,
-        params: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.list_fcs(type_code, params))
+        return _run_sync(self._conn.get_advanced_property(property_name))
 
     def get_object(
         self,
@@ -1669,10 +1639,6 @@ class ConnectionSync:
     ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.get_object(typedid))
-
-    def quick_search(self, sku_or_label: str) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.quick_search(sku_or_label))
 
     def list_objects(
         self,
@@ -1689,29 +1655,6 @@ class ConnectionSync:
                 type_code, filters, filter_aggregator, start_row, max_rows, sort_by
             )
         )
-
-    def list_lpg_items(
-        self, lpg_id: int, filters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.list_lpg_items(lpg_id, filters))
-
-    def update_lpg(
-        self,
-        lpg_id: int,
-        field_to_update: str,
-        new_value: float,
-        product: dict[str, Any],
-        comment: str,
-    ) -> None:
-        """See `ConnectionAsync` corresponding method."""
-        return _run_sync(
-            self._conn.update_lpg(lpg_id, field_to_update, new_value, product, comment)
-        )
-
-    def submit_lpg(self, lpg_id: int, product_typedids: list[str]) -> list[dict[str, Any]]:
-        """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.submit_lpg(lpg_id, product_typedids))
 
     def get_object_metadata(
         self,
@@ -1730,42 +1673,25 @@ class ConnectionSync:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.update_object(type_code, attributes))
 
-    def stream_dm_data(
-        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
-    ) -> Iterator[bytes]:
+    def quick_search(self, sku_or_label: str) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        return _sync_iterator(self._conn.stream_dm_data(typedid, chunk_size))
+        return _run_sync(self._conn.quick_search(sku_or_label))
 
-    def fetch_paginated_dm_data(
-        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
-    ) -> Iterator[list[dict[str, Any]]]:
-        """See `ConnectionAsync` corresponding method."""
-        return _sync_iterator(self._conn.fetch_paginated_dm_data(typedid, page_size))
-
-    def list_attachments(
+    def get_fc(
         self,
         typedid: str,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.get_fc(typedid, params))
+
+    def list_fcs(
+        self,
+        type_code: str,
+        params: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.list_attachments(typedid))
-
-    def attach_file(
-        self,
-        typedid: str,
-        name: str,
-        content: IO,
-    ) -> None:
-        """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.attach_file(typedid, name, content))
-
-    def pull_file(
-        self,
-        owner_typedid: str,
-        attachment_typedid: str,
-        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
-    ) -> Iterator[bytes]:
-        """See `ConnectionAsync` corresponding method."""
-        return _sync_iterator(self._conn.pull_file(owner_typedid, attachment_typedid, chunk_size))
+        return _run_sync(self._conn.list_fcs(type_code, params))
 
     def create_table(
         self,
@@ -1787,6 +1713,18 @@ class ConnectionSync:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.update_table(typedid, data))
 
+    def stream_dm_data(
+        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+    ) -> Iterator[bytes]:
+        """See `ConnectionAsync` corresponding method."""
+        return _sync_iterator(self._conn.stream_dm_data(typedid, chunk_size))
+
+    def fetch_paginated_dm_data(
+        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+    ) -> Iterator[list[dict[str, Any]]]:
+        """See `ConnectionAsync` corresponding method."""
+        return _sync_iterator(self._conn.fetch_paginated_dm_data(typedid, page_size))
+
     def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.get_calcitems(typedid))
@@ -1795,13 +1733,68 @@ class ConnectionSync:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.push_calcitem(typedid, key1, key2, value))
 
-    def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+    def list_lpg_items(
+            self, lpg_id: int, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.send_notification(notification))
+        return _run_sync(self._conn.list_lpg_items(lpg_id, filters))
+
+    def update_lpg(
+            self,
+            lpg_id: int,
+            field_to_update: str,
+            new_value: float,
+            product: dict[str, Any],
+            comment: str,
+    ) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(
+            self._conn.update_lpg(lpg_id, field_to_update, new_value, product, comment)
+        )
+
+    def submit_lpg(self, lpg_id: int, product_typedids: list[str]) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.submit_lpg(lpg_id, product_typedids))
+
+    def list_attachments(
+            self,
+            typedid: str,
+    ) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.list_attachments(typedid))
+
+    def attach_file(
+            self,
+            typedid: str,
+            name: str,
+            content: IO,
+    ) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.attach_file(typedid, name, content))
+
+    def pull_file(
+            self,
+            owner_typedid: str,
+            attachment_typedid: str,
+            chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+    ) -> Iterator[bytes]:
+        """See `ConnectionAsync` corresponding method."""
+        return _sync_iterator(self._conn.pull_file(owner_typedid, attachment_typedid, chunk_size))
 
     def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.import_files(files))
+
+    def update_status(
+        self,
+        jst_id: int,
+        status_code: JobStatus,
+        progress: int | None,
+        msg: str | None = None,
+        results: dict[str, Any] | None = None,
+    ) -> None:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.update_status(jst_id, status_code, progress, msg, results))
 
     def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
@@ -1837,7 +1830,3 @@ class ConnectionSync:
                 action_item_type,
             )
         )
-
-    def get_advanced_property(self, property_name: str) -> list[str]:
-        """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.get_advanced_property(property_name))
