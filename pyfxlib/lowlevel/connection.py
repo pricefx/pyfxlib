@@ -430,6 +430,18 @@ class ConnectionAsync(ABC):
         """
         pass
 
+    @abstractmethod
+    async def get_advanced_property(self, property_name: str) -> list[str]:
+        """Fetches the values of an advanced property by name.
+
+        Args:
+            property_name: The name of the advanced property.
+        Returns:
+            The list of values associated with the property.
+        """
+        pass
+
+
 # By default, stream download timeout is 60s which may cause errors when the table is large.
 # (see https://pricefx.atlassian.net/browse/PFUN-14665)
 # When the back end receives a timeout, it chooses an actual timeout which is the minimum value
@@ -980,6 +992,14 @@ class ConnectionRemote(ConnectionAsync):
         )
         return response.json()["response"]["data"][0]
 
+    async def get_advanced_property(self, property_name: str) -> list[str]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.get(
+            f"{self.endpoint}/configurationmanager.get/{property_name}"
+        )
+        return response.json()["response"]["data"]
+
+
 def _split_typedid(typed_id: str) -> tuple[int, str]:
     match = re.search(r"^(?P<id>[0-9]+)\.(?P<type_code>[A-Z]+)$", typed_id)
     if match:
@@ -1327,6 +1347,11 @@ class ConnectionLocal(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return {}
 
+    async def get_advanced_property(self, property_name: str) -> list[str]:
+        """See `ConnectionAsync` corresponding method."""
+        return []
+
+
 class ConnectionComposed(ConnectionAsync):
     """A connection that composes a remote and local connections.
 
@@ -1556,6 +1581,12 @@ class ConnectionComposed(ConnectionAsync):
             dashboard_inputs,
             dashboard_preferences,
             action_item_type,
+        )
+
+    async def get_advanced_property(self, property_name: str) -> list[str]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.get_advanced_property(property_name)
+
 
 T = TypeVar("T")
 
@@ -1779,6 +1810,7 @@ class ConnectionSync:
     def query_execute(self, query: dict[str, Any]) -> list[list[Any]]:
         """See `ConnectionAsync` corresponding method."""
         return _run_sync(self._conn.query_execute(query))
+
     def create_action(
         self,
         title: str,
@@ -1806,3 +1838,6 @@ class ConnectionSync:
             )
         )
 
+    def get_advanced_property(self, property_name: str) -> list[str]:
+        """See `ConnectionAsync` corresponding method."""
+        return _run_sync(self._conn.get_advanced_property(property_name))
