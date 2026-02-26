@@ -1,6 +1,6 @@
 import pytest
 
-from pyfxlib.lowlevel.connection import _split_typedid
+from pyfxlib.lowlevel.connection import ConnectionAsync
 
 
 @pytest.mark.parametrize(
@@ -21,11 +21,11 @@ def test_typedid_parsing_should_raise_value_error_if_invalid(
     invalid_typedid,
 ):
     with pytest.raises(ValueError) as err:
-        _split_typedid(invalid_typedid)
+        ConnectionAsync._split_typedid(invalid_typedid)
     assert err.value.args[0] == f"'{invalid_typedid}' is not a valid typedId"
 
 
 def test_typedid_should_be_parsed_correctly():
     id = 12
     type_code = "MO"
-    assert _split_typedid(f"{id}.{type_code}") == (id, type_code)
+    assert ConnectionAsync._split_typedid(f"{id}.{type_code}") == (id, type_code)

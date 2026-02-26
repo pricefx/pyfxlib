@@ -26,6 +26,9 @@ from pyfxlib.lowlevel import _DEFAULT_PAGE_SIZE, _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.session import PfxSession
 
+T = TypeVar("T")
+
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -38,6 +41,41 @@ class JobStatus(Enum):
     FAILED = "FAILED"
 
 
+class FilterOperator(StrEnum):
+    """Filter operators for search criteria."""
+
+    EQUALS = "equals"
+    IEQUALS = "iEquals"
+    NOTEQUAL = "notEqual"
+    INOTEQUAL = "iNotEqual"
+    GREATERTHAN = "greaterThan"
+    GREATEROREQUAL = "greaterOrEqual"
+    LESSOREQUAL = "lessOrEqual"
+    LESSTHAN = "lessThan"
+    ISNULL = "isNull"
+    NOTNULL = "notNull"
+    CONTAINS = "contains"
+    ICONTAINS = "iContains"
+    CONTAINSPATTERN = "containsPattern"
+    ICONTAINSPATTERN = "iContainsPattern"
+    NOTCONTAINS = "notContains"
+    INOTCONTAINS = "iNotContains"
+    STARTSWITH = "startsWith"
+    ISTARTSWITH = "iStartsWith"
+    NOTSTARTSWITH = "notStartsWith"
+    INOTSTARTSWITH = "iNotStartsWith"
+    ENDSWITH = "endsWith"
+    IENDSWITH = "iEndsWith"
+    NOTENDSWITH = "notEndsWith"
+    INOTENDSWITH = "iNotEndsWith"
+    BETWEEN = "between"
+    BETWEENINCLUSIVE = "betweenInclusive"
+    IBETWEEN = "iBetween"
+    IBETWEENINCLUSIVE = "iBetweenInclusive"
+    INSET = "inSet"
+    NOTINSET = "notInSet"
+
+
 class ConnectionAsync(ABC):
     """Abstract class for an async Connection.
 
@@ -45,6 +83,13 @@ class ConnectionAsync(ABC):
     This backend can be an actual Pricefx instance, or can be substituted with,
     e.g. a local mock.
     """
+
+    @staticmethod
+    def _split_typedid(typed_id: str) -> tuple[int, str]:
+        match = re.search(r"^(?P<id>[0-9]+)\.(?P<type_code>[A-Z]+)$", typed_id)
+        if match:
+            return (int(match.group("id")), match.group("type_code"))
+        raise ValueError(f"'{typed_id}' is not a valid typedId")
 
     @abstractmethod
     async def login_extended(self) -> dict[str, Any]:
@@ -250,7 +295,6 @@ class ConnectionAsync(ABC):
         """
         pass
 
-
     @abstractmethod
     async def stream_dm_data(
         self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
@@ -443,63 +487,20 @@ class ConnectionAsync(ABC):
         pass
 
 
-# By default, stream download timeout is 60s which may cause errors when the table is large.
-# (see https://pricefx.atlassian.net/browse/PFUN-14665)
-# When the back end receives a timeout, it chooses an actual timeout which is the minimum value
-# between a configured "MAX TIMEOUT" value and the timeout argument.
-# The solution here is to set the timeout to 1h so that the back end will always choose this
-# configured "MAX TIMEOUT" value up to 1h.
-_DATAMART_FETCH_TIMEOUT = 3600
-
-
-class FilterOperator(StrEnum):
-    """Filter operators for search criteria."""
-
-    EQUALS = "equals"
-    IEQUALS = "iEquals"
-    NOTEQUAL = "notEqual"
-    INOTEQUAL = "iNotEqual"
-    GREATERTHAN = "greaterThan"
-    GREATEROREQUAL = "greaterOrEqual"
-    LESSOREQUAL = "lessOrEqual"
-    LESSTHAN = "lessThan"
-    ISNULL = "isNull"
-    NOTNULL = "notNull"
-    CONTAINS = "contains"
-    ICONTAINS = "iContains"
-    CONTAINSPATTERN = "containsPattern"
-    ICONTAINSPATTERN = "iContainsPattern"
-    NOTCONTAINS = "notContains"
-    INOTCONTAINS = "iNotContains"
-    STARTSWITH = "startsWith"
-    ISTARTSWITH = "iStartsWith"
-    NOTSTARTSWITH = "notStartsWith"
-    INOTSTARTSWITH = "iNotStartsWith"
-    ENDSWITH = "endsWith"
-    IENDSWITH = "iEndsWith"
-    NOTENDSWITH = "notEndsWith"
-    INOTENDSWITH = "iNotEndsWith"
-    BETWEEN = "between"
-    BETWEENINCLUSIVE = "betweenInclusive"
-    IBETWEEN = "iBetween"
-    IBETWEENINCLUSIVE = "iBetweenInclusive"
-    INSET = "inSet"
-    NOTINSET = "notInSet"
-
-
-def _split_typedid(typed_id: str) -> tuple[int, str]:
-    match = re.search(r"^(?P<id>[0-9]+)\.(?P<type_code>[A-Z]+)$", typed_id)
-    if match:
-        return (int(match.group("id")), match.group("type_code"))
-    raise ValueError(f"'{typed_id}' is not a valid typedId")
-
-
 class ConnectionRemote(ConnectionAsync):
     """A connection to a remote instance.
 
     This class abstracts the various aspects of interacting with the Pricefx platform behind an
     unified interface.
     """
+
+    # By default, stream download timeout is 60s which may cause errors when the table is large.
+    # (see https://pricefx.atlassian.net/browse/PFUN-14665)
+    # When the back end receives a timeout, it chooses an actual timeout which is the minimum value
+    # between a configured "MAX TIMEOUT" value and the timeout argument.
+    # The solution here is to set the timeout to 1h so that the back end will always choose this
+    # configured "MAX TIMEOUT" value up to 1h.
+    _DM_FETCH_TIMEOUT = 3600
 
     def __init__(self, endpoint: str, pfxsession: PfxSession) -> None:
         self.endpoint = endpoint.rstrip("/")
@@ -606,7 +607,7 @@ class ConnectionRemote(ConnectionAsync):
         typedid: str,
     ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        id, type_code = _split_typedid(typedid)
+        id, type_code = self._split_typedid(typedid)
         response = await self.session.post(f"{self.endpoint}/fetch/{type_code}/{id}")
         data = response.json()["response"]["data"]
         if data is not None:
@@ -755,7 +756,7 @@ class ConnectionRemote(ConnectionAsync):
     ) -> AsyncIterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
         async for chunk in self.session.get_stream(
-            f"{self.endpoint}/datamart.fetch/{typedid}?stream&timeout={_DATAMART_FETCH_TIMEOUT}",
+            f"{self.endpoint}/datamart.fetch/{typedid}?stream&timeout={self._DM_FETCH_TIMEOUT}",
             chunk_size=chunk_size,
             params={"output": "csv"},
         ):
@@ -783,13 +784,13 @@ class ConnectionRemote(ConnectionAsync):
 
     async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        url = f"{self.endpoint}/lookuptablemanager.fetch/{_split_typedid(typedid)[0]}"
+        url = f"{self.endpoint}/lookuptablemanager.fetch/{self._split_typedid(typedid)[0]}"
         response = await self.session.post(url)
         return response.json()["response"]["data"]
 
     async def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
         """See `ConnectionAsync` corresponding method."""
-        url = f"{self.endpoint}/lookuptablemanager.add/{_split_typedid(typedid)[0]}"
+        url = f"{self.endpoint}/lookuptablemanager.add/{self._split_typedid(typedid)[0]}"
         await self.session.post(
             url,
             json={
@@ -1067,7 +1068,7 @@ class ConnectionLocal(ConnectionAsync):
 
         This implementation will return a minimal dict.
         """
-        return {"id": _split_typedid(typedid)[0], "typedId": f"{typedid}"}
+        return {"id": self._split_typedid(typedid)[0], "typedId": f"{typedid}"}
 
     async def list_objects(
         self,
@@ -1453,14 +1454,14 @@ class ConnectionComposed(ConnectionAsync):
         await self._dispatch["model_tables"].update_table(typedid, data)
 
     async def stream_dm_data(
-            self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
     ) -> AsyncIterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
         async for chunk in self._dispatch["pa_tables"].stream_dm_data(typedid, chunk_size):
             yield chunk
 
     async def fetch_paginated_dm_data(
-            self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
     ) -> AsyncIterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method."""
         async for page in self._dispatch["pa_tables"].fetch_paginated_dm_data(typedid, page_size):
@@ -1574,27 +1575,6 @@ class ConnectionComposed(ConnectionAsync):
         )
 
 
-T = TypeVar("T")
-
-
-def _run_sync(coro: Coroutine[Any, Any, T]) -> T:
-    """Execute an async coroutine synchronously."""
-    return asyncio.run(coro)
-
-
-def _sync_iterator(async_iter: AsyncIterator[T]) -> Iterator[T]:
-    """Convert an async iterator to a sync one."""
-    loop = asyncio.new_event_loop()
-    try:
-        while True:
-            try:
-                yield loop.run_until_complete(async_iter.__anext__())
-            except StopAsyncIteration:
-                break
-    finally:
-        loop.close()
-
-
 class ConnectionSync:
     """Synchronous wrapper around an async Connection.
 
@@ -1613,32 +1593,50 @@ class ConnectionSync:
     def __repr__(self) -> str:
         return f"ConnectionSync({self._conn})"
 
+    @staticmethod
+    def _run_sync(coro: Coroutine[Any, Any, T]) -> T:
+        """Execute an async coroutine synchronously."""
+        return asyncio.run(coro)
+
+    @staticmethod
+    def _sync_iterator(async_iter: AsyncIterator[T]) -> Iterator[T]:
+        """Convert an async iterator to a sync one."""
+        loop = asyncio.new_event_loop()
+        try:
+            while True:
+                try:
+                    yield loop.run_until_complete(async_iter.__anext__())
+                except StopAsyncIteration:
+                    break
+        finally:
+            loop.close()
+
     def login_extended(self) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.login_extended())
+        return self._run_sync(self._conn.login_extended())
 
     def backend_version(self) -> dict[str, int | None]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.backend_version())
+        return self._run_sync(self._conn.backend_version())
 
     def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.send_notification(notification))
+        return self._run_sync(self._conn.send_notification(notification))
 
     def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.list_users(**kwargs))
+        return self._run_sync(self._conn.list_users(**kwargs))
 
     def get_advanced_property(self, property_name: str) -> list[str]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.get_advanced_property(property_name))
+        return self._run_sync(self._conn.get_advanced_property(property_name))
 
     def get_object(
         self,
         typedid: str,
     ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.get_object(typedid))
+        return self._run_sync(self._conn.get_object(typedid))
 
     def list_objects(
         self,
@@ -1650,7 +1648,7 @@ class ConnectionSync:
         sort_by: str | None = None,
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(
+        return self._run_sync(
             self._conn.list_objects(
                 type_code, filters, filter_aggregator, start_row, max_rows, sort_by
             )
@@ -1663,19 +1661,19 @@ class ConnectionSync:
         object_id: int,
     ) -> list[dict[str, Any]]:
         """See `Connection` corresponding method."""
-        return _run_sync(self._conn.get_object_metadata(type_code, payload_key, object_id))
+        return self._run_sync(self._conn.get_object_metadata(type_code, payload_key, object_id))
 
     def add_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.add_object(type_code, attributes))
+        return self._run_sync(self._conn.add_object(type_code, attributes))
 
     def update_object(self, type_code: str, attributes: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.update_object(type_code, attributes))
+        return self._run_sync(self._conn.update_object(type_code, attributes))
 
     def quick_search(self, sku_or_label: str) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.quick_search(sku_or_label))
+        return self._run_sync(self._conn.quick_search(sku_or_label))
 
     def get_fc(
         self,
@@ -1683,7 +1681,7 @@ class ConnectionSync:
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.get_fc(typedid, params))
+        return self._run_sync(self._conn.get_fc(typedid, params))
 
     def list_fcs(
         self,
@@ -1691,7 +1689,7 @@ class ConnectionSync:
         params: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.list_fcs(type_code, params))
+        return self._run_sync(self._conn.list_fcs(type_code, params))
 
     def create_table(
         self,
@@ -1703,7 +1701,7 @@ class ConnectionSync:
         replace_existing: bool = True,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(
+        return self._run_sync(
             self._conn.create_table(
                 name, fields_spec, content, label, owner_typedid, replace_existing
             )
@@ -1711,79 +1709,81 @@ class ConnectionSync:
 
     def update_table(self, typedid: str, data: AvroStream) -> None:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.update_table(typedid, data))
+        return self._run_sync(self._conn.update_table(typedid, data))
 
     def stream_dm_data(
         self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
     ) -> Iterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
-        return _sync_iterator(self._conn.stream_dm_data(typedid, chunk_size))
+        return self._sync_iterator(self._conn.stream_dm_data(typedid, chunk_size))
 
     def fetch_paginated_dm_data(
         self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
     ) -> Iterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method."""
-        return _sync_iterator(self._conn.fetch_paginated_dm_data(typedid, page_size))
+        return self._sync_iterator(self._conn.fetch_paginated_dm_data(typedid, page_size))
 
     def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.get_calcitems(typedid))
+        return self._run_sync(self._conn.get_calcitems(typedid))
 
     def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.push_calcitem(typedid, key1, key2, value))
+        return self._run_sync(self._conn.push_calcitem(typedid, key1, key2, value))
 
     def list_lpg_items(
-            self, lpg_id: int, filters: dict[str, Any] | None = None
+        self, lpg_id: int, filters: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.list_lpg_items(lpg_id, filters))
+        return self._run_sync(self._conn.list_lpg_items(lpg_id, filters))
 
     def update_lpg(
-            self,
-            lpg_id: int,
-            field_to_update: str,
-            new_value: float,
-            product: dict[str, Any],
-            comment: str,
+        self,
+        lpg_id: int,
+        field_to_update: str,
+        new_value: float,
+        product: dict[str, Any],
+        comment: str,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(
+        return self._run_sync(
             self._conn.update_lpg(lpg_id, field_to_update, new_value, product, comment)
         )
 
     def submit_lpg(self, lpg_id: int, product_typedids: list[str]) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.submit_lpg(lpg_id, product_typedids))
+        return self._run_sync(self._conn.submit_lpg(lpg_id, product_typedids))
 
     def list_attachments(
-            self,
-            typedid: str,
+        self,
+        typedid: str,
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.list_attachments(typedid))
+        return self._run_sync(self._conn.list_attachments(typedid))
 
     def attach_file(
-            self,
-            typedid: str,
-            name: str,
-            content: IO,
+        self,
+        typedid: str,
+        name: str,
+        content: IO,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.attach_file(typedid, name, content))
+        return self._run_sync(self._conn.attach_file(typedid, name, content))
 
     def pull_file(
-            self,
-            owner_typedid: str,
-            attachment_typedid: str,
-            chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+        self,
+        owner_typedid: str,
+        attachment_typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
     ) -> Iterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
-        return _sync_iterator(self._conn.pull_file(owner_typedid, attachment_typedid, chunk_size))
+        return self._sync_iterator(
+            self._conn.pull_file(owner_typedid, attachment_typedid, chunk_size)
+        )
 
     def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.import_files(files))
+        return self._run_sync(self._conn.import_files(files))
 
     def update_status(
         self,
@@ -1794,15 +1794,15 @@ class ConnectionSync:
         results: dict[str, Any] | None = None,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.update_status(jst_id, status_code, progress, msg, results))
+        return self._run_sync(self._conn.update_status(jst_id, status_code, progress, msg, results))
 
     def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.query_meta(query))
+        return self._run_sync(self._conn.query_meta(query))
 
     def query_execute(self, query: dict[str, Any]) -> list[list[Any]]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(self._conn.query_execute(query))
+        return self._run_sync(self._conn.query_execute(query))
 
     def create_action(
         self,
@@ -1817,7 +1817,7 @@ class ConnectionSync:
         action_item_type: str = "__DEFAULT__",
     ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        return _run_sync(
+        return self._run_sync(
             self._conn.create_action(
                 title,
                 assignee_id,
