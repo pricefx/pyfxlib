@@ -130,11 +130,11 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
-    async def get_advanced_property(self, property_name: str) -> list[str]:
-        """Fetches the values of an advanced property by name.
+    async def get_application_property(self, property_name: str) -> list[str]:
+        """Fetches the values of an application property by name.
 
         Args:
-            property_name: The name of the advanced property.
+            property_name: The name of the property.
         Returns:
             The list of values associated with the property.
         """
@@ -595,7 +595,7 @@ class ConnectionRemote(ConnectionAsync):
             if user_info.get("email") is not None
         ]
 
-    async def get_advanced_property(self, property_name: str) -> list[str]:
+    async def get_application_property(self, property_name: str) -> list[str]:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.get(
             f"{self.endpoint}/configurationmanager.get/{property_name}"
@@ -1056,7 +1056,7 @@ class ConnectionLocal(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return []
 
-    async def get_advanced_property(self, property_name: str) -> list[str]:
+    async def get_application_property(self, property_name: str) -> list[str]:
         """See `ConnectionAsync` corresponding method."""
         return []
 
@@ -1373,9 +1373,9 @@ class ConnectionComposed(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return await self._default.list_users(**kwargs)
 
-    async def get_advanced_property(self, property_name: str) -> list[str]:
+    async def get_application_property(self, property_name: str) -> list[str]:
         """See `ConnectionAsync` corresponding method."""
-        return await self._default.get_advanced_property(property_name)
+        return await self._default.get_application_property(property_name)
 
     async def get_object(
         self,
@@ -1627,9 +1627,9 @@ class ConnectionSync:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.list_users(**kwargs))
 
-    def get_advanced_property(self, property_name: str) -> list[str]:
+    def get_application_property(self, property_name: str) -> list[str]:
         """See `ConnectionAsync` corresponding method."""
-        return self._run_sync(self._conn.get_advanced_property(property_name))
+        return self._run_sync(self._conn.get_application_property(property_name))
 
     def get_object(
         self,

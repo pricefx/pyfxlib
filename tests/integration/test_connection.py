@@ -698,8 +698,8 @@ async def test_list_users_should_return_valid_users(_async_conn: ConnectionAsync
 
 
 @pytest.mark.asyncio
-async def test_get_advanced_property_should_return_values_as_list(_async_conn: ConnectionAsync):
-    result = await _async_conn.get_advanced_property("clusterName")
+async def test_get_application_property_should_return_values_as_list(_async_conn: ConnectionAsync):
+    result = await _async_conn.get_application_property("clusterName")
 
     assert isinstance(result, list)
     assert len(result) > 0
