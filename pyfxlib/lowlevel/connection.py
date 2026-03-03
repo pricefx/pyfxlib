@@ -314,12 +314,31 @@ class ConnectionAsync(ABC):
 
     @abstractmethod
     async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
-        """Get the calculation items associated with a specific typedid."""
+        """Get all rows from a JSON2-type Lookup Table.
+
+        Note: only supports lookup tables of type JSON / valueType JSON2.
+
+        Args:
+            typedid: typedId of the table (e.g. "2623.JLTV2"), only the id number is used.
+        Returns:
+            List of all rows. Each row contains key1, key2, typedId of the parent table,
+            and the value stored under attributeExtension___Value.
+        """
         pass
 
     @abstractmethod
     async def push_calcitem(self, typedid: str, key1: str, key2: str, value: Any) -> None:
-        """Push a new calculation item associated with a specific typedid."""
+        """Add a row to a JSON2-type Lookup Table.
+
+        Note: only supports LTs of type JSON / valueType JSON2.
+        The value is stored under the attributeExtension___Value field.
+
+        Args:
+            typedid: typedId of the lookup table (e.g. "2623.JLTV2"), only the id number is used.
+            key1: first key
+            key2: second key
+            value: value to store
+        """
         pass
 
     @abstractmethod
