@@ -142,13 +142,13 @@ class AbstractTable(BasicEntity, ABC):
 
     def stream(self, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE) -> Iterator[bytes]:
         """Stream the content of this table."""
-        return self._conn.stream_fcs(self.typedid, chunk_size)
+        return self._conn.stream_dm_data(self.typedid, chunk_size)
 
     def fetch_paginated(
         self, page_size: int = _DEFAULT_PAGE_SIZE
     ) -> Iterator[list[dict[str, Any]]]:
         """Fetch the content of the table page by page."""
-        return self._conn.fetch_paginated_fcs(self.typedid, page_size)
+        return self._conn.fetch_paginated_dm_data(self.typedid, page_size)
 
     def to_file(self, file_path: str) -> None:
         """Write table content to file.
@@ -382,7 +382,7 @@ class TableSource(ItemCollection[TableType], ABC):
 
     def get(self, typedid: str) -> TableType:
         """Get the table with the given typedid."""
-        return self._table_constructor(self._conn.get_fcs(typedid, params=self._params))
+        return self._table_constructor(self._conn.get_fc(typedid, params=self._params))
 
 
 class TableImmutableSource(TableSource[TableImmutable]):
@@ -885,7 +885,7 @@ class DMModel(Model):
         model_typedid: str,
     ) -> "DMModel":
         """Create a model from a model typedid."""
-        return DMModel.from_dict(conn, conn.get_fcs(model_typedid))
+        return DMModel.from_dict(conn, conn.get_fc(model_typedid))
 
 
 class DMModels(ItemCollection[DMModel]):
@@ -900,7 +900,7 @@ class DMModels(ItemCollection[DMModel]):
 
     def get(self, typedid: str) -> DMModel:
         """Get the DM model with the given typedid."""
-        return DMModel.from_dict(self._conn, self._conn.get_fcs(typedid))
+        return DMModel.from_dict(self._conn, self._conn.get_fc(typedid))
 
 
 class ModelObject(Model):
@@ -970,7 +970,10 @@ class ModelObject(Model):
         model_typedid: str,
     ) -> "ModelObject":
         """Create a model from a model typedid."""
-        return ModelObject.from_dict(conn, conn.get_object(model_typedid))
+        data = conn.get_object(model_typedid)
+        if data is None:
+            raise ValueError(f"Object not found: {model_typedid}")
+        return ModelObject.from_dict(conn, data)
 
 
 class ModelObjects(ItemCollection[ModelObject]):
@@ -985,7 +988,10 @@ class ModelObjects(ItemCollection[ModelObject]):
 
     def get(self, typedid: str) -> ModelObject:
         """Get the model object with the given id."""
-        return ModelObject.from_dict(self._conn, self._conn.get_object(typedid))
+        data = self._conn.get_object(typedid)
+        if data is None:
+            raise ValueError(f"Object not found: {typedid}")
+        return ModelObject.from_dict(self._conn, data)
 
 
 class DataSources(TableMutableSource):

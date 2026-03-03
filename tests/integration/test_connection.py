@@ -3,6 +3,7 @@ import inspect
 from io import BytesIO, StringIO
 import json
 from typing import Any
+import zipfile
 
 import pandas as pd
 import pytest
@@ -85,6 +86,22 @@ async def test_connection_should_be_able_to_add_an_object_update_it_list_it_and_
     assert len(products) == 1
     assert_are_equal_for_common_dict_keys(products[0], updated_res)
 
+    # and it can be filtered by exact label
+    filtered = await _async_conn.list_objects(
+        "P",
+        filters=[{"fieldName": "label", "operator": "iEquals", "value": updated_label}],
+    )
+    assert len(filtered) == 1
+    assert filtered[0]["label"] == updated_label
+
+    # and a non-matching filter returns nothing
+    no_match = await _async_conn.list_objects(
+        "P",
+        filters=[{"fieldName": "label", "operator": "iEquals", "value": "does_not_exist"}],
+        filter_aggregator="and",
+    )
+    assert len(no_match) == 0
+
     # and it can be fetched with get_object
     fetch_pl = await _async_conn.get_object(res["typedId"])
     assert_are_equal_for_common_dict_keys(fetch_pl, updated_res)
@@ -118,8 +135,8 @@ async def test_push_pull_and_list_data_source_should_work_as_expected(_async_con
     assert fcs[0]["label"] == data_source_label
     assert fcs[0]["uniqueName"] == data_source_name
 
-    # and it can be fetched using its typedId via get_fcs
-    data_souce = await _async_conn.get_fcs(fcs[0]["typedId"])
+    # and it can be fetched using its typedId via get_fc
+    data_souce = await _async_conn.get_fc(fcs[0]["typedId"])
     assert data_souce["label"] == data_source_label
     assert data_souce["uniqueName"] == data_source_name
 
@@ -130,7 +147,7 @@ async def test_push_pull_and_list_data_source_should_work_as_expected(_async_con
     assert data_souces[0]["uniqueName"] == data_source_name
 
     # and it can be pulled with stream_datasource with same content as initial pushed one
-    downloaded_content = await collect_csv(_async_conn.stream_fcs(data_souces[0]["typedId"]))
+    downloaded_content = await collect_csv(_async_conn.stream_dm_data(data_souces[0]["typedId"]))
     assert (dataframe[list(data.keys())] == downloaded_content[list(data.keys())]).all().all()
 
 
@@ -178,7 +195,7 @@ async def test_should_be_able_to_update_a_data_source(_async_conn: ConnectionAsy
         "column2": [1, 12, 2, 24],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(ds_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_dm_data(ds_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
@@ -228,7 +245,7 @@ async def test_should_fail_to_update_a_data_source_when_duplicates(_async_conn: 
         "column2": [1, 12],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(ds_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_dm_data(ds_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
@@ -278,7 +295,7 @@ async def test_should_be_able_to_update_the_existing_rows_on_a_data_source(
         "column2": [2, 24],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(ds_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_dm_data(ds_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
@@ -339,7 +356,7 @@ async def test_should_be_able_to_push_an_owned_table_and_read_it_back(
     assert [x["name"] for x in fcs[0]["fields"]] == list(data.keys())
 
     # and we can fetch its content
-    downloaded_content = await collect_csv(_async_conn.stream_fcs(fcs[0]["typedId"], 128))
+    downloaded_content = await collect_csv(_async_conn.stream_dm_data(fcs[0]["typedId"], 128))
     assert (dataframe[list(data.keys())] == downloaded_content[list(data.keys())]).all().all()
 
 
@@ -387,7 +404,7 @@ async def test_should_be_able_to_update_model_table(
         "column2": [1, 42, 24],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(table_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_dm_data(table_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
@@ -437,7 +454,7 @@ async def test_should_fail_to_update_model_table_when_duplicates(
         "column2": [1, 12],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(table_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_dm_data(table_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
@@ -485,7 +502,7 @@ async def test_should_be_able_update_the_existing_rows_on_a_model_table(
         "column2": [2, 24],
     }
     dataframe_expected = pd.DataFrame(expected_data)
-    dataframe_downloaded = await collect_csv(_async_conn.stream_fcs(table_typedid, 128))
+    dataframe_downloaded = await collect_csv(_async_conn.stream_dm_data(table_typedid, 128))
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
@@ -566,7 +583,7 @@ async def test_create_table_should_work_with_ten_million_lines_df(_async_conn: C
 
     # and it can be pulled with stream_datasource with same content as initial pushed one
     dataframes = []
-    async for page in _async_conn.fetch_paginated_fcs(data_sources[0]["typedId"]):
+    async for page in _async_conn.fetch_paginated_dm_data(data_sources[0]["typedId"]):
         dataframes.append(pd.DataFrame(page))
 
     downloaded_content = pd.concat(dataframes, ignore_index=True) if dataframes else pd.DataFrame()
@@ -608,6 +625,224 @@ def test_connection_sync_returns_values_not_coroutines(_conn: ConnectionSync):
     assert "typedId" in list_dmds[0]
 
     # when using a method of the connection using _sync_iterator
-    chunks = _conn.stream_fcs(list_dmds[0]["typedId"])
+    chunks = _conn.stream_dm_data(list_dmds[0]["typedId"])
     assert not inspect.iscoroutine(chunks)
     assert isinstance(chunks, Iterator)
+
+
+@pytest.mark.asyncio
+async def test_backend_version_should_return_version_dict(_async_conn: ConnectionAsync):
+    version = await _async_conn.backend_version()
+    print(f"Backend version: {version}")
+    assert isinstance(version["major"], int)
+    assert version["minor"] is None or isinstance(version["minor"], int)
+    assert version["patch"] is None or isinstance(version["patch"], int)
+
+
+@pytest.mark.asyncio
+async def test_login_extended_should_return_backend_release(_async_conn: ConnectionAsync):
+    result = await _async_conn.login_extended()
+    assert result["response"]["data"][0]["extendedData"]["Release"] is not None
+
+
+@pytest.mark.asyncio
+async def test_send_notification_should_succeed(_async_conn: ConnectionAsync):
+    version = await _async_conn.backend_version()
+    if (version["major"] or 0) < 15 or (
+        (version["major"] or 0) == 15 and (version["minor"] or 0) < 2
+    ):
+        pytest.skip("Notifications not supported by backend version < 15.2")
+    notif = {
+        "title": "My Title",
+        "message": "Description of banner",
+        "source": "notificationBanner",
+        "status": "INFO",
+        "topic": "SYSTEM_NOTIFICATION",
+        "actionType": "INFO_MESSAGE",
+        "validFrom": "2025-06-02T23:00:00.016Z",
+        "validUntil": "2025-06-03T21:59:59.016Z",
+        "dueDate": "2025-06-03T21:59:59.016Z",
+        "dismissible": True,
+    }
+    result = await _async_conn.send_notification(notif)
+    assert "data" in result
+
+
+@pytest.mark.asyncio
+async def test_list_users_should_return_valid_users(_async_conn: ConnectionAsync):
+    # given a user with email and a user without
+    await _async_conn.add_object(
+        "U",
+        {
+            "loginName": "test.with.email",
+            "email": "test.with.email@pricefx.com",
+        },
+    )
+    await _async_conn.add_object(
+        "U",
+        {
+            "loginName": "test.without.email",
+        },
+    )
+    # when listing users
+    result = await _async_conn.list_users()
+    # then only the user with email is returned
+    login_names = [u["loginName"] for u in result]
+    assert "test.with.email" in login_names
+    assert "test.without.email" not in login_names
+    # and the returned user has the expected structure
+    user = next(u for u in result if u["loginName"] == "test.with.email")
+    assert user["email"] == "test.with.email@pricefx.com"
+    assert "typedId" in user
+    assert "activated" in user
+
+
+@pytest.mark.asyncio
+async def test_get_application_property_should_return_values_as_list(_async_conn: ConnectionAsync):
+    result = await _async_conn.get_application_property("clusterName")
+
+    assert isinstance(result, list)
+    assert len(result) > 0
+    assert all(isinstance(v, str) for v in result)
+
+
+@pytest.mark.asyncio
+async def test_lpg_minimal_operations(_async_conn: ConnectionAsync):
+    lpg = await _async_conn.add_object(
+        "PG",
+        {
+            "priceGridType": "SIMPLE",
+            "label": "Test LPG",
+        },
+    )
+    lpg_id = lpg["id"]
+    assert "typedId" in lpg
+    assert lpg["priceGridType"] == "SIMPLE"
+    assert lpg["status"] == "DRAFT"
+
+    items = await _async_conn.list_lpg_items(lpg_id)
+    assert isinstance(items, list)
+
+    metadata = await _async_conn.get_object_metadata("PGIM", "priceGridId", lpg_id)
+    assert isinstance(metadata, list)
+
+
+@pytest.mark.asyncio
+async def test_push_and_get_calcitems(_async_conn: ConnectionAsync):
+    # given a lookup table
+    lt = await _async_conn.add_object(
+        "LT",
+        {
+            "uniqueName": "test_lookup_table",
+            "label": "Test LT",
+            "type": "JSON",
+            "valueType": "JSON2",
+        },
+    )
+    lt_typedid = lt["typedId"]
+    # when pushing two calcitems
+    await _async_conn.push_calcitem(lt_typedid, "K1", "K2", 42)
+    await _async_conn.push_calcitem(lt_typedid, "K1", "K2bis", 73)
+    # then they are retrievable
+    items = await _async_conn.get_calcitems(lt_typedid)
+    assert isinstance(items, list)
+    assert len(items) == 2
+    expected = [
+        {"key1": "K1", "key2": "K2", "attributeExtension___Value": "42"},
+        {"key1": "K1", "key2": "K2bis", "attributeExtension___Value": "73"},
+    ]
+    for exp in expected:
+        assert any(
+            all(item.get(key) == expected_value for key, expected_value in exp.items())
+            for item in items
+        )
+
+
+@pytest.mark.asyncio
+async def test_import_files(_async_conn: ConnectionAsync, _model_object: dict[str, Any]):
+    # given a model object zipped as mo.json
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("mo.json", json.dumps(_model_object, indent=2))
+    files = {"file": ("mo.zip", zip_buffer.getvalue(), "application/zip")}
+    # when importing it
+    typed_id = await _async_conn.import_files(files)
+    # then we get back a valid MO typedId
+    assert isinstance(typed_id, str)
+    assert typed_id.endswith(".MO")
+
+
+@pytest.mark.asyncio
+async def test_query_meta_and_execute(_async_conn: ConnectionAsync):
+    # given a product
+    sku = "query_test_sku"
+    label = "query_test_label"
+    await _async_conn.add_object("P", {"sku": sku, "label": label})
+    query = {
+        "kind": "pipeline",
+        "stages": [
+            {
+                "kind": "source",
+                "table": {"kind": "products"},
+                "columns": [
+                    {
+                        "kind": "selectable",
+                        "expression": {
+                            "kind": "columnReference",
+                            "column": "sku",
+                            "source": "table",
+                        },
+                        "alias": "sku",
+                    },
+                    {
+                        "kind": "selectable",
+                        "expression": {
+                            "kind": "columnReference",
+                            "column": "label",
+                            "source": "table",
+                        },
+                        "alias": "label",
+                    },
+                ],
+            },
+            {"kind": "take", "count": 5},
+        ],
+    }
+    # when fetching metadata
+    meta = await _async_conn.query_meta(query)
+    # then the metadata describes the expected columns
+    assert "columns" in meta
+    column_names = [col["name"] for col in meta["columns"]]
+    assert "sku" in column_names
+    assert "label" in column_names
+    # when executing the query
+    rows = await _async_conn.query_execute(query)
+    # then the result contains the created product
+    assert isinstance(rows, list)
+    assert [sku, label] in rows
+
+
+@pytest.mark.asyncio
+async def test_create_action(_async_conn: ConnectionAsync):
+    # given a user to assign the action to
+    user = await _async_conn.add_object(
+        "U",
+        {
+            "loginName": "action_assignee",
+            "email": "action_assignee@pricefx.com",
+        },
+    )
+    assignee_id = int(user["typedId"].split(".")[0])
+    # when creating an action
+    action = await _async_conn.create_action(
+        title="Test Action",
+        assignee_id=assignee_id,
+        due_date="2030-12-31",
+        description="A test action description",
+    )
+    # then the result is a valid open action item assigned to the right user
+    assert action["typedId"].endswith(".AI")
+    assert action["summary"] == "Test Action"
+    assert action["assignedTo"] == assignee_id
+    assert action["status"] == "OPEN"
+    assert action["description"] == "A test action description"
