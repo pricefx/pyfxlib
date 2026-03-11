@@ -24,7 +24,13 @@ from pyfxlib._testtooling.helpers import (
 )
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.connection import ConnectionAsync, ConnectionSync
-from pyfxlib.schema.core import JobStatus
+from pyfxlib.schema.core import (
+    JobStatus,
+    Notification,
+    NotificationActionType,
+    NotificationStatus,
+    NotificationTopic,
+)
 
 __all__ = [
     "_async_conn",
@@ -653,18 +659,18 @@ async def test_send_notification_should_succeed(_async_conn: ConnectionAsync):
         (version["major"] or 0) == 15 and (version["minor"] or 0) < 2
     ):
         pytest.skip("Notifications not supported by backend version < 15.2")
-    notif = {
-        "title": "My Title",
-        "message": "Description of banner",
-        "source": "notificationBanner",
-        "status": "INFO",
-        "topic": "SYSTEM_NOTIFICATION",
-        "actionType": "INFO_MESSAGE",
-        "validFrom": "2025-06-02T23:00:00.016Z",
-        "validUntil": "2025-06-03T21:59:59.016Z",
-        "dueDate": "2025-06-03T21:59:59.016Z",
-        "dismissible": True,
-    }
+    notif = Notification(
+        title="My Title",
+        message="Description of banner",
+        source="notificationBanner",
+        status=NotificationStatus.INFO,
+        topic=NotificationTopic.SYSTEM_NOTIFICATION,
+        action_type=NotificationActionType.INFO_MESSAGE,
+        valid_from="2025-06-02T23:00:00.016Z",
+        valid_until="2025-06-03T21:59:59.016Z",
+        due_date="2025-06-03T21:59:59.016Z",
+        dismissible=True,
+    )
     result = await _async_conn.send_notification(notif)
     assert "data" in result
 
@@ -688,14 +694,12 @@ async def test_list_users_should_return_valid_users(_async_conn: ConnectionAsync
     # when listing users
     result = await _async_conn.list_users()
     # then only the user with email is returned
-    login_names = [u["loginName"] for u in result]
+    login_names = [u.login_name for u in result]
     assert "test.with.email" in login_names
     assert "test.without.email" not in login_names
     # and the returned user has the expected structure
-    user = next(u for u in result if u["loginName"] == "test.with.email")
-    assert user["email"] == "test.with.email@pricefx.com"
-    assert "typedId" in user
-    assert "activated" in user
+    user = next(u for u in result if u.login_name == "test.with.email")
+    assert user.email == "test.with.email@pricefx.com"
 
 
 @pytest.mark.asyncio

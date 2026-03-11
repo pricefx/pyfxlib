@@ -24,7 +24,7 @@ import pandas as pd
 from pyfxlib.lowlevel import _DEFAULT_PAGE_SIZE, _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.session import PfxSession
-from pyfxlib.schema.core import JobStatus
+from pyfxlib.schema.core import JobStatus, Notification, UserInfo
 from pyfxlib.schema.query import FilterOperator
 
 T = TypeVar("T")
@@ -69,7 +69,7 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
-    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+    async def send_notification(self, notification: Notification) -> dict[str, Any]:
         """Send a notification to the user via the backend.
 
         See https://pricefx.atlassian.net/wiki/spaces/UNITY/pages/5482283105/App+Notifications
@@ -82,7 +82,7 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
-    async def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
+    async def list_users(self, **kwargs: Any) -> list[UserInfo]:
         """List all users available in the system."""
         pass
 
@@ -546,7 +546,7 @@ class ConnectionRemote(ConnectionAsync):
                 f"Invalid version format: {backend_version}. Expected format is 'major.minor.patch' or 'major.minor' or 'major' with int values.",  # noqa: E501
             ) from err
 
-    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+    async def send_notification(self, notification: Notification) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         backend_version = await self.backend_version()
         if ((backend_version["major"] or 0) < 15) or (
@@ -558,15 +558,15 @@ class ConnectionRemote(ConnectionAsync):
             )
         response = await self.session.post(
             f"{self.endpoint}/notification.send",
-            json={"data": {"notification": notification}},
+            json={"data": {"notification": notification.model_dump(exclude_none=True)}},
         )
         return response.json()["response"]
 
-    async def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
+    async def list_users(self, **kwargs: Any) -> list[UserInfo]:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(f"{self.endpoint}/accountmanager.fetchusers", **kwargs)
         return [
-            user_info
+            UserInfo.model_validate(user_info)
             for user_info in response.json()["response"]["data"]
             if user_info.get("email") is not None
         ]
@@ -1024,11 +1024,11 @@ class ConnectionLocal(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return {"major": 99, "minor": None, "patch": None}
 
-    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+    async def send_notification(self, notification: Notification) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return {}
 
-    async def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
+    async def list_users(self, **kwargs: Any) -> list[UserInfo]:
         """See `ConnectionAsync` corresponding method."""
         return []
 
@@ -1341,11 +1341,11 @@ class ConnectionComposed(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return await self._default.backend_version()
 
-    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+    async def send_notification(self, notification: Notification) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.send_notification(notification)
 
-    async def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
+    async def list_users(self, **kwargs: Any) -> list[UserInfo]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.list_users(**kwargs)
 
@@ -1595,11 +1595,11 @@ class ConnectionSync:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.backend_version())
 
-    def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+    def send_notification(self, notification: Notification) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.send_notification(notification))
 
-    def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
+    def list_users(self, **kwargs: Any) -> list[UserInfo]:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.list_users(**kwargs))
 
