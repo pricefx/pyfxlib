@@ -1,0 +1,38 @@
+"""Pricefx query-related domain objects validators."""
+
+from enum import StrEnum
+
+
+class FilterOperator(StrEnum):
+    """Filter operators for search criteria."""
+
+    EQUALS = "equals"
+    IEQUALS = "iEquals"
+    NOTEQUAL = "notEqual"
+    INOTEQUAL = "iNotEqual"
+    GREATERTHAN = "greaterThan"
+    GREATEROREQUAL = "greaterOrEqual"
+    LESSOREQUAL = "lessOrEqual"
+    LESSTHAN = "lessThan"
+    ISNULL = "isNull"
+    NOTNULL = "notNull"
+    CONTAINS = "contains"
+    ICONTAINS = "iContains"
+    CONTAINSPATTERN = "containsPattern"
+    ICONTAINSPATTERN = "iContainsPattern"
+    NOTCONTAINS = "notContains"
+    INOTCONTAINS = "iNotContains"
+    STARTSWITH = "startsWith"
+    ISTARTSWITH = "iStartsWith"
+    NOTSTARTSWITH = "notStartsWith"
+    INOTSTARTSWITH = "iNotStartsWith"
+    ENDSWITH = "endsWith"
+    IENDSWITH = "iEndsWith"
+    NOTENDSWITH = "notEndsWith"
+    INOTENDSWITH = "iNotEndsWith"
+    BETWEEN = "between"
+    BETWEENINCLUSIVE = "betweenInclusive"
+    IBETWEEN = "iBetween"
+    IBETWEENINCLUSIVE = "iBetweenInclusive"
+    INSET = "inSet"
+    NOTINSET = "notInSet"

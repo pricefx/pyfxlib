@@ -23,7 +23,8 @@ from pyfxlib._testtooling.helpers import (
     _IntegrationRemote,
 )
 from pyfxlib.lowlevel.avro import AvroStream
-from pyfxlib.lowlevel.connection import ConnectionAsync, ConnectionSync, JobStatus
+from pyfxlib.lowlevel.connection import ConnectionAsync, ConnectionSync
+from pyfxlib.schema.core import JobStatus
 
 __all__ = [
     "_async_conn",

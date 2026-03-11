@@ -1,0 +1,1 @@
+"""Pricefx domain objects."""

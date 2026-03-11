@@ -22,9 +22,9 @@ from pyfxlib.lowlevel.connection import (
     ConnectionAsync,
     ConnectionRemote,
     ConnectionSync,
-    JobStatus,
 )
 from pyfxlib.lowlevel.session import retry
+from pyfxlib.schema.core import JobStatus
 
 T = TypeVar("T")
 

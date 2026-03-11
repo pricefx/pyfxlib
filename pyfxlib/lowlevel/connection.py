@@ -9,7 +9,6 @@ from abc import ABC, abstractmethod
 import asyncio
 from collections.abc import AsyncIterator, Coroutine, Iterator
 import csv
-from enum import Enum, StrEnum, unique
 from io import BytesIO, TextIOBase
 import json
 import logging
@@ -25,55 +24,13 @@ import pandas as pd
 from pyfxlib.lowlevel import _DEFAULT_PAGE_SIZE, _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.session import PfxSession
+from pyfxlib.schema.core import JobStatus
+from pyfxlib.schema.query import FilterOperator
 
 T = TypeVar("T")
 
 
 LOGGER = logging.getLogger(__name__)
-
-
-@unique
-class JobStatus(Enum):
-    """Possible status of a job for the Pricefx REST API."""
-
-    PROCESSING = "PROCESSING"
-    FINISHED = "FINISHED"
-    FAILED = "FAILED"
-
-
-class FilterOperator(StrEnum):
-    """Filter operators for search criteria."""
-
-    EQUALS = "equals"
-    IEQUALS = "iEquals"
-    NOTEQUAL = "notEqual"
-    INOTEQUAL = "iNotEqual"
-    GREATERTHAN = "greaterThan"
-    GREATEROREQUAL = "greaterOrEqual"
-    LESSOREQUAL = "lessOrEqual"
-    LESSTHAN = "lessThan"
-    ISNULL = "isNull"
-    NOTNULL = "notNull"
-    CONTAINS = "contains"
-    ICONTAINS = "iContains"
-    CONTAINSPATTERN = "containsPattern"
-    ICONTAINSPATTERN = "iContainsPattern"
-    NOTCONTAINS = "notContains"
-    INOTCONTAINS = "iNotContains"
-    STARTSWITH = "startsWith"
-    ISTARTSWITH = "iStartsWith"
-    NOTSTARTSWITH = "notStartsWith"
-    INOTSTARTSWITH = "iNotStartsWith"
-    ENDSWITH = "endsWith"
-    IENDSWITH = "iEndsWith"
-    NOTENDSWITH = "notEndsWith"
-    INOTENDSWITH = "iNotEndsWith"
-    BETWEEN = "between"
-    BETWEENINCLUSIVE = "betweenInclusive"
-    IBETWEEN = "iBetween"
-    IBETWEENINCLUSIVE = "iBetweenInclusive"
-    INSET = "inSet"
-    NOTINSET = "notInSet"
 
 
 class ConnectionAsync(ABC):
