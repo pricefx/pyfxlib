@@ -21,8 +21,8 @@ from typing import Any, IO, TypeVar
 from httpx import HTTPStatusError
 import pandas as pd
 
-from pyfxlib.lowlevel import _DEFAULT_PAGE_SIZE, _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.avro import AvroStream
+from pyfxlib.lowlevel.constants import _DEFAULT_PAGE_SIZE, _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.session import PfxSession
 from pyfxlib.schema.core import JobStatus, Notification, UserInfo
 from pyfxlib.schema.lpg import LPGProduct

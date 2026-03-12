@@ -10,8 +10,8 @@ import pytest_asyncio
 
 from pyfxlib._testtooling.helpers import _IntegrationRemote
 from pyfxlib.api.domain import Partition
-from pyfxlib.lowlevel import _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.connection import ConnectionAsync, ConnectionSync
+from pyfxlib.lowlevel.constants import _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.session import (
     pfx_session,
     PfxAuthUserPass,

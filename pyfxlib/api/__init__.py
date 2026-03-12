@@ -7,6 +7,8 @@ Pricefx Python Client can be used outside a Pricefx logic. One can use the class
 returned `domain.Partition` object methods to navigate the partition objects.
 """
 
+from pyfxlib.api.domain import Partition
+
 from . import domain
 
-__all__ = ["domain"]
+__all__ = ["domain", "Partition"]

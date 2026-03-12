@@ -17,7 +17,7 @@ from typing import Any, cast, overload
 
 from httpx import AsyncClient, HTTPError, HTTPStatusError, Response, TimeoutException
 
-from pyfxlib.lowlevel import _DEFAULT_STREAM_CHUNK_SIZE
+from pyfxlib.lowlevel.constants import _DEFAULT_STREAM_CHUNK_SIZE
 
 LOGGER = logging.getLogger(__name__)
 

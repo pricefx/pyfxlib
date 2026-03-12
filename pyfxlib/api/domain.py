@@ -11,18 +11,14 @@ from typing import Any, Generic, IO, TypeVar
 
 import pandas as pd
 
-from pyfxlib.lowlevel import (
-    _DEFAULT_PAGE_SIZE,
-    _DEFAULT_STREAM_CHUNK_SIZE,
-    pandasutil,
-    session,
-)
+from pyfxlib.lowlevel import pandasutil, session
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.connection import (
     ConnectionAsync,
     ConnectionRemote,
     ConnectionSync,
 )
+from pyfxlib.lowlevel.constants import _DEFAULT_PAGE_SIZE, _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.session import retry
 from pyfxlib.schema.core import JobStatus
 
