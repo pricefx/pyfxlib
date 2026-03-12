@@ -32,6 +32,7 @@ from pyfxlib.schema.core import (
     NotificationTopic,
 )
 from pyfxlib.schema.lpg import LPG, LPGProduct
+from pyfxlib.schema.query import FieldFilter, FilterOperator, Operator
 
 __all__ = [
     "_async_conn",
@@ -97,7 +98,9 @@ async def test_connection_should_be_able_to_add_an_object_update_it_list_it_and_
     # and it can be filtered by exact label
     filtered = await _async_conn.list_objects(
         "P",
-        filters=[{"fieldName": "label", "operator": "iEquals", "value": updated_label}],
+        filters=[
+            FieldFilter(field_name="label", operator=FilterOperator.IEQUALS, value=updated_label)
+        ],
     )
     assert len(filtered) == 1
     assert filtered[0]["label"] == updated_label
@@ -105,8 +108,10 @@ async def test_connection_should_be_able_to_add_an_object_update_it_list_it_and_
     # and a non-matching filter returns nothing
     no_match = await _async_conn.list_objects(
         "P",
-        filters=[{"fieldName": "label", "operator": "iEquals", "value": "does_not_exist"}],
-        filter_aggregator="and",
+        filters=[
+            FieldFilter(field_name="label", operator=FilterOperator.IEQUALS, value="does_not_exist")
+        ],
+        filter_aggregator=Operator.AND,
     )
     assert len(no_match) == 0
 
@@ -790,26 +795,6 @@ async def test_query_meta_and_execute(_async_conn: ConnectionAsync):
             {
                 "kind": "source",
                 "table": {"kind": "products"},
-                "columns": [
-                    {
-                        "kind": "selectable",
-                        "expression": {
-                            "kind": "columnReference",
-                            "column": "sku",
-                            "source": "table",
-                        },
-                        "alias": "sku",
-                    },
-                    {
-                        "kind": "selectable",
-                        "expression": {
-                            "kind": "columnReference",
-                            "column": "label",
-                            "source": "table",
-                        },
-                        "alias": "label",
-                    },
-                ],
             },
             {"kind": "take", "count": 5},
         ],
@@ -817,15 +802,17 @@ async def test_query_meta_and_execute(_async_conn: ConnectionAsync):
     # when fetching metadata
     meta = await _async_conn.query_meta(query)
     # then the metadata describes the expected columns
-    assert "columns" in meta
-    column_names = [col["name"] for col in meta["columns"]]
+    column_names = [col.name for col in meta.columns]
     assert "sku" in column_names
     assert "label" in column_names
     # when executing the query
     rows = await _async_conn.query_execute(query)
     # then the result contains the created product
     assert isinstance(rows, list)
-    assert [sku, label] in rows
+    assert any(
+        row[column_names.index("sku")] == sku and row[column_names.index("label")] == label
+        for row in rows
+    )
 
 
 @pytest.mark.asyncio

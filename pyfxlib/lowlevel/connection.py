@@ -26,7 +26,7 @@ from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.session import PfxSession
 from pyfxlib.schema.core import JobStatus, Notification, UserInfo
 from pyfxlib.schema.lpg import LPGProduct
-from pyfxlib.schema.query import FilterOperator
+from pyfxlib.schema.query import FieldFilter, FilterOperator, Operator, QueryAnswerMeta
 
 T = TypeVar("T")
 
@@ -119,8 +119,8 @@ class ConnectionAsync(ABC):
     async def list_objects(
         self,
         type_code: str,
-        filters: list[dict[str, Any]] | None = None,
-        filter_aggregator: str | None = None,
+        filters: list[FieldFilter] | None = None,
+        filter_aggregator: Operator | None = None,
         start_row: int | None = None,
         max_rows: int | None = None,
         sort_by: str | None = None,
@@ -134,9 +134,8 @@ class ConnectionAsync(ABC):
 
         Args:
             type_code: Entity TypeCode
-            filters: a list of filters in the format
-                     [{"fieldName": ..., "operator": ..., "value": ...}, ...]
-            filter_aggregator: "and" or "or" (default) when multiple filter values are provided
+            filters: a list of filters
+            filter_aggregator: logical operator to combine multiple filters (default: Operator.OR)
             start_row: Starting index (0-based)
             max_rows: Max results (1-200, default 5)
             sort: field on which to sort the data
@@ -416,7 +415,7 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
-    async def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
+    async def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """Fetches the schema of a queryAPI query result: column names and types.
 
         See: https://pricefx.atlassian.net/wiki/spaces/KB/pages/5753667585/Pipeline+Queries+QueryAPI
@@ -488,26 +487,15 @@ class ConnectionRemote(ConnectionAsync):
 
     @staticmethod
     def _build_criteria(
-        filters: list[dict[str, Any]] | None = None,
-        filter_aggregator: str | None = None,
+        filters: list[FieldFilter] | None = None,
+        filter_aggregator: Operator | None = None,
     ) -> dict[str, Any] | None:
         if not filters:
             return None
-        for filt in filters:
-            if not {"fieldName", "operator", "value"}.issubset(filt.keys()):
-                raise ValueError(
-                    f"Invalid filter format: {filt}. "
-                    "Expected keys: 'fieldName', 'operator', 'value'."
-                )
-            if filt["operator"] not in FilterOperator:
-                raise ValueError(
-                    f"Invalid filter operator for the filter {filt}. "
-                    f"Expected one of: {[operator.value for operator in FilterOperator]}"
-                )
         return {
             "_constructor": "AdvancedCriteria",
-            "operator": filter_aggregator if filter_aggregator else "or",
-            "criteria": filters,
+            "operator": filter_aggregator if filter_aggregator else Operator.OR,
+            "criteria": [f.model_dump(by_alias=True, exclude_none=True) for f in filters],
         }
 
     async def _fc_spec(self, typedid: str) -> dict | None:
@@ -595,8 +583,8 @@ class ConnectionRemote(ConnectionAsync):
     async def list_objects(
         self,
         type_code: str,
-        filters: list[dict[str, Any]] | None = None,
-        filter_aggregator: str | None = None,
+        filters: list[FieldFilter] | None = None,
+        filter_aggregator: Operator | None = None,
         start_row: int | None = None,
         max_rows: int | None = None,
         sort_by: str | None = None,
@@ -786,12 +774,12 @@ class ConnectionRemote(ConnectionAsync):
         criteria = []
         if filters:
             criteria = [
-                {"fieldName": key, "operator": FilterOperator.IEQUALS, "value": value}
+                FieldFilter(field_name=key, operator=FilterOperator.IEQUALS, value=value)
                 for key, value in filters.items()
             ]
         response = await self.session.post(
             f"{self.endpoint}/pricegridmanager.fetch/{lpg_id}",
-            json={"data": self._build_criteria(criteria, "and")},
+            json={"data": self._build_criteria(criteria, Operator.AND)},
         )
         return response.json()["response"]["data"]
 
@@ -924,13 +912,13 @@ class ConnectionRemote(ConnectionAsync):
             json={"data": data},
         )
 
-    async def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
+    async def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(
             f"{self.endpoint}/queryapi.meta",
             json={"data": {"query": query}},
         )
-        return response.json()["response"]["data"][0]
+        return QueryAnswerMeta.model_validate(response.json()["response"]["data"][0])
 
     async def query_execute(self, query: dict[str, Any]) -> list[list[Any]]:
         """See `ConnectionAsync` corresponding method."""
@@ -1050,8 +1038,8 @@ class ConnectionLocal(ConnectionAsync):
     async def list_objects(
         self,
         type_code: str,
-        filters: list[dict[str, Any]] | None = None,
-        filter_aggregator: str | None = None,
+        filters: list[FieldFilter] | None = None,
+        filter_aggregator: Operator | None = None,
         start_row: int | None = None,
         max_rows: int | None = None,
         sort_by: str | None = None,
@@ -1292,9 +1280,9 @@ class ConnectionLocal(ConnectionAsync):
             },
         )
 
-    async def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
+    async def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """See `ConnectionAsync` corresponding method."""
-        return {"columns": []}
+        return QueryAnswerMeta.model_validate({"columns": []})
 
     async def query_execute(self, query: dict[str, Any]) -> list[list[Any]]:
         """See `ConnectionAsync` corresponding method."""
@@ -1364,8 +1352,8 @@ class ConnectionComposed(ConnectionAsync):
     async def list_objects(
         self,
         type_code: str,
-        filters: list[dict[str, Any]] | None = None,
-        filter_aggregator: str | None = None,
+        filters: list[FieldFilter] | None = None,
+        filter_aggregator: Operator | None = None,
         start_row: int | None = None,
         max_rows: int | None = None,
         sort_by: str | None = None,
@@ -1518,7 +1506,7 @@ class ConnectionComposed(ConnectionAsync):
             jst_id, status_code, progress, msg, results
         )
 
-    async def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
+    async def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.query_meta(query)
 
@@ -1618,8 +1606,8 @@ class ConnectionSync:
     def list_objects(
         self,
         type_code: str,
-        filters: list[dict[str, Any]] | None = None,
-        filter_aggregator: str | None = None,
+        filters: list[FieldFilter] | None = None,
+        filter_aggregator: Operator | None = None,
         start_row: int | None = None,
         max_rows: int | None = None,
         sort_by: str | None = None,
@@ -1773,7 +1761,7 @@ class ConnectionSync:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.update_status(jst_id, status_code, progress, msg, results))
 
-    def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
+    def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.query_meta(query))
 
