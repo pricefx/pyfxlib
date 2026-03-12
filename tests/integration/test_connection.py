@@ -31,6 +31,7 @@ from pyfxlib.schema.core import (
     NotificationStatus,
     NotificationTopic,
 )
+from pyfxlib.schema.lpg import LPG, LPGProduct
 
 __all__ = [
     "_async_conn",
@@ -720,13 +721,13 @@ async def test_lpg_minimal_operations(_async_conn: ConnectionAsync):
             "label": "Test LPG",
         },
     )
-    lpg_id = lpg["id"]
-    assert "typedId" in lpg
-    assert lpg["priceGridType"] == "SIMPLE"
-    assert lpg["status"] == "DRAFT"
+    lpg_model = LPG.model_validate(lpg)
+    lpg_id = lpg_model.id
+    assert lpg_model.type == "SIMPLE"
 
     items = await _async_conn.list_lpg_items(lpg_id)
     assert isinstance(items, list)
+    assert all(isinstance(item, LPGProduct) for item in items)
 
     metadata = await _async_conn.get_object_metadata("PGIM", "priceGridId", lpg_id)
     assert isinstance(metadata, list)

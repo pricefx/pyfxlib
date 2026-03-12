@@ -25,6 +25,7 @@ from pyfxlib.lowlevel import _DEFAULT_PAGE_SIZE, _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.session import PfxSession
 from pyfxlib.schema.core import JobStatus, Notification, UserInfo
+from pyfxlib.schema.lpg import LPGProduct
 from pyfxlib.schema.query import FilterOperator
 
 T = TypeVar("T")
@@ -301,7 +302,7 @@ class ConnectionAsync(ABC):
     @abstractmethod
     async def list_lpg_items(
         self, lpg_id: int, filters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[LPGProduct]:
         """Fetch the item data from an LPG.
 
         Args:
@@ -780,7 +781,7 @@ class ConnectionRemote(ConnectionAsync):
 
     async def list_lpg_items(
         self, lpg_id: int, filters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[LPGProduct]:
         """See `ConnectionAsync` corresponding method."""
         criteria = []
         if filters:
@@ -1184,7 +1185,7 @@ class ConnectionLocal(ConnectionAsync):
 
     async def list_lpg_items(
         self, lpg_id: int, filters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[LPGProduct]:
         """See `ConnectionAsync` corresponding method.
 
         This implementation of the methods always returns an empty list.
@@ -1453,7 +1454,7 @@ class ConnectionComposed(ConnectionAsync):
 
     async def list_lpg_items(
         self, lpg_id: int, filters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[LPGProduct]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.list_lpg_items(lpg_id, filters)
 
@@ -1709,7 +1710,7 @@ class ConnectionSync:
 
     def list_lpg_items(
         self, lpg_id: int, filters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[LPGProduct]:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.list_lpg_items(lpg_id, filters))
 
