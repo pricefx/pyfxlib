@@ -1,5 +1,8 @@
 """Pricefx query-related domain objects validators."""
 
+from __future__ import annotations
+
+from collections.abc import Sequence
 from datetime import date, datetime
 from enum import StrEnum, unique
 from typing import Any, Literal
@@ -105,8 +108,8 @@ STRING_FILTERS = [
 ]
 
 
-class FieldFilter(BaseModel):
-    """FieldFilter class for query criteria on a given field."""
+class FieldRule(BaseModel):
+    """FieldRule class for query criteria on a given field."""
 
     model_config = ConfigDict(
         serialize_by_alias=True, populate_by_name=True, alias_generator=alias_generators.to_camel
@@ -114,7 +117,24 @@ class FieldFilter(BaseModel):
 
     field_name: str
     operator: FilterOperator
-    value: Any
+    value: Any | None = None
+    start: Any | None = None
+    end: Any | None = None
+
+
+class AdvancedCriteria(BaseModel):
+    """AdvancedCriteria class for combining multiple FieldRules with logical operators."""
+
+    model_config = ConfigDict(serialize_by_alias=True, populate_by_name=True)
+
+    operator: Operator
+    criteria: Sequence[FieldRule | AdvancedCriteria]
+    constructor: Literal["AdvancedCriteria"] = Field(
+        default="AdvancedCriteria", alias="_constructor"
+    )
+
+
+AdvancedCriteria.model_rebuild()
 
 
 class LiteralType(StrEnum):

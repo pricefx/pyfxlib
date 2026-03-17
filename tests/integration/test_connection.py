@@ -32,7 +32,7 @@ from pyfxlib.schema.core import (
     NotificationTopic,
 )
 from pyfxlib.schema.lpg import LPG, LPGProduct
-from pyfxlib.schema.query import FieldFilter, FilterOperator, Operator
+from pyfxlib.schema.query import FieldRule, FilterOperator, Operator
 
 __all__ = [
     "_async_conn",
@@ -99,7 +99,7 @@ async def test_connection_should_be_able_to_add_an_object_update_it_list_it_and_
     filtered = await _async_conn.list_objects(
         "P",
         filters=[
-            FieldFilter(field_name="label", operator=FilterOperator.IEQUALS, value=updated_label)
+            FieldRule(field_name="label", operator=FilterOperator.IEQUALS, value=updated_label)
         ],
     )
     assert len(filtered) == 1
@@ -109,7 +109,7 @@ async def test_connection_should_be_able_to_add_an_object_update_it_list_it_and_
     no_match = await _async_conn.list_objects(
         "P",
         filters=[
-            FieldFilter(field_name="label", operator=FilterOperator.IEQUALS, value="does_not_exist")
+            FieldRule(field_name="label", operator=FilterOperator.IEQUALS, value="does_not_exist")
         ],
         filter_aggregator=Operator.AND,
     )
