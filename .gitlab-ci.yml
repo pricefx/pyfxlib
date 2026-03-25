@@ -134,7 +134,7 @@ publish-package:
 
 publish-pypi:
   stage: deploy
-  image: python:3.12
+  image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
   script:
     - pip install poetry==${POETRY_VERSION}
     - poetry version $(poetry version --short)$PACKAGE_VERSION_LOCAL
