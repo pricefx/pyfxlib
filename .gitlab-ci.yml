@@ -24,7 +24,7 @@ variables:
       alias: pricefx
       variables:
         HEALTHCHECK_TCP_PORT: "2000"
-  image: python:3.12
+  image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
   stage: test
   interruptible: true
   variables:
@@ -54,7 +54,7 @@ integration-tests-extended:
 tests:
   extends:
     - .mr-develop-release-only
-  image: python:3.12
+  image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
   stage: test
   interruptible: true
   script:
@@ -68,7 +68,7 @@ tests:
     - poetry run pytest tests/unit
 
 package:
-  image: python:3.12
+  image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
   stage: package
   interruptible: true
   script:
@@ -115,7 +115,7 @@ package:
 
 publish-package:
   stage: deploy
-  image: python:3.12
+  image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
   script:
     - pip install poetry==${POETRY_VERSION}
     - poetry config repositories.pyfxlib ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi
@@ -138,7 +138,7 @@ publish-package:
 # DO NOT CHANGE NAME as the script above relies on it
 package-pyfxlib-docs:
   stage: deploy
-  image: python:3.12
+  image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
   extends:
     - .mr-develop-release-only
   interruptible: true
