@@ -95,7 +95,7 @@ def _pfx_base_url() -> ParseResult:
 
 
 @fixture(scope="function")
-def _session(_auth: ParseResult) -> PfxSession:
+def _session(_auth: PfxAuthUserPass) -> PfxSession:
     return pfx_session(_auth)
 
 
@@ -113,7 +113,7 @@ def _auth(_pfx_base_url: ParseResult) -> PfxAuthUserPass:
 @pytest_asyncio.fixture(scope="function")
 async def _remote(
     _session: PfxSession, _auth: PfxAuthUserPass, _pfx_base_url: ParseResult
-) -> _IntegrationRemote:
+) -> AsyncGenerator[_IntegrationRemote, None]:
     remote = _IntegrationRemote(_session, _auth, _pfx_base_url)
     _session.set_header("Connection", "close")
     try:
