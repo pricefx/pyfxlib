@@ -12,9 +12,9 @@ from pyfxlib._testtooling.conftest import (
     _auth,
     _conn,
     _connection_with_raising_session,
-    _instance,
     _job_jst,
     _model_object,
+    _partition,
     _pfx_base_url,
     _raising_auth,
     _raising_remote,
@@ -28,7 +28,7 @@ from pyfxlib._testtooling.helpers import (
     _calculation_results_as_dict,
     _csv_stream_to_dataframe,
 )
-from pyfxlib.api.domain import Instance, ModelObject, PlatformJob
+from pyfxlib.api.domain import ModelObject, Partition, PlatformJob
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.connection import ConnectionAsync
 from pyfxlib.lowlevel.pandasutil import FieldSpecs
@@ -38,7 +38,7 @@ __all__ = [
     "_auth",
     "_conn",
     "_connection_with_raising_session",
-    "_instance",
+    "_partition",
     "_job_jst",
     "_model_object",
     "_pfx_base_url",
@@ -238,7 +238,7 @@ _VALID_DATAFRAME_CONTENT = [
     "column_data, value_parser, pd_dtype",
     [(data, parser, pd_dtype) for data, parser, pd_dtype in _VALID_DATAFRAME_CONTENT],
 )
-def test_instance_should_be_able_to_push_a_dataframe_to_a_model_table(
+def test_should_be_able_to_push_a_dataframe_to_a_model_table(
     _conn: ConnectionAsync, _model_object: dict[str, Any], column_data, value_parser, pd_dtype
 ):
     # given an instance without any model tables
@@ -474,9 +474,9 @@ def test_model_object_should_be_able_to_create_and_read_an_attachment(
     assert data == attachment_content
 
 
-def test_instance_should_be_able_to_create_and_read_datasources(_instance: Instance, tmp_path):
+def test_should_be_able_to_create_and_read_datasources(_partition: Partition, tmp_path):
     # given an instance without any datasource
-    datasources = _instance.datasources()
+    datasources = _partition.datasources()
     ds_list = list(datasources)
     assert len(ds_list) == 0
 
@@ -534,15 +534,15 @@ def test_instance_should_be_able_to_create_and_read_datasources(_instance: Insta
     "column_data, value_parser, pd_dtype",
     [(data, parser, pd_dtype) for data, parser, pd_dtype in _VALID_DATAFRAME_CONTENT],
 )
-def test_instance_should_be_able_to_push_a_dataframe_to_a_datasource(
-    _instance: Instance,
+def test_should_be_able_to_push_a_dataframe_to_a_datasource(
+    _partition: Partition,
     column_data,
     value_parser,
     pd_dtype,
     _conn,
 ):
     # given an instance without any datasource
-    assert len(list(_instance.datasources())) == 0
+    assert len(list(_partition.datasources())) == 0
     columns = ["column1", "column2"]
     column_labels = {
         columns[0]: "c1 label",
@@ -558,7 +558,7 @@ def test_instance_should_be_able_to_push_a_dataframe_to_a_datasource(
     data_source_name = "a_datasource_name"
     data_source_label = "a_datasource_label"
 
-    _instance.datasources().push_pandas(
+    _partition.datasources().push_pandas(
         data_source_name,
         dataframe,
         data_source_label,
@@ -567,7 +567,7 @@ def test_instance_should_be_able_to_push_a_dataframe_to_a_datasource(
     )
 
     # then the table is properly created
-    result_table = _instance.datasources()[0]
+    result_table = _partition.datasources()[0]
     assert result_table.name == data_source_name
     assert result_table.label == data_source_label
 
@@ -585,8 +585,8 @@ def test_instance_should_be_able_to_push_a_dataframe_to_a_datasource(
 
 
 @pytest.mark.parametrize("column_data, value_parser, pd_dtype", _VALID_DATAFRAME_CONTENT)
-def test_instance_should_be_able_to_update_data_of_a_data_source_tables(
-    _instance: Instance, column_data, value_parser, pd_dtype
+def test_should_be_able_to_update_data_of_a_data_source_tables(
+    _partition: Partition, column_data, value_parser, pd_dtype
 ):
     # IMPORTANT NOTE:
     # We *cannot* properly test updating existing rows, as the row deduplication process is
@@ -603,13 +603,13 @@ def test_instance_should_be_able_to_update_data_of_a_data_source_tables(
     initial_df = pd.DataFrame(initial_data, index=index)
     data_source_name = "a_datasource_name"
     data_source_label = "a_datasource_label"
-    _instance.datasources().push_pandas(
+    _partition.datasources().push_pandas(
         data_source_name,
         initial_df,
         data_source_label,
         replace_existing=True,
     )
-    table = list(_instance.datasources())[0]
+    table = list(_partition.datasources())[0]
 
     # when update new data
     index = [3]
@@ -632,8 +632,8 @@ def test_instance_should_be_able_to_update_data_of_a_data_source_tables(
 
 
 @pytest.mark.parametrize("column_data, value_parser, pd_dtype", _VALID_DATAFRAME_CONTENT)
-def test_instance_should_be_able_to_update_data_of_a_data_source_tables_from_pandas(
-    _instance: Instance, column_data, value_parser, pd_dtype
+def test_should_be_able_to_update_data_of_a_data_source_tables_from_pandas(
+    _partition: Partition, column_data, value_parser, pd_dtype
 ):
     # IMPORTANT NOTE:
     # We *cannot* properly test updating existing rows, as the row deduplication process is
@@ -650,13 +650,13 @@ def test_instance_should_be_able_to_update_data_of_a_data_source_tables_from_pan
     initial_df = pd.DataFrame(initial_data, index=index)
     data_source_name = "a_datasource_name"
     data_source_label = "a_datasource_label"
-    _instance.datasources().push_pandas(
+    _partition.datasources().push_pandas(
         data_source_name,
         initial_df,
         data_source_label,
         replace_existing=True,
     )
-    table = list(_instance.datasources())[0]
+    table = list(_partition.datasources())[0]
 
     # when appending new data
     index = [3]
@@ -692,22 +692,22 @@ def assert_equal_dataframes_with_na_on_cols(
     )
 
 
-def test_instance_should_be_able_to_create_and_read_datamarts(
-    _setup_datamart: tuple[Instance, str, list[str]], tmp_path: str
+def test_should_be_able_to_create_and_read_datamarts(
+    _setup_datamart: tuple[Partition, str, list[str]], tmp_path: str
 ):
-    _instance, dm_name, col_names = _setup_datamart
+    _partition, dm_name, col_names = _setup_datamart
 
     # then it has been added to the datamarts
-    assert len(list(_instance.datamarts())) == 1
-    datamart = _instance.datamarts()[0]
+    assert len(list(_partition.datamarts())) == 1
+    datamart = _partition.datamarts()[0]
     assert datamart.name == dm_name
 
     # and it is possible to get it from its name
-    assert _instance.datamarts().get_by_name(dm_name).typedid == datamart.typedid
-    assert _instance.datamarts()[dm_name].typedid == datamart.typedid
+    assert _partition.datamarts().get_by_name(dm_name).typedid == datamart.typedid
+    assert _partition.datamarts()[dm_name].typedid == datamart.typedid
 
     # and it is possible to get it by typedid
-    assert _instance.datamarts().get(datamart.typedid).typedid == datamart.typedid
+    assert _partition.datamarts().get(datamart.typedid).typedid == datamart.typedid
 
     # and its is possible to fetch its content as a csv stream
     data = next(datamart.stream(128)).decode("utf-8")
@@ -720,34 +720,32 @@ def test_instance_should_be_able_to_create_and_read_datamarts(
     assert ",".join(col_names) in data
 
     # and it is possible to fetch its content as a pandas DataFrame
-    data_frame = _instance.datamarts()[dm_name].to_pandas()
+    data_frame = _partition.datamarts()[dm_name].to_pandas()
     assert data_frame.shape == (0, 9)
     assert list(data_frame.columns[:2]) == col_names
 
 
-def test_intance_should_give_access_to_model_objects(
-    _instance: Instance, _model_object: dict[str, Any]
-):
+def test_should_give_access_to_model_objects(_partition: Partition, _model_object: dict[str, Any]):
     # A model object has been added by _model_object
     mo_name = _model_object["uniqueName"]
-    model_objects = list(_instance.model_objects())
+    model_objects = list(_partition.model_objects())
     assert len(model_objects) == 1
     modelobject = model_objects[0]
     assert modelobject.name == mo_name
 
     # and it is possible to get it from its name
-    assert _instance.model_objects().get_by_name(mo_name).typedid == modelobject.typedid
-    assert _instance.model_objects()[mo_name].typedid == modelobject.typedid
+    assert _partition.model_objects().get_by_name(mo_name).typedid == modelobject.typedid
+    assert _partition.model_objects()[mo_name].typedid == modelobject.typedid
 
     # and it is possible to get it by typedId
-    assert _instance.model_objects().get(modelobject.typedid).typedid == modelobject.typedid
+    assert _partition.model_objects().get(modelobject.typedid).typedid == modelobject.typedid
 
 
 @pytest.mark.parametrize(
     "column_data, value_parser, pd_dtype",
     [(data, parser, pd_dtype) for data, parser, pd_dtype in _VALID_DATAFRAME_CONTENT],
 )
-def test_instance_should_retry_to_push_a_dataframe_to_a_model_table(
+def test_should_retry_to_push_a_dataframe_to_a_model_table(
     _connection_with_raising_session: tuple[ConnectionAsync, _RaisingExceptionSession],
     _model_object: dict[str, Any],
     column_data,
@@ -858,10 +856,10 @@ def test_model_object_should_retry_to_update_data_of_an_owned_tables_from_pandas
 
 def test_push_pandas_should_be_able_to_define_field_types(
     _conn: ConnectionAsync,
-    _instance: Instance,
+    _partition: Partition,
 ):
     # given an instance without any datasource
-    assert len(list(_instance.datasources())) == 0
+    assert len(list(_partition.datasources())) == 0
 
     data = [
         [
@@ -980,7 +978,7 @@ def test_push_pandas_should_be_able_to_define_field_types(
     for col in columns:
         dataframe_specs.set_col_specs(col, type=col.upper())
 
-    _instance.datasources().push_pandas(table_name, dataframe, manual_fields_specs=dataframe_specs)
+    _partition.datasources().push_pandas(table_name, dataframe, manual_fields_specs=dataframe_specs)
 
     datasources_meta = _conn.list_fcs("DMDS")
     pushed_table = next(
