@@ -42,12 +42,15 @@ class _RaisingExceptionSession(RetryPfxSession):
         wrapped: PfxSession,
         retries: int,
         exception_to_raise: Exception | None = TimeoutException("timeout"),
-        endpoints_to_fail: list | None = ["datamart.createfc", "datamart.loadfc"],
+        endpoints_to_fail: list | None = None,
     ) -> None:
+        super().__init__(wrapped)
         self._wrapped: PfxSession = wrapped
         self._retries: int = retries
         self._counter: int = 0
         self._exception_to_raise: Exception = exception_to_raise
+        if endpoints_to_fail is None:
+            endpoints_to_fail = ["datamart.createfc", "datamart.loadfc"]
         self._endpoints_to_fail: list = endpoints_to_fail
 
     def reset_counter(self) -> None:
