@@ -15,6 +15,5 @@ and the [specific GenAI engineers agreed patterns](https://pricefx.atlassian.net
 ## Participants :handshake:
 
 - @valerie.mauduit
-- @nathan.reynolds
 
 /assign me
