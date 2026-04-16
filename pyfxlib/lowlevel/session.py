@@ -258,7 +258,7 @@ async def async_retry(  # noqa: E704
 async def async_retry(
     method: Callable[[], Awaitable[Response]] | Callable[[], Awaitable[None]],
     nb_tries: int,
-    retry_delays: list[int] = [3, 10, 30],
+    retry_delays: list[int] | None = None,
     retry_predicate: Callable[[HTTPError], bool] = _default_retry_predicate,
 ) -> Response | None:
     """
@@ -278,6 +278,8 @@ async def async_retry(
     Returns:
         Returns either Response or None, depending on what's `method` returning.
     """
+    if retry_delays is None:
+        retry_delays = [3, 10, 30]
     try:
         return await method()
     except HTTPError as exception:
@@ -329,7 +331,7 @@ def retry(  # noqa: E704
 def retry(
     method: Callable[[], Response] | Callable[[], None],
     nb_tries: int,
-    retry_delays: list[int] = [3, 10, 30],
+    retry_delays: list[int] | None = None,
     retry_predicate: Callable[[HTTPError], bool] = _default_retry_predicate,
 ) -> Response | None:
     """
@@ -349,6 +351,8 @@ def retry(
     Returns:
         Returns either Response or None, depending on what's `method` returning.
     """
+    if retry_delays is None:
+        retry_delays = [3, 10, 30]
     try:
         return method()
     except HTTPError as exception:
