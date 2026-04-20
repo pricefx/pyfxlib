@@ -1010,8 +1010,8 @@ class Datamarts(TableImmutableSource):
         self._conn = conn
 
 
-class Instance:
-    """A platform instance."""
+class Partition:
+    """A platform partition."""
 
     def __init__(self, conn: ConnectionAsync | ConnectionSync):
         if isinstance(conn, ConnectionSync):
@@ -1020,11 +1020,11 @@ class Instance:
             self._conn = ConnectionSync(conn)
 
     def __repr__(self) -> str:
-        return f"Instance({self._conn})"
+        return f"Partition({self._conn})"
 
     @classmethod
-    def connect(cls, domain: str, partition: str, account: str) -> "Instance":
-        """Return an Instance object connecting to a specific instance."""
+    def connect(cls, domain: str, partition: str, account: str) -> "Partition":
+        """Return a Partition object connecting to a specific instance."""
 
         def _try_storage_then_prompt_for_pass() -> str:
             try:
@@ -1041,7 +1041,7 @@ class Instance:
             _try_storage_then_prompt_for_pass,
         )
 
-        return Instance(ConnectionRemote(f"https://{domain}/pricefx/{partition}", pfxsession))
+        return Partition(ConnectionRemote(f"https://{domain}/pricefx/{partition}", pfxsession))
 
     def models(self) -> DMModels:
         """Get the models stored on the instance."""
@@ -1058,3 +1058,7 @@ class Instance:
     def datamarts(self) -> Datamarts:
         """Get the data sources stored on the instance."""
         return Datamarts(self._conn)
+
+
+# Deprecated class, use Partition instead. Kept for backward compatibility only.
+Instance = Partition

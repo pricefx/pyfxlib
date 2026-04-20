@@ -9,7 +9,7 @@ from httpx import HTTPStatusError, Response, TimeoutException
 import pytest_asyncio
 
 from pyfxlib._testtooling.helpers import _IntegrationRemote
-from pyfxlib.api.domain import Instance
+from pyfxlib.api.domain import Partition
 from pyfxlib.lowlevel import _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.connection import ConnectionAsync, ConnectionSync
 from pyfxlib.lowlevel.session import (
@@ -153,8 +153,8 @@ def _conn(_remote: _IntegrationRemote) -> ConnectionSync:
 
 
 @fixture(scope="function")
-def _instance(_async_conn: ConnectionAsync) -> Instance:
-    return Instance(_async_conn)
+def _partition(_async_conn: ConnectionAsync) -> Partition:
+    return Partition(_async_conn)
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -235,8 +235,8 @@ def _connection_with_raising_session(
 
 @pytest_asyncio.fixture(scope="function")
 async def _setup_datamart(
-    _remote: _IntegrationRemote, _instance: Instance
-) -> tuple[Instance, str, list[str]]:
+    _remote: _IntegrationRemote, _partition: Partition
+) -> tuple[Partition, str, list[str]]:
     dm_name = "aDatamartName"
     col_names = ["column1", "column2"]
     await _remote.new_empty_datamart(
@@ -246,4 +246,4 @@ async def _setup_datamart(
             {"name": col_names[1], "type": "NUMBER"},
         ],
     )
-    return _instance, dm_name, col_names
+    return _partition, dm_name, col_names
