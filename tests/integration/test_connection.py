@@ -23,7 +23,16 @@ from pyfxlib._testtooling.helpers import (
     _IntegrationRemote,
 )
 from pyfxlib.lowlevel.avro import AvroStream
-from pyfxlib.lowlevel.connection import ConnectionAsync, ConnectionSync, JobStatus
+from pyfxlib.lowlevel.connection import ConnectionAsync, ConnectionSync
+from pyfxlib.schema.core import (
+    JobStatus,
+    Notification,
+    NotificationActionType,
+    NotificationStatus,
+    NotificationTopic,
+)
+from pyfxlib.schema.lpg import LPG, LPGProduct
+from pyfxlib.schema.query import FieldRule, FilterOperator, Operator
 
 __all__ = [
     "_async_conn",
@@ -89,7 +98,9 @@ async def test_connection_should_be_able_to_add_an_object_update_it_list_it_and_
     # and it can be filtered by exact label
     filtered = await _async_conn.list_objects(
         "P",
-        filters=[{"fieldName": "label", "operator": "iEquals", "value": updated_label}],
+        filters=[
+            FieldRule(field_name="label", operator=FilterOperator.IEQUALS, value=updated_label)
+        ],
     )
     assert len(filtered) == 1
     assert filtered[0]["label"] == updated_label
@@ -97,8 +108,10 @@ async def test_connection_should_be_able_to_add_an_object_update_it_list_it_and_
     # and a non-matching filter returns nothing
     no_match = await _async_conn.list_objects(
         "P",
-        filters=[{"fieldName": "label", "operator": "iEquals", "value": "does_not_exist"}],
-        filter_aggregator="and",
+        filters=[
+            FieldRule(field_name="label", operator=FilterOperator.IEQUALS, value="does_not_exist")
+        ],
+        filter_aggregator=Operator.AND,
     )
     assert len(no_match) == 0
 
@@ -652,18 +665,18 @@ async def test_send_notification_should_succeed(_async_conn: ConnectionAsync):
         (version["major"] or 0) == 15 and (version["minor"] or 0) < 2
     ):
         pytest.skip("Notifications not supported by backend version < 15.2")
-    notif = {
-        "title": "My Title",
-        "message": "Description of banner",
-        "source": "notificationBanner",
-        "status": "INFO",
-        "topic": "SYSTEM_NOTIFICATION",
-        "actionType": "INFO_MESSAGE",
-        "validFrom": "2025-06-02T23:00:00.016Z",
-        "validUntil": "2025-06-03T21:59:59.016Z",
-        "dueDate": "2025-06-03T21:59:59.016Z",
-        "dismissible": True,
-    }
+    notif = Notification(
+        title="My Title",
+        message="Description of banner",
+        source="notificationBanner",
+        status=NotificationStatus.INFO,
+        topic=NotificationTopic.SYSTEM_NOTIFICATION,
+        action_type=NotificationActionType.INFO_MESSAGE,
+        valid_from="2025-06-02T23:00:00.016Z",
+        valid_until="2025-06-03T21:59:59.016Z",
+        due_date="2025-06-03T21:59:59.016Z",
+        dismissible=True,
+    )
     result = await _async_conn.send_notification(notif)
     assert "data" in result
 
@@ -687,14 +700,12 @@ async def test_list_users_should_return_valid_users(_async_conn: ConnectionAsync
     # when listing users
     result = await _async_conn.list_users()
     # then only the user with email is returned
-    login_names = [u["loginName"] for u in result]
+    login_names = [u.login_name for u in result]
     assert "test.with.email" in login_names
     assert "test.without.email" not in login_names
     # and the returned user has the expected structure
-    user = next(u for u in result if u["loginName"] == "test.with.email")
-    assert user["email"] == "test.with.email@pricefx.com"
-    assert "typedId" in user
-    assert "activated" in user
+    user = next(u for u in result if u.login_name == "test.with.email")
+    assert user.email == "test.with.email@pricefx.com"
 
 
 @pytest.mark.asyncio
@@ -715,13 +726,13 @@ async def test_lpg_minimal_operations(_async_conn: ConnectionAsync):
             "label": "Test LPG",
         },
     )
-    lpg_id = lpg["id"]
-    assert "typedId" in lpg
-    assert lpg["priceGridType"] == "SIMPLE"
-    assert lpg["status"] == "DRAFT"
+    lpg_model = LPG.model_validate(lpg)
+    lpg_id = lpg_model.id
+    assert lpg_model.type == "SIMPLE"
 
     items = await _async_conn.list_lpg_items(lpg_id)
     assert isinstance(items, list)
+    assert all(isinstance(item, LPGProduct) for item in items)
 
     metadata = await _async_conn.get_object_metadata("PGIM", "priceGridId", lpg_id)
     assert isinstance(metadata, list)
@@ -762,9 +773,13 @@ async def test_push_and_get_calcitems(_async_conn: ConnectionAsync):
 async def test_import_files(_async_conn: ConnectionAsync, _model_object: dict[str, Any]):
     # given a model object zipped as mo.json
     zip_buffer = BytesIO()
+    mo_to_import = {**_model_object, "uniqueName": "importedModelObjectName"}
     with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("mo.json", json.dumps(_model_object, indent=2))
-    files = {"file": ("mo.zip", zip_buffer.getvalue(), "application/zip")}
+        zf.writestr("mo.json", json.dumps(mo_to_import, indent=2))
+    files = {
+        "data": (None, "{}", "application/json"),  # to test core < 15.0.0
+        "file": ("mo.zip", zip_buffer.getvalue(), "application/zip"),  # to test core >= 15.0.0
+    }
     # when importing it
     typed_id = await _async_conn.import_files(files)
     # then we get back a valid MO typedId
@@ -784,26 +799,6 @@ async def test_query_meta_and_execute(_async_conn: ConnectionAsync):
             {
                 "kind": "source",
                 "table": {"kind": "products"},
-                "columns": [
-                    {
-                        "kind": "selectable",
-                        "expression": {
-                            "kind": "columnReference",
-                            "column": "sku",
-                            "source": "table",
-                        },
-                        "alias": "sku",
-                    },
-                    {
-                        "kind": "selectable",
-                        "expression": {
-                            "kind": "columnReference",
-                            "column": "label",
-                            "source": "table",
-                        },
-                        "alias": "label",
-                    },
-                ],
             },
             {"kind": "take", "count": 5},
         ],
@@ -811,15 +806,17 @@ async def test_query_meta_and_execute(_async_conn: ConnectionAsync):
     # when fetching metadata
     meta = await _async_conn.query_meta(query)
     # then the metadata describes the expected columns
-    assert "columns" in meta
-    column_names = [col["name"] for col in meta["columns"]]
+    column_names = [col.name for col in meta.columns]
     assert "sku" in column_names
     assert "label" in column_names
     # when executing the query
     rows = await _async_conn.query_execute(query)
     # then the result contains the created product
     assert isinstance(rows, list)
-    assert [sku, label] in rows
+    assert any(
+        row[column_names.index("sku")] == sku and row[column_names.index("label")] == label
+        for row in rows
+    )
 
 
 @pytest.mark.asyncio

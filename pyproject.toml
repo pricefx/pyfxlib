@@ -11,13 +11,14 @@ packages = [
   {include = "pyfxlib"},
   {include = "pyfxlib/_testtooling"}
 ]
-version = "0.3.0"
+version = "0.4.0"
 
 [tool.poetry.dependencies]
 fastavro = {version = "^1.9"}
 httpx = {version = "^0.28.1"}
 numpy = {version = ">=1.26,<3"}
 pandas = {version = "^2.2"}
+pydantic = {version = ">=2.11.7"}
 python = ">=3.11,<4.0"
 SecretStorage = {version = "^3.3", platform = "linux"}
 setuptools = {version = "^80.0"}

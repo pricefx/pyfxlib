@@ -235,10 +235,10 @@ class FieldSpecs:
                     f" expected types are {str.join(', ', self._field_type_to_dtype)}"
                 )
 
-        if format:
+        if format is not None:
             col_schema["format"] = format
 
-        if measure_type:
+        if measure_type is not None:
             col_schema["measureType"] = measure_type
             if measure_type not in self.MeasureTypes:
                 raise ValueError(

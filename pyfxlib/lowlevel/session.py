@@ -17,7 +17,7 @@ from typing import Any, cast, overload
 
 from httpx import AsyncClient, HTTPError, HTTPStatusError, Response, TimeoutException
 
-from pyfxlib.lowlevel import _DEFAULT_STREAM_CHUNK_SIZE
+from pyfxlib.lowlevel.constants import _DEFAULT_STREAM_CHUNK_SIZE
 
 LOGGER = logging.getLogger(__name__)
 
@@ -397,7 +397,7 @@ class SimplePfxSession(PfxSession):
             auth: handler used to set up the session for authentication purpose.
             session: the httpx AsyncClient to use, if not set a new one will be created.
         """
-        if not session:
+        if session is None:
             session = AsyncClient(timeout=None)
         self._session: AsyncClient = session
         self._auth = auth

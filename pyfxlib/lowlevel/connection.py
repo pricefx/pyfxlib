@@ -7,9 +7,8 @@ For a higher level API, see the `pyfxlib.api.domain` package.
 
 from abc import ABC, abstractmethod
 import asyncio
-from collections.abc import AsyncIterator, Coroutine, Iterator
+from collections.abc import AsyncIterator, Coroutine, Iterator, Sequence
 import csv
-from enum import Enum, StrEnum, unique
 from io import BytesIO, TextIOBase
 import json
 import logging
@@ -22,58 +21,25 @@ from typing import Any, IO, TypeVar
 from httpx import HTTPStatusError
 import pandas as pd
 
-from pyfxlib.lowlevel import _DEFAULT_PAGE_SIZE, _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.avro import AvroStream
+from pyfxlib.lowlevel.constants import _DEFAULT_PAGE_SIZE, _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.session import PfxSession
+from pyfxlib.schema import (
+    AdvancedCriteria,
+    FieldRule,
+    FilterOperator,
+    JobStatus,
+    LPGProduct,
+    Notification,
+    Operator,
+    QueryAnswerMeta,
+    UserInfo,
+)
 
 T = TypeVar("T")
 
 
 LOGGER = logging.getLogger(__name__)
-
-
-@unique
-class JobStatus(Enum):
-    """Possible status of a job for the Pricefx REST API."""
-
-    PROCESSING = "PROCESSING"
-    FINISHED = "FINISHED"
-    FAILED = "FAILED"
-
-
-class FilterOperator(StrEnum):
-    """Filter operators for search criteria."""
-
-    EQUALS = "equals"
-    IEQUALS = "iEquals"
-    NOTEQUAL = "notEqual"
-    INOTEQUAL = "iNotEqual"
-    GREATERTHAN = "greaterThan"
-    GREATEROREQUAL = "greaterOrEqual"
-    LESSOREQUAL = "lessOrEqual"
-    LESSTHAN = "lessThan"
-    ISNULL = "isNull"
-    NOTNULL = "notNull"
-    CONTAINS = "contains"
-    ICONTAINS = "iContains"
-    CONTAINSPATTERN = "containsPattern"
-    ICONTAINSPATTERN = "iContainsPattern"
-    NOTCONTAINS = "notContains"
-    INOTCONTAINS = "iNotContains"
-    STARTSWITH = "startsWith"
-    ISTARTSWITH = "iStartsWith"
-    NOTSTARTSWITH = "notStartsWith"
-    INOTSTARTSWITH = "iNotStartsWith"
-    ENDSWITH = "endsWith"
-    IENDSWITH = "iEndsWith"
-    NOTENDSWITH = "notEndsWith"
-    INOTENDSWITH = "iNotEndsWith"
-    BETWEEN = "between"
-    BETWEENINCLUSIVE = "betweenInclusive"
-    IBETWEEN = "iBetween"
-    IBETWEENINCLUSIVE = "iBetweenInclusive"
-    INSET = "inSet"
-    NOTINSET = "notInSet"
 
 
 class ConnectionAsync(ABC):
@@ -112,7 +78,7 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
-    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+    async def send_notification(self, notification: Notification) -> dict[str, Any]:
         """Send a notification to the user via the backend.
 
         See https://pricefx.atlassian.net/wiki/spaces/UNITY/pages/5482283105/App+Notifications
@@ -125,8 +91,13 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
-    async def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
-        """List all users available in the system."""
+    async def list_users(self, criteria: AdvancedCriteria | None = None) -> list[UserInfo]:
+        """List all users available in the system.
+
+        Args:
+            criteria: optional advanced filters to apply when listing users.
+                      If not provided, all users will be returned.
+        """
         pass
 
     @abstractmethod
@@ -161,8 +132,8 @@ class ConnectionAsync(ABC):
     async def list_objects(
         self,
         type_code: str,
-        filters: list[dict[str, Any]] | None = None,
-        filter_aggregator: str | None = None,
+        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
+        filter_aggregator: Operator | None = None,
         start_row: int | None = None,
         max_rows: int | None = None,
         sort_by: str | None = None,
@@ -176,9 +147,8 @@ class ConnectionAsync(ABC):
 
         Args:
             type_code: Entity TypeCode
-            filters: a list of filters in the format
-                     [{"fieldName": ..., "operator": ..., "value": ...}, ...]
-            filter_aggregator: "and" or "or" (default) when multiple filter values are provided
+            filters: a list of filters
+            filter_aggregator: logical operator to combine multiple filters (default: Operator.OR)
             start_row: Starting index (0-based)
             max_rows: Max results (1-200, default 5)
             sort: field on which to sort the data
@@ -344,7 +314,7 @@ class ConnectionAsync(ABC):
     @abstractmethod
     async def list_lpg_items(
         self, lpg_id: int, filters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[LPGProduct]:
         """Fetch the item data from an LPG.
 
         Args:
@@ -458,7 +428,7 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
-    async def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
+    async def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """Fetches the schema of a queryAPI query result: column names and types.
 
         See: https://pricefx.atlassian.net/wiki/spaces/KB/pages/5753667585/Pipeline+Queries+QueryAPI
@@ -530,27 +500,12 @@ class ConnectionRemote(ConnectionAsync):
 
     @staticmethod
     def _build_criteria(
-        filters: list[dict[str, Any]] | None = None,
-        filter_aggregator: str | None = None,
-    ) -> dict[str, Any] | None:
+        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
+        filter_aggregator: Operator | None = None,
+    ) -> AdvancedCriteria | None:
         if not filters:
             return None
-        for filt in filters:
-            if not {"fieldName", "operator", "value"}.issubset(filt.keys()):
-                raise ValueError(
-                    f"Invalid filter format: {filt}. "
-                    "Expected keys: 'fieldName', 'operator', 'value'."
-                )
-            if filt["operator"] not in FilterOperator:
-                raise ValueError(
-                    f"Invalid filter operator for the filter {filt}. "
-                    f"Expected one of: {[operator.value for operator in FilterOperator]}"
-                )
-        return {
-            "_constructor": "AdvancedCriteria",
-            "operator": filter_aggregator if filter_aggregator else "or",
-            "criteria": filters,
-        }
+        return AdvancedCriteria(operator=filter_aggregator or Operator.OR, criteria=filters)
 
     async def _fc_spec(self, typedid: str) -> dict | None:
         objectid = typedid.split(".")[0]
@@ -589,7 +544,7 @@ class ConnectionRemote(ConnectionAsync):
                 f"Invalid version format: {backend_version}. Expected format is 'major.minor.patch' or 'major.minor' or 'major' with int values.",  # noqa: E501
             ) from err
 
-    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+    async def send_notification(self, notification: Notification) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         backend_version = await self.backend_version()
         if ((backend_version["major"] or 0) < 15) or (
@@ -601,15 +556,18 @@ class ConnectionRemote(ConnectionAsync):
             )
         response = await self.session.post(
             f"{self.endpoint}/notification.send",
-            json={"data": {"notification": notification}},
+            json={"data": {"notification": notification.model_dump(exclude_none=True)}},
         )
         return response.json()["response"]
 
-    async def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
+    async def list_users(self, criteria: AdvancedCriteria | None = None) -> list[UserInfo]:
         """See `ConnectionAsync` corresponding method."""
-        response = await self.session.post(f"{self.endpoint}/accountmanager.fetchusers", **kwargs)
+        body: dict[str, Any] = {"operationType": "fetch", "textMatchStyle": "exact"}
+        if criteria is not None:
+            body["data"] = criteria.model_dump()
+        response = await self.session.post(f"{self.endpoint}/accountmanager.fetchusers", json=body)
         return [
-            user_info
+            UserInfo.model_validate(user_info)
             for user_info in response.json()["response"]["data"]
             if user_info.get("email") is not None
         ]
@@ -637,8 +595,8 @@ class ConnectionRemote(ConnectionAsync):
     async def list_objects(
         self,
         type_code: str,
-        filters: list[dict[str, Any]] | None = None,
-        filter_aggregator: str | None = None,
+        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
+        filter_aggregator: Operator | None = None,
         start_row: int | None = None,
         max_rows: int | None = None,
         sort_by: str | None = None,
@@ -646,12 +604,13 @@ class ConnectionRemote(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         start_row = start_row or 0
         end_row = start_row + max(min(max_rows, 200), 1) if max_rows is not None else None
+        criteria = self._build_criteria(filters, filter_aggregator)
         body = {
             "startRow": start_row,
             "endRow": end_row,
             "operationType": "fetch",
             "textMatchStyle": "exact",
-            "data": self._build_criteria(filters, filter_aggregator),
+            "data": criteria.model_dump() if criteria else None,
             "sortBy": [sort_by] if sort_by else None,
         }
         response = await self.session.post(f"{self.endpoint}/fetch/{type_code}", json=body)
@@ -823,17 +782,20 @@ class ConnectionRemote(ConnectionAsync):
 
     async def list_lpg_items(
         self, lpg_id: int, filters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[LPGProduct]:
         """See `ConnectionAsync` corresponding method."""
-        criteria = []
+        criteria = None
         if filters:
-            criteria = [
-                {"fieldName": key, "operator": FilterOperator.IEQUALS, "value": value}
-                for key, value in filters.items()
-            ]
+            criteria = self._build_criteria(
+                [
+                    FieldRule(field_name=key, operator=FilterOperator.IEQUALS, value=value)
+                    for key, value in filters.items()
+                ],
+                Operator.AND,
+            )
         response = await self.session.post(
             f"{self.endpoint}/pricegridmanager.fetch/{lpg_id}",
-            json={"data": self._build_criteria(criteria, "and")},
+            json={"data": criteria.model_dump() if criteria else None},
         )
         return response.json()["response"]["data"]
 
@@ -966,13 +928,13 @@ class ConnectionRemote(ConnectionAsync):
             json={"data": data},
         )
 
-    async def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
+    async def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(
             f"{self.endpoint}/queryapi.meta",
             json={"data": {"query": query}},
         )
-        return response.json()["response"]["data"][0]
+        return QueryAnswerMeta.model_validate(response.json()["response"]["data"][0])
 
     async def query_execute(self, query: dict[str, Any]) -> list[list[Any]]:
         """See `ConnectionAsync` corresponding method."""
@@ -1067,11 +1029,11 @@ class ConnectionLocal(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return {"major": 99, "minor": None, "patch": None}
 
-    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+    async def send_notification(self, notification: Notification) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return {}
 
-    async def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
+    async def list_users(self, criteria: AdvancedCriteria | None = None) -> list[UserInfo]:
         """See `ConnectionAsync` corresponding method."""
         return []
 
@@ -1092,8 +1054,8 @@ class ConnectionLocal(ConnectionAsync):
     async def list_objects(
         self,
         type_code: str,
-        filters: list[dict[str, Any]] | None = None,
-        filter_aggregator: str | None = None,
+        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
+        filter_aggregator: Operator | None = None,
         start_row: int | None = None,
         max_rows: int | None = None,
         sort_by: str | None = None,
@@ -1227,7 +1189,7 @@ class ConnectionLocal(ConnectionAsync):
 
     async def list_lpg_items(
         self, lpg_id: int, filters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[LPGProduct]:
         """See `ConnectionAsync` corresponding method.
 
         This implementation of the methods always returns an empty list.
@@ -1334,9 +1296,9 @@ class ConnectionLocal(ConnectionAsync):
             },
         )
 
-    async def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
+    async def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """See `ConnectionAsync` corresponding method."""
-        return {"columns": []}
+        return QueryAnswerMeta.model_validate({"columns": []})
 
     async def query_execute(self, query: dict[str, Any]) -> list[list[Any]]:
         """See `ConnectionAsync` corresponding method."""
@@ -1384,13 +1346,13 @@ class ConnectionComposed(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return await self._default.backend_version()
 
-    async def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+    async def send_notification(self, notification: Notification) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.send_notification(notification)
 
-    async def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
+    async def list_users(self, criteria: AdvancedCriteria | None = None) -> list[UserInfo]:
         """See `ConnectionAsync` corresponding method."""
-        return await self._default.list_users(**kwargs)
+        return await self._default.list_users(criteria)
 
     async def get_application_property(self, property_name: str) -> list[str]:
         """See `ConnectionAsync` corresponding method."""
@@ -1406,8 +1368,8 @@ class ConnectionComposed(ConnectionAsync):
     async def list_objects(
         self,
         type_code: str,
-        filters: list[dict[str, Any]] | None = None,
-        filter_aggregator: str | None = None,
+        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
+        filter_aggregator: Operator | None = None,
         start_row: int | None = None,
         max_rows: int | None = None,
         sort_by: str | None = None,
@@ -1496,7 +1458,7 @@ class ConnectionComposed(ConnectionAsync):
 
     async def list_lpg_items(
         self, lpg_id: int, filters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[LPGProduct]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.list_lpg_items(lpg_id, filters)
 
@@ -1560,7 +1522,7 @@ class ConnectionComposed(ConnectionAsync):
             jst_id, status_code, progress, msg, results
         )
 
-    async def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
+    async def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.query_meta(query)
 
@@ -1638,13 +1600,13 @@ class ConnectionSync:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.backend_version())
 
-    def send_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
+    def send_notification(self, notification: Notification) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.send_notification(notification))
 
-    def list_users(self, **kwargs: Any) -> list[dict[str, Any]]:
+    def list_users(self, criteria: AdvancedCriteria | None = None) -> list[UserInfo]:
         """See `ConnectionAsync` corresponding method."""
-        return self._run_sync(self._conn.list_users(**kwargs))
+        return self._run_sync(self._conn.list_users(criteria))
 
     def get_application_property(self, property_name: str) -> list[str]:
         """See `ConnectionAsync` corresponding method."""
@@ -1660,8 +1622,8 @@ class ConnectionSync:
     def list_objects(
         self,
         type_code: str,
-        filters: list[dict[str, Any]] | None = None,
-        filter_aggregator: str | None = None,
+        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
+        filter_aggregator: Operator | None = None,
         start_row: int | None = None,
         max_rows: int | None = None,
         sort_by: str | None = None,
@@ -1752,7 +1714,7 @@ class ConnectionSync:
 
     def list_lpg_items(
         self, lpg_id: int, filters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[LPGProduct]:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.list_lpg_items(lpg_id, filters))
 
@@ -1815,7 +1777,7 @@ class ConnectionSync:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.update_status(jst_id, status_code, progress, msg, results))
 
-    def query_meta(self, query: dict[str, Any]) -> dict[str, Any]:
+    def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.query_meta(query))
 
