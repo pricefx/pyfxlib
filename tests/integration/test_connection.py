@@ -773,9 +773,13 @@ async def test_push_and_get_calcitems(_async_conn: ConnectionAsync):
 async def test_import_files(_async_conn: ConnectionAsync, _model_object: dict[str, Any]):
     # given a model object zipped as mo.json
     zip_buffer = BytesIO()
+    mo_to_import = {**_model_object, "uniqueName": "importedModelObjectName"}
     with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("mo.json", json.dumps(_model_object, indent=2))
-    files = {"file": ("mo.zip", zip_buffer.getvalue(), "application/zip")}
+        zf.writestr("mo.json", json.dumps(mo_to_import, indent=2))
+    files = {
+        "data": (None, "{}", "application/json"),  # to test core < 15.0.0
+        "file": ("mo.zip", zip_buffer.getvalue(), "application/zip"),  # to test core >= 15.0.0
+    }
     # when importing it
     typed_id = await _async_conn.import_files(files)
     # then we get back a valid MO typedId
