@@ -24,7 +24,7 @@ import pytest_asyncio
 
 from pyfxlib._testtooling.helpers import _IntegrationRemote
 from pyfxlib.api.domain import Partition
-from pyfxlib.lowlevel.connection import ConnectionAsync, ConnectionSync
+from pyfxlib.lowlevel.connection import ConnectionAsync, ConnectionSync, ConnectionRemote
 from pyfxlib.lowlevel.constants import _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.session import (
     pfx_session,
@@ -162,8 +162,10 @@ def _async_conn(_remote: _IntegrationRemote) -> ConnectionAsync:
 
 
 @fixture(scope="function")
-def _conn(_remote: _IntegrationRemote) -> ConnectionSync:
-    return ConnectionSync(_remote.connection())
+def _conn(_auth: PfxAuthUserPass, _pfx_base_url: ParseResult) -> ConnectionSync:
+    session = pfx_session(_auth)
+    conn = ConnectionRemote(_pfx_base_url._replace(path="/pricefx/system").geturl(), session)
+    return ConnectionSync(conn)
 
 
 @fixture(scope="function")
