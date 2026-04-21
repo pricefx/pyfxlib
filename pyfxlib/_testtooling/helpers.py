@@ -48,6 +48,11 @@ class _IntegrationRemote:
         await self._auth.before_request(self._session)
         return self._auth.pfxtoken
 
+    def jwt_sync(self) -> str:
+        if self._auth.pfxtoken is None:
+            raise RuntimeError("Not authenticated yet; call jwt() in an async context first")
+        return self._auth.pfxtoken
+
     async def trigger_job(self, mo: dict[str, Any]) -> None:
         await self._session.post(
             self.endpoint_url(f"remoteintegrationtestmanager/createJobTriggerTask/{mo['typedId']}"),
