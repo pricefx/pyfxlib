@@ -30,7 +30,8 @@ import mimetypes
 import os
 from pathlib import Path
 import re
-from typing import Any, IO, TypeVar
+import threading
+from typing import Any, cast, IO, TypeVar
 
 from httpx import HTTPStatusError
 import pandas as pd
@@ -1579,32 +1580,40 @@ class ConnectionSync:
 
     def __init__(self, conn: ConnectionAsync):
         self._conn = conn
-        # Disable keep-alive: close is needed for sync usage because asyncio.run() creates/destroys
-        # the event loop on each call, making keep-alive connections try to reuse a closed
-        # event loop.
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
+        self._thread.start()
+        # Disable keep-alive: long-lived sync usage would accumulate idle connections
+        # bound to this loop; close after each request to avoid that.
         if hasattr(conn, "session"):
             conn.session.set_header("Connection", "close")
+
+    def __del__(self) -> None:
+        try:
+            if not self._loop.is_closed():
+                self._loop.call_soon_threadsafe(self._loop.stop)  # type: ignore[arg-type]
+                self._thread.join(timeout=1)
+                self._loop.close()
+        except Exception:
+            pass
 
     def __repr__(self) -> str:
         return f"ConnectionSync({self._conn})"
 
-    @staticmethod
-    def _run_sync(coro: Coroutine[Any, Any, T]) -> T:
-        """Execute an async coroutine synchronously."""
-        return asyncio.run(coro)
+    def _run_sync(self, coro: Coroutine[Any, Any, T]) -> T:
+        """Execute an async coroutine synchronously via the dedicated event loop thread."""
+        return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
 
-    @staticmethod
-    def _sync_iterator(async_iter: AsyncIterator[T]) -> Iterator[T]:
-        """Convert an async iterator to a sync one."""
-        loop = asyncio.new_event_loop()
-        try:
-            while True:
-                try:
-                    yield loop.run_until_complete(async_iter.__anext__())
-                except StopAsyncIteration:
-                    break
-        finally:
-            loop.close()
+    def _sync_iterator(self, async_iter: AsyncIterator[T]) -> Iterator[T]:
+        """Convert an async iterator to a sync one using the dedicated event loop thread."""
+        while True:
+            future = asyncio.run_coroutine_threadsafe(
+                cast(Coroutine[Any, Any, T], async_iter.__anext__()), self._loop
+            )
+            try:
+                yield future.result()
+            except StopAsyncIteration:
+                break
 
     def login_extended(self) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
