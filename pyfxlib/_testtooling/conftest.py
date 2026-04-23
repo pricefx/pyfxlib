@@ -24,7 +24,11 @@ import pytest_asyncio
 
 from pyfxlib._testtooling.helpers import _IntegrationRemote
 from pyfxlib.api.domain import Partition
-from pyfxlib.lowlevel.connection import ConnectionAsync, ConnectionSync, ConnectionRemote
+from pyfxlib.lowlevel.connection import (
+    ConnectionAsync,
+    ConnectionRemote,
+    ConnectionSync,
+)
 from pyfxlib.lowlevel.constants import _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.session import (
     pfx_session,
@@ -241,11 +245,12 @@ async def _raising_remote(
 
 @fixture(scope="function")
 def _connection_with_raising_session(
-    _retry_and_raising_session, _raising_remote
+    _raising_remote, _raising_auth: PfxAuthUserPass, _pfx_base_url: ParseResult
 ) -> tuple[ConnectionSync, _RaisingExceptionSession]:
-    retry, raising = _retry_and_raising_session
+    raising = _RaisingExceptionSession(SimplePfxSession(_raising_auth), 2)
+    session = RetryPfxSession(raising, retry_delays=[1, 1, 1])
+    connection = ConnectionRemote(_pfx_base_url._replace(path="/pricefx/system").geturl(), session)
 
-    connection = _raising_remote.connection()
     return ConnectionSync(connection), raising
 
 
