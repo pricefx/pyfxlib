@@ -226,7 +226,8 @@ def test_model_object_should_be_able_to_create_and_read_owned_tables(
 
     # and it is possible to fetch its content as a pandas DataFrame
     fetched_df = table.to_pandas()
-    assert (dataframe[list(data.keys())] == fetched_df[list(data.keys())]).all().all()
+    assert fetched_df.index.name == "column1"
+    assert (dataframe.set_index("column1") == fetched_df).all().all()
 
 
 _VALID_DATAFRAME_CONTENT = [
@@ -328,15 +329,11 @@ def test_model_object_should_be_able_to_push_and_update_multiindex_dataframes(
 
     # then the table is properly created with index columns
     downloaded_df = list(mo.tables())[0].to_pandas()
+    original_indexed = original_df.copy()
     expected_idx_names = idx_names if idx_names is not None else ["level_0", "level_1"]
-    for idx_name in expected_idx_names:
-        assert idx_name in downloaded_df.columns
-    expected_columns = list(original_df.columns) + expected_idx_names
-    assert (
-        (original_df.reset_index(drop=False)[expected_columns] == downloaded_df[expected_columns])
-        .all()
-        .all()
-    )
+    original_indexed.index.names = expected_idx_names
+    assert list(downloaded_df.index.names) == expected_idx_names
+    assert (original_indexed == downloaded_df).all().all()
 
     # when updating a multi-index model table
     updated_data = {
@@ -353,9 +350,7 @@ def test_model_object_should_be_able_to_push_and_update_multiindex_dataframes(
     list(mo.tables())[0].update_pandas(updated_df)
 
     # then the table is properly updated
-    downloaded_df = (
-        list(mo.tables())[0].to_pandas().sort_values(by=expected_idx_names).reset_index()
-    )
+    downloaded_df = list(mo.tables())[0].to_pandas().sort_index().reset_index()
     # when updating a multi-index model table
     expected_data = {
         "column1": ["key1", "key42", "key3"],
@@ -368,7 +363,7 @@ def test_model_object_should_be_able_to_push_and_update_multiindex_dataframes(
         expected_data,
         index=pd.MultiIndex.from_tuples(zip(idx_1, idx_2), names=idx_names),
     ).reset_index(drop=False)
-    assert (expected_df[expected_columns] == downloaded_df[expected_columns]).all().all()
+    assert (expected_df == downloaded_df).all().all()
 
 
 def test_model_object_should_be_able_to_update_data_of_an_owned_tables(
@@ -541,7 +536,8 @@ def test_should_be_able_to_create_and_read_datasources(_partition: Partition, tm
 
     # and it is possible to fetch its content as a pandas DataFrame
     fetched_df = datasource.to_pandas()
-    assert (dataframe[list(data.keys())] == fetched_df[list(data.keys())]).all().all()
+    assert fetched_df.index.name == col_names[0]
+    assert (dataframe.set_index(col_names[0]) == fetched_df[col_names[1:]]).all().all()
 
 
 @pytest.mark.parametrize(
@@ -735,8 +731,9 @@ def test_should_be_able_to_create_and_read_datamarts(
 
     # and it is possible to fetch its content as a pandas DataFrame
     data_frame = _partition.datamarts()[dm_name].to_pandas()
-    assert data_frame.shape == (0, 9)
-    assert list(data_frame.columns[:2]) == col_names
+    assert data_frame.shape == (0, 8)
+    assert data_frame.index.name == col_names[0]
+    assert all(col in data_frame.columns for col in col_names[1:])
 
 
 def test_should_give_access_to_model_objects(_partition: Partition, _model_object: dict[str, Any]):

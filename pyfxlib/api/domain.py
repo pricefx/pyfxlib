@@ -17,11 +17,11 @@
 Note that, unless explicitly noted, creating or modifying an object
 from this package will *not* update the corresponding platform entity.
 """
-
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 import io
-from typing import Any, Generic, IO, TypeVar
+from typing import Any, cast, Generic, IO, TypeVar
+import warnings
 
 import pandas as pd
 
@@ -152,6 +152,13 @@ class BasicEntity(IdentifiableEntity):
 class AbstractTable(BasicEntity, ABC):
     """Base class for all table types."""
 
+    fields: list[dict[str, Any]]
+    """Field specifications of the table, as returned by the Pricefx API.
+
+    Each field is a dict with at least ``name`` (str) and ``type`` (str),
+    and optionally ``key`` (bool) and ``dimension`` (bool)...
+    """
+
     def stream(self, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE) -> Iterator[bytes]:
         """Stream the content of this table."""
         return self._conn.stream_dm_data(self.typedid, chunk_size)
@@ -171,20 +178,39 @@ class AbstractTable(BasicEntity, ABC):
             for buffer in self.stream():
                 outfile.write(buffer)
 
+    def _key_colums(self, df: pd.DataFrame) -> list[str]:
+        all_key_cols = [field["name"] for field in self.fields if field.get("key") is True]
+        key_cols = [field_name for field_name in all_key_cols if field_name in df.columns]
+        if len(key_cols) != len(all_key_cols):
+            warnings.warn(
+                "The DataFrame doesn't use all the key columns of the source. The index may not be unique."  # noqa: E501 line too long
+            )
+        return key_cols
+
     def to_pandas(self, **args: dict[str, Any]) -> pd.DataFrame:
-        """Get a `pd.DataFrame` with the table content."""
+        """Get a `pd.DataFrame` with the table content.
+
+        Key columns are set as the DataFrame index.
+        """
         with io.BytesIO() as buff:
             for data in self.stream():
                 buff.write(data)
             buff.seek(0)
-            return pd.read_csv(buff, sep=",", **args)
+            df = cast(pd.DataFrame, pd.read_csv(buff, sep=",", **args))
+        key_cols = self._key_colums(df)
+        return df.set_index(key_cols) if key_cols else df
 
     def to_pandas_paginated(self, page_size: int = _DEFAULT_PAGE_SIZE) -> pd.DataFrame:
-        """Get a DataFramevia paginated fetch."""
+        """Get a DataFrame via paginated fetch.
+
+        Key columns are set as the DataFrame index
+        """
         dfs = []
         for page in self.fetch_paginated(page_size):
             dfs.append(pd.DataFrame(page))
-        return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+        df = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+        key_cols = self._key_colums(df)
+        return df.set_index(key_cols) if key_cols else df
 
     @staticmethod
     def _filter_field_metadata(fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
