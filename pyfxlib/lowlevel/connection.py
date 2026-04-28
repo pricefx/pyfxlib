@@ -73,6 +73,22 @@ class ConnectionAsync(ABC):
         raise ValueError(f"'{typed_id}' is not a valid typedId")
 
     @abstractmethod
+    async def get(self, path: str, **kwargs: Any) -> dict[str, Any]:
+        """Make a GET request to the backend.
+
+        To use only when the endpoint access is not implemented in Pyfxlib.
+        """
+        pass
+
+    @abstractmethod
+    async def post(self, path: str, **kwargs: Any) -> dict[str, Any]:
+        """Make a POST request to the backend.
+
+        To use only when the endpoint access is not implemented in Pyfxlib.
+        """
+        pass
+
+    @abstractmethod
     async def login_extended(self) -> dict[str, Any]:
         """Calls POST login/extended and returns the raw JSON response.
 
@@ -537,6 +553,16 @@ class ConnectionRemote(ConnectionAsync):
         if len(response["response"]["data"]) > 0:
             return response["response"]["data"][0]
         return None
+
+    async def get(self, path: str, **kwargs: Any) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.get(f"{self.endpoint}/{path.lstrip('/')}", **kwargs)
+        return response.json()
+
+    async def post(self, path: str, **kwargs: Any) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(f"{self.endpoint}/{path.lstrip('/')}", **kwargs)
+        return response.json()
 
     async def login_extended(self) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
@@ -1036,6 +1062,14 @@ class ConnectionLocal(ConnectionAsync):
         os.makedirs(self.path / model_typedid / "attachments", exist_ok=True)
         return self.path / model_typedid / "attachments"
 
+    async def get(self, path: str, **kwargs: Any) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return {"response": {"data": []}}
+
+    async def post(self, path: str, **kwargs: Any) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return {"response": {"data": []}}
+
     async def login_extended(self) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return {"response": {"data": [{"extendedData": {"Release": "99.0-SNAPSHOT"}}]}}
@@ -1353,6 +1387,14 @@ class ConnectionComposed(ConnectionAsync):
     def __repr__(self) -> str:
         return f"ConnectionDispatch(default={self._default})"
 
+    async def get(self, path: str, **kwargs: Any) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.get(path, **kwargs)
+
+    async def post(self, path: str, **kwargs: Any) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.post(path, **kwargs)
+
     async def login_extended(self) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.login_extended()
@@ -1614,6 +1656,14 @@ class ConnectionSync:
                 yield future.result()
             except StopAsyncIteration:
                 break
+
+    def get(self, path: str, **kwargs: Any) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return self._run_sync(self._conn.get(path, **kwargs))
+
+    def post(self, path: str, **kwargs: Any) -> dict[str, Any]:
+        """See `ConnectionAsync` corresponding method."""
+        return self._run_sync(self._conn.post(path, **kwargs))
 
     def login_extended(self) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
