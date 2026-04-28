@@ -1,0 +1,69 @@
+# Changelog
+
+## [0.6.0] - 2026-04-29
+
+### Changed
+- `to_pandas()` and `to_pandas_paginated()` now set key columns as the DataFrame
+  index, consistent with the behavior when pushing a DataFrame to the platform.
+  **Breaking change**: code using `reset_index(drop=True)` after these methods
+  will silently drop key columns — replace with `reset_index()`.
+
+## [0.5.0] - 2026-04-28
+
+### Added
+- `ConnectionAsync.get()` and `ConnectionAsync.post()` for calling Pricefx
+  endpoints not natively supported by pyfxlib.
+
+## [0.4.1] - 2026-04-23
+
+### Fixed
+- `ConnectionSync` isolated in a dedicated thread to avoid event loop conflicts
+  with pytest-asyncio and httpcore.
+
+## [0.4.0] - 2026-03-12
+
+### Added
+- Pydantic models for core Pricefx objects.
+- New connection methods: `send_notification`, `list_users`, `list_lpg_items`,
+  `quick_search`, `update_lpg`, `submit_lpg`, `import_files`, `login_extended`,
+  `backend_version`, `get_application_property`, `create_action`, `query_meta`.
+- `AdvancedCriteria` for complex filtering.
+- Published to [PyPI](https://pypi.org/project/pyfxlib/) (Apache 2.0 license).
+
+### Changed
+- `Instance` renamed to `Partition` (`Instance` kept as deprecated alias).
+- `get_advanced_property` renamed to `get_application_property`.
+
+## [0.3.0] - 2026-03-03
+
+### Changed
+- **Breaking change**: all connection internals are now async (httpx replaces
+  requests). The high-level `api.domain` layer remains synchronous via the new
+  `ConnectionSync` wrapper.
+
+### Added
+- `ConnectionSync`: synchronous wrapper around async connections, for use in
+Python Engine and other sync contexts.
+- `to_pandas_paginated()`: paginated DataFrame fetch for large tables.
+
+## [0.2.0] - 2026-01-19
+
+### Added
+- `PasswordProviderEnvironment`: read credentials from environment variables.
+
+## [0.1.1] - 2026-01-14
+
+### Changed
+- Relaxed Python version requirement to `>=3.11`.
+- Relaxed package dependency version constraints.
+
+## [0.1.0] - 2025-12-15
+
+Initial release. Extracted from the Pricefx Python Engine project.
+
+### Added
+- Low-level session management (`PfxSession`) with JWT and keyring authentication.
+- `ConnectionRemote`, `ConnectionLocal`, `ConnectionComposed` for interacting
+  with Pricefx instances.
+- High-level `api.domain` layer: `Partition`, `DataSource`, `Datamart`,
+  `TableMutable`, `TableImmutable`, `LPGCollection`, `ModelObject`, and more.
