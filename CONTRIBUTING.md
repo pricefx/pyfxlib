@@ -59,6 +59,8 @@ For a complete working example, see the [Python Engine CI configuration](https:/
 
 ### Testing an unreleased version of pyfxlib in another project (internal Pricefx)
 
+For testing purposes, you can manually publish a package from a merge request without creating an official release tag.
+
 > ⚠️  **Important**: Always bump the version in `pyproject.toml` **before** publishing a test package.
 > Without bumping, projects pinned to the current stable version may inadvertently install your dev package instead.
 
@@ -68,16 +70,6 @@ For a complete working example, see the [Python Engine CI configuration](https:/
 ```toml
 pyfxlib = { version = "X.Y.Z+branch-name", source = "pyfxlib-gitlab" }
 ```
-
-For testing purposes, you can manually publish a package from a merge request without creating an official release tag.
-
-1. Run manually the job `publish-package` from the Gitlab CI interface.
-2. The package version will be `X.Y.Z+branch-name` (e.g., `1.2.3+feature-branch`) and will be available in the Gitlab package repository.
-3. In the target project, reference the test version in the `pyproject.toml` file:
-```toml
-pyfxlib = { version = "X.Y.Z+branch-name", source = "pyfxlib-gitlab" }
-```
-4. Then run `poetry update pyfxlib` to install the test version.
 
 Note: Test packages are not official releases and should only be used for development and testing purposes.
 
@@ -132,11 +124,12 @@ When a tag is set, the package is automatically created.
 ```commandline
 poetry version major   # for breaking changes (4.2.0 → 5.0.0)
 ```
-4. Commit the version changes
-5. Merge the release branch into `develop` (via a merge request)
-6. Create the version tag on `develop` (E.g., v5.0.0). It must correspond to the version set in `pyproject.toml` (checked in the CI)
-7. The package will be automatically built and published to both the Gitlab package repository and PyPI.
-8. Delete the release branch
+4. Add the breaking changes to the `CHANGELOG.md` file under a new section with the new version and date.
+5. Commit the version changes
+6. Merge the release branch into `develop` (via a merge request)
+7. Create the version tag on `develop` (E.g., v5.0.0). It must correspond to the version set in `pyproject.toml` (checked in the CI)
+8. The package will be automatically built and published to both the Gitlab package repository and PyPI.
+9. Delete the release branch
 
 #### New Minor Version (e.g. 2.3.4 → 2.4.0)
 
@@ -147,11 +140,12 @@ From `develop` branch: for the last major version. It is the same workflow as fo
 ```commandline
  poetry version minor   # for new features (2.3.4 → 2.4.0)
 ```
-3. Commit the version changes
-4. Merge the release branch into `develop` (via a merge request)
-5. Create the version tag on `develop` (E.g., v2.4.0). It must correspond to the version set in `pyproject.toml` (checked in the CI)
-6. The package will be automatically built and published to the Gitlab package repository and PyPI.
-7. Delete the release branch
+3. Add the new features to the `CHANGELOG.md` file under a new section with the new version and date.
+4. Commit the version changes
+5. Merge the release branch into `develop` (via a merge request)
+6. Create the version tag on `develop` (E.g., v2.4.0). It must correspond to the version set in `pyproject.toml` (checked in the CI)
+7. The package will be automatically built and published to the Gitlab package repository and PyPI.
+8. Delete the release branch
 
 From a maintenance branch: for previous major versions (e.g, v3 at 3.2.1 → 3.3.0, while `develop` is at v4.x.y).
 
@@ -165,6 +159,7 @@ It is the same process as a minor version, but use:
 ```commandline
 poetry version patch   # for bug fixes (1.2.3 → 1.2.4)
 ```
+Add the bugfix in the `CHANGELOG.md` if it makes sense.
 
 It is done either on `develop` or on a maintenance branch, depending on which version is being patched.
 Only the last minor version of a branch can be patched.
