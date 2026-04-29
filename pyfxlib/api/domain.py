@@ -38,6 +38,8 @@ from pyfxlib.schema.core import JobStatus
 
 T = TypeVar("T")
 
+_EXPOSED_FIELD_METADATA = {"name", "label", "type", "key", "dimension"}
+
 
 class PlatformJob:
     """A Job executed on the platform."""
@@ -184,6 +186,13 @@ class AbstractTable(BasicEntity, ABC):
             dfs.append(pd.DataFrame(page))
         return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
+    @staticmethod
+    def _filter_field_metadata(fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            {attr: value for attr, value in field.items() if attr in _EXPOSED_FIELD_METADATA}
+            for field in fields
+        ]
+
 
 class TableImmutable(AbstractTable):
     """Representation of a data Table."""
@@ -199,6 +208,7 @@ class TableImmutable(AbstractTable):
         created_date: str | None = None,
         last_update_by: int | None = None,
         last_update_date: str | None = None,
+        fields: list[dict[str, Any]] | None = None,
     ) -> None:
         """Get the representation corresponding to a Model Type."""
         BasicEntity.__init__(
@@ -214,6 +224,7 @@ class TableImmutable(AbstractTable):
         )
         if name is not None:
             self.name = name
+        self.fields = self._filter_field_metadata(fields) if fields is not None else []
 
     @classmethod
     def from_dict(
@@ -232,6 +243,7 @@ class TableImmutable(AbstractTable):
             attrs["createDate"] if "createDate" in attrs else None,
             attrs["lastUpdateBy"] if "lastUpdateBy" in attrs else None,
             attrs["lastUpdateDate"] if "lastUpdateDate" in attrs else None,
+            attrs["fields"] if "fields" in attrs else None,
         )
 
 
@@ -249,6 +261,7 @@ class TableMutable(AbstractTable):
         created_date: str | None = None,
         last_update_by: int | None = None,
         last_update_date: str | None = None,
+        fields: list[dict[str, Any]] | None = None,
     ) -> None:
         """Get the representation corresponding to a Model Type."""
         BasicEntity.__init__(
@@ -264,6 +277,7 @@ class TableMutable(AbstractTable):
         )
         if name is not None:
             self.name = name
+        self.fields = self._filter_field_metadata(fields) if fields is not None else []
 
     @classmethod
     def from_dict(
@@ -282,6 +296,7 @@ class TableMutable(AbstractTable):
             attrs["createDate"] if "createDate" in attrs else None,
             attrs["lastUpdateBy"] if "lastUpdateBy" in attrs else None,
             attrs["lastUpdateDate"] if "lastUpdateDate" in attrs else None,
+            attrs["fields"] if "fields" in attrs else None,
         )
 
     def update(self, data: AvroStream) -> None:
