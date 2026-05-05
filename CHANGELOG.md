@@ -1,12 +1,18 @@
 # Changelog
 
-## [0.6.0] - 2026-04-29
+## [0.7.0] - 2026-04-29
 
 ### Changed
 - `to_pandas()` and `to_pandas_paginated()` now set key columns as the DataFrame
   index, consistent with the behavior when pushing a DataFrame to the platform.
   **Breaking change**: code using `reset_index(drop=True)` after these methods
   will silently drop key columns — replace with `reset_index()`.
+
+## [0.6.0] - 2026-04-29
+
+### Added
+- `TableImmutable` and `TableMutable` now expose field metadata (`name`, `label`,
+  `type`, `key`, `dimension`) via the `fields` attribute.
 
 ## [0.5.0] - 2026-04-28
 
