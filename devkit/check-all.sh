@@ -13,10 +13,12 @@ poetry run toml-sort --check pyproject.toml
 echo "Checking import ordering"
 poetry run isort --check-only --diff pyfxlib
 poetry run isort --check-only --diff tests
+poetry run isort --check-only --diff scripts
 
 echo "Checking code formatting"
 poetry run flake8 pyfxlib
 poetry run flake8 --config .flake8-tests tests
+poetry run flake8 scripts
 
 echo "Checking type annotations"
 poetry run mypy pyfxlib --exclude _testtooling
