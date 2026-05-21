@@ -17,16 +17,15 @@ variables:
         IMAGE_TAG: "${CI_COMMIT_REF_SLUG}"
 
 .it-tests:
+  stage: test
   extends:
     - .mr-develop-release-only
+  image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
   services:
     - name: cregistry.pricefx.eu/engineering/remote-integrationtest:latest
       alias: pricefx
       variables:
         HEALTHCHECK_TCP_PORT: "2000"
-  image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
-  stage: test
-  interruptible: true
   variables:
     # this must be declared here for it to be visible to the service
     MY_CI_REGISTRY_PASSWORD: ${CI_REGISTRY_PASSWORD}
@@ -38,6 +37,7 @@ variables:
     # even though HEALTHCHECK_TCP_PORT is setup, compose seems to listen on the port before the service is really ready, so we need to wait here
     - timeout 300 bash -c "until curl --output /dev/null --silent $PFX_BASE_URL; do sleep 1; done"
     - poetry run pytest tests/integration -m "${MARKER_SELECTOR}"
+  interruptible: true
 
 integration-tests:
   extends:
@@ -52,11 +52,10 @@ integration-tests-extended:
     MARKER_SELECTOR: "extended"
 
 tests:
+  stage: test
   extends:
     - .mr-develop-release-only
   image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
-  stage: test
-  interruptible: true
   script:
     - pip install poetry==${POETRY_VERSION}
     - poetry check --lock
@@ -66,11 +65,11 @@ tests:
     - poetry run flake8 --config .flake8-tests tests
     - poetry run mypy pyfxlib --exclude _testtooling
     - poetry run pytest tests/unit
+  interruptible: true
 
 package:
-  image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
   stage: package
-  interruptible: true
+  image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
   script:
     - pip install poetry==${POETRY_VERSION}
     # If there is a tag, check that the tag is on an allowed branch (develop or maintenance branch)
@@ -104,14 +103,15 @@ package:
     - poetry version $(poetry version --short)$PACKAGE_VERSION_LOCAL # if defined, will replace vX with vX+branchname
     - poetry install
     - poetry build
-  artifacts:
-    paths:
-      - dist/
   rules:
     - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ # For version tag (e.g., vX.Y.Z)
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       variables:
         PACKAGE_VERSION_LOCAL: "+${CI_COMMIT_REF_SLUG}"
+  interruptible: true
+  artifacts:
+    paths:
+      - dist/
 
 publish-package:
   stage: deploy
@@ -150,15 +150,15 @@ publish-pypi:
 # DO NOT CHANGE NAME as the script above relies on it
 package-pyfxlib-docs:
   stage: deploy
-  image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
   extends:
     - .mr-develop-release-only
-  interruptible: true
-  artifacts:
-    paths:
-      - "./**/*.html"
+  image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
   script:
     - pip install poetry==${POETRY_VERSION}
     - poetry check --lock
     - poetry install
     - poetry run pdoc3 --html --config show_source_code=False -o html --force pyfxlib
+  interruptible: true
+  artifacts:
+    paths:
+      - "./**/*.html"
