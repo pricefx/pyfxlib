@@ -1,5 +1,6 @@
 scripts/check_lock_freshness.py
   s_47ac5a4920ea43::t_d78e03fe576cec 1-41
+  h_a1b2c3d4e5f6ab 42-69
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -15,5 +16,9 @@ scripts/check_lock_freshness.py
       },
       "human_author": "valerie.mauduit <valerie.mauduit@pricefx.com>"
     }
-  }
+  },
+  "humans": {
+      "h_a1b2c3d4e5f6ab": {
+        "author": "valerie.mauduit <valerie.mauduit@pricefx.com>"
+      }
 }
