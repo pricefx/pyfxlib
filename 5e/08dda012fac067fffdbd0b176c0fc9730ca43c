@@ -1,0 +1,14 @@
+.gitlab-ci.yml
+  h_65ddf93643bfac 6-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "5e08dda012fac067fffdbd0b176c0fc9730ca43c",
+  "prompts": {},
+  "humans": {
+    "h_65ddf93643bfac": {
+      "author": "valerie.mauduit <valerie.mauduit@pricefx.com>"
+    }
+  }
+}
