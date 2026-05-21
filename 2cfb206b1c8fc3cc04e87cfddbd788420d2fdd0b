@@ -12,18 +12,3 @@
     }
   }
 }
-
-.gitlab-ci.yml
-  h_65ddf93643bfac 6-7
----
-{
-  "schema_version": "authorship/3.0.0",
-  "git_ai_version": "1.4.8",
-  "base_commit_sha": "1f9d02af585936103032cee9afcdd53ad1dbedaa",
-  "prompts": {},
-  "humans": {
-    "h_65ddf93643bfac": {
-      "author": "valerie.mauduit <valerie.mauduit@pricefx.com>"
-    }
-  }
-}
