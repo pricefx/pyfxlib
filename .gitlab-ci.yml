@@ -16,6 +16,36 @@ variables:
       variables:
         IMAGE_TAG: "${CI_COMMIT_REF_SLUG}"
 
+# === Tests ===
+
+linting-typing:
+  stage: test
+  extends:
+    - .mr-develop-release-only
+  image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
+  script:
+    - pip install poetry==${POETRY_VERSION}
+    - poetry check --lock
+    - poetry install
+    - poetry run toml-sort --check pyproject.toml
+    - poetry run flake8 pyfxlib
+    - poetry run flake8 --config .flake8-tests tests
+    - poetry run mypy pyfxlib --exclude _testtooling
+    # It is possible to call with extra arguments if required (use --help to see options)
+    - poetry run python scripts/check_lock_freshness.py
+  interruptible: true
+
+unit-tests:
+  stage: test
+  extends:
+    - .mr-develop-release-only
+  image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
+  script:
+    - pip install poetry==${POETRY_VERSION}
+    - poetry install
+    - poetry run pytest tests/unit
+  interruptible: true
+
 .it-tests:
   stage: test
   extends:
@@ -51,21 +81,7 @@ integration-tests-extended:
   variables:
     MARKER_SELECTOR: "extended"
 
-tests:
-  stage: test
-  extends:
-    - .mr-develop-release-only
-  image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
-  script:
-    - pip install poetry==${POETRY_VERSION}
-    - poetry check --lock
-    - poetry install
-    - poetry run toml-sort --check pyproject.toml
-    - poetry run flake8 pyfxlib
-    - poetry run flake8 --config .flake8-tests tests
-    - poetry run mypy pyfxlib --exclude _testtooling
-    - poetry run pytest tests/unit
-  interruptible: true
+# === Package ===
 
 package:
   stage: package
@@ -113,6 +129,8 @@ package:
     paths:
       - dist/
 
+# === Deploy ===
+
 publish-package:
   stage: deploy
   image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
@@ -143,8 +161,6 @@ publish-pypi:
     - package
   rules:
     - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ # Automatic publish when a version tag is created (e.g., vX.Y.Z)
-
-######## DEPLOY DOCUMENTATION WEB #########
 
 # Used by https://gitlab.pricefx.eu/builds/pricefx-builds/blob/master/bin%2Fbuilds-hook.sh
 # DO NOT CHANGE NAME as the script above relies on it
