@@ -12,11 +12,3 @@
     }
   }
 }
-
----
-{
-  "schema_version": "authorship/3.0.0",
-  "git_ai_version": "1.4.8",
-  "base_commit_sha": "130b214f383e3fb2afec185944e3b21791f46d30",
-  "prompts": {}
-}
