@@ -1,0 +1,19 @@
+scripts/check_lock_freshness.py
+  s_47ac5a4920ea43::t_d78e03fe576cec 1-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "f150a6bd64ed3398e5c58fd93b00a2c3bfbb8301",
+  "prompts": {},
+  "sessions": {
+    "s_47ac5a4920ea43": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b6ef0a9e-83e2-4726-b857-c76ba907bed9",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "valerie.mauduit <valerie.mauduit@pricefx.com>"
+    }
+  }
+}
