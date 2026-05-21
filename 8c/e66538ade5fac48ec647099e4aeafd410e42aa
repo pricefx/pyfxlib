@@ -1,0 +1,9 @@
+scripts/check_lock_freshness.py
+  ai_agent 20-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "8ce66538ade5fac48ec647099e4aeafd410e42aa",
+  "prompts": {}
+}
