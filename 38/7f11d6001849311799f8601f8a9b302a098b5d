@@ -1,0 +1,14 @@
+scripts/check_lock_freshness.py
+  h_65ddf93643bfac 14-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "387f11d6001849311799f8601f8a9b302a098b5d",
+  "prompts": {},
+  "humans": {
+    "h_65ddf93643bfac": {
+      "author": "valerie.mauduit <valerie.mauduit@pricefx.com>"
+    }
+  }
+}
