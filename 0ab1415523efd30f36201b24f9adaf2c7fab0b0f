@@ -1,0 +1,14 @@
+devkit/check-all.sh
+  h_65ddf93643bfac 16,21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "567835ab0ff79f4c138fe3f19dc92fd74f73e9ae",
+  "prompts": {},
+  "humans": {
+    "h_65ddf93643bfac": {
+      "author": "valerie.mauduit <valerie.mauduit@pricefx.com>"
+    }
+  }
+}
