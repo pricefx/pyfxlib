@@ -4,7 +4,7 @@ scripts/check_lock_freshness.py
 {
   "schema_version": "authorship/3.0.0",
   "git_ai_version": "1.4.8",
-  "base_commit_sha": "a9651f506cacbf1bb064d0995d3bd072eb79d52a",
+  "base_commit_sha": "40f2defc8b83bfe428c17f996fa781ef9b451218",
   "prompts": {},
   "humans": {
     "h_65ddf93643bfac": {
