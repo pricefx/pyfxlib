@@ -23,3 +23,18 @@ scripts/check_lock_freshness.py
       }
 }
 }
+
+scripts/check_lock_freshness.py
+  h_65ddf93643bfac 23-24,71,91-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "c08c74308148f09948d6febc6ee4bea1614ec48d",
+  "prompts": {},
+  "humans": {
+    "h_65ddf93643bfac": {
+      "author": "valerie.mauduit <valerie.mauduit@pricefx.com>"
+    }
+  }
+}
