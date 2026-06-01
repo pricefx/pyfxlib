@@ -113,6 +113,14 @@ They must be set only on:
 
 When a tag is set, the package is automatically created.
 
+### Third-party licenses
+
+If you add, remove, or update a dependency in `pyproject.toml`, update the following files accordingly:
+
+- `THIRDPARTY.txt`: run `poetry run pip-licenses` and replace the file content
+- `NOTICE`: check if any new direct dependency has a Apache 2.0 license with a NOTICE file, MPL-2.0, or LGPL license,
+  and if so, add the required notices in this file.
+
 ### Release Workflows
 
 #### New Major Version (e.g. 4.2.3 → 5.0.0)
