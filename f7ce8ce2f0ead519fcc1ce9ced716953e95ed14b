@@ -1,0 +1,16 @@
+pyproject.toml
+  h_65ddf93643bfac 57,59
+README.md
+  h_65ddf93643bfac 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "8a3ff55f118374299c249212066e0c1fe5ba10f8",
+  "prompts": {},
+  "humans": {
+    "h_65ddf93643bfac": {
+      "author": "valerie.mauduit <valerie.mauduit@pricefx.com>"
+    }
+  }
+}
