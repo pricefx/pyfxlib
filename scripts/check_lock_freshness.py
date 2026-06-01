@@ -5,6 +5,7 @@ Usage: poetry run python scripts/check_lock_freshness.py [--days N]
 """
 
 import argparse
+import asyncio
 from datetime import datetime, timedelta, UTC
 import sys
 import tomllib
@@ -13,9 +14,10 @@ import httpx
 
 THRESHOLD_DAYS = 7
 IGNORE_ON_NULL = 0
+MAX_CONCURRENCY = 20
 
 
-def fetch_publish_date(name: str, version: str) -> datetime | None:
+async def fetch_publish_date(client: httpx.AsyncClient, name: str, version: str) -> datetime | None:
     """Return the earliest upload datetime for a given package version on PyPI.
 
     Returns None if the package/version is not found or the request fails.
@@ -23,7 +25,7 @@ def fetch_publish_date(name: str, version: str) -> datetime | None:
     base_version = version.split("+")[0]
     url = f"https://pypi.org/pypi/{name}/{base_version}/json"
     try:
-        r = httpx.get(url, timeout=10)
+        r = await client.get(url, timeout=10)
         r.raise_for_status()
         upload_times = [
             datetime.fromisoformat(f["upload_time"]).replace(tzinfo=UTC) for f in r.json()["urls"]
@@ -34,7 +36,9 @@ def fetch_publish_date(name: str, version: str) -> datetime | None:
         return None
 
 
-def safety_check(threshold: timedelta, ignore_on_null: bool, safe_packages: list[str]) -> bool:
+async def safety_check(
+    threshold: timedelta, ignore_on_null: bool, safe_packages: list[str]
+) -> bool:
     """Check that every package in poetry.lock is older than *threshold*.
 
     Args:
@@ -54,16 +58,26 @@ def safety_check(threshold: timedelta, ignore_on_null: bool, safe_packages: list
             "\nCaution: the following packages were excluded from the check and may be fresher "
             + f"than {threshold.days} days: {', '.join(safe_packages)}"
         )
+
+    to_check = [p for p in packages if p["name"] not in safe_packages]
+    semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
+
+    async def bounded(client: httpx.AsyncClient, name: str, version: str) -> datetime | None:
+        async with semaphore:
+            return await fetch_publish_date(client, name, version)
+
+    async with httpx.AsyncClient() as client:
+        # asyncio.gather preserves input order, so publications[i] matches to_check[i].
+        publications = await asyncio.gather(
+            *(bounded(client, p["name"], p["version"]) for p in to_check)
+        )
+
     too_fresh = []
-    for package in packages:
+    for package, publication in zip(to_check, publications):
         name, version = package["name"], package["version"]
-        if name not in safe_packages:
-            publication = fetch_publish_date(name, version)
-            old_enough = (
-                datetime.now(UTC) - publication >= threshold if publication else ignore_on_null
-            )
-            if not old_enough:
-                too_fresh.append((name, version, publication))
+        old_enough = datetime.now(UTC) - publication >= threshold if publication else ignore_on_null
+        if not old_enough:
+            too_fresh.append((name, version, publication))
 
     if len(too_fresh) > 0:
         print(f"\n{len(too_fresh)} package(s) fresher than {threshold.days} days:")
@@ -86,10 +100,13 @@ def main() -> None:
         help="Consider packages with unknown publish date as safe (default: unsafe).",
     )
     parser.add_argument(
-        "--exclude", nargs="+", default=[], help="Package names to exclude from the check."
+        "--exclude",
+        nargs="+",
+        default=[],
+        help="Package names to exclude from the check.",
     )
     args = parser.parse_args()
-    result = safety_check(timedelta(days=args.days), args.ignore_on_null, args.exclude)
+    result = asyncio.run(safety_check(timedelta(days=args.days), args.ignore_on_null, args.exclude))
     sys.exit(0 if result else 1)
 
 
