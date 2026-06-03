@@ -1,0 +1,16 @@
+CONTRIBUTING.md
+  h_65ddf93643bfac 22,41-43,113,129
+pyproject.toml
+  h_65ddf93643bfac 56,58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "61fc08e89e00fd6516785504d00324faae9c1b52",
+  "prompts": {},
+  "humans": {
+    "h_65ddf93643bfac": {
+      "author": "valerie.mauduit <valerie.mauduit@pricefx.com>"
+    }
+  }
+}
