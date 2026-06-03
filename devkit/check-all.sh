@@ -23,6 +23,9 @@ poetry run flake8 scripts
 echo "Checking type annotations"
 poetry run mypy pyfxlib --exclude _testtooling
 
+echo "Checking packages freshness"
+poetry run python scripts/check_lock_freshness.py
+
 echo "Running unit tests"
 poetry run pytest tests/unit $PYTEST_OPTS
 
