@@ -1,10 +1,12 @@
 README.md
   h_65ddf93643bfac 36
+pyproject.toml
+  h_65ddf93643bfac 56
 ---
 {
   "schema_version": "authorship/3.0.0",
   "git_ai_version": "1.4.8",
-  "base_commit_sha": "f7ce8ce2f0ead519fcc1ce9ced716953e95ed14b",
+  "base_commit_sha": "ec573f8e575c9c80b4dd868c1de92edc0ff3fe83",
   "prompts": {},
   "humans": {
     "h_65ddf93643bfac": {
