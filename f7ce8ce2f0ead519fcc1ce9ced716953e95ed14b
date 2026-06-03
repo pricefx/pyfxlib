@@ -1,0 +1,14 @@
+README.md
+  h_65ddf93643bfac 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "f7ce8ce2f0ead519fcc1ce9ced716953e95ed14b",
+  "prompts": {},
+  "humans": {
+    "h_65ddf93643bfac": {
+      "author": "valerie.mauduit <valerie.mauduit@pricefx.com>"
+    }
+  }
+}
