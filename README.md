@@ -33,11 +33,7 @@ And then use the session to interact with the platform (see [documentation](http
 
 Full API documentation is available at: https://developer.pricefx.eu/pricefx-api/pyfxlib/index.html
 
-See [CHANGELOG](CHANGELOG.md) for release notes.
-
-## Contributing
-
-See `CONTRIBUTING.md` for development setup, testing, and release process.
+See [CHANGELOG](https://knowledge.pricefx.com/configuration-engineer-knowledge-base/reference/optimization-reference/engines/pyfxlib-python-sdk-for-pricefx/pyfxlib-changelog) for release notes.
 
 ## License
 
