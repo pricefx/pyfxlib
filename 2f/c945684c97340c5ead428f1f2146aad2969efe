@@ -1,0 +1,16 @@
+LICENSE
+  h_65ddf93643bfac 189
+NOTICE
+  h_65ddf93643bfac 1,4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "05258af0ef6e497b99caf8d42b26eb3658a47046",
+  "prompts": {},
+  "humans": {
+    "h_65ddf93643bfac": {
+      "author": "valerie.mauduit <valerie.mauduit@pricefx.com>"
+    }
+  }
+}
