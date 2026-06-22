@@ -2,6 +2,10 @@
 
 A set of utilities to be able to use the Pricefx API from a Python package.
 
+The working repository is available at: https://gitlab.pricefx.eu/pricefx/pyfxlib (Pricefx users only).
+The public mirror is available at: https://github.com/pricefx/pyfxlib.
+All the protected branches of the Gitlab repository are automatically mirrored to the public Github repository.
+
 ## Installing the project locally
 
 If you want to install the project locally (to use the API from a script, debug a python job locally or just hack around):
@@ -109,17 +113,18 @@ If you add, remove, or update a dependency in `pyproject.toml`, update the follo
 
 1. Create a maintenance branch from `develop` for the current major version (E.g., `v4` if you're bumping from v4.x.y to v5.0.0).
   This allows future hotfixes on the previous major version.
-2. Create a release branch from `develop` (E.g., release/v5.0.0)
-3. Update the version in `pyproject.toml`:
+2. Mark the created maintenance branch as protected in Gitlab. **It is necessary for the branch to be mirrored in the public Github repository.**
+3. Create a release branch from `develop` (E.g., release/v5.0.0)
+4. Update the version in `pyproject.toml`:
 ```commandline
 poetry version major   # for breaking changes (4.2.0 → 5.0.0)
 ```
-4. Add the breaking changes to the `CHANGELOG.md` file under a new section with the new version and date.
-5. Commit the version changes
-6. Merge the release branch into `develop` (via a merge request)
-7. Create the version tag on `develop` (E.g., v5.0.0). It must correspond to the version set in `pyproject.toml` (checked in the CI)
-8. The package will be automatically built and published to both the Gitlab package repository and PyPI.
-9. Delete the release branch
+5. Add the breaking changes to the `CHANGELOG.md` file under a new section with the new version and date.
+6. Commit the version changes
+7. Merge the release branch into `develop` (via a merge request)
+8. Create the version tag on `develop` (E.g., v5.0.0). It must correspond to the version set in `pyproject.toml` (checked in the CI)
+9. The package will be automatically built and published to both the Gitlab package repository and PyPI.
+10. Delete the release branch
 
 #### New Minor Version (e.g. 2.3.4 → 2.4.0)
 
@@ -134,7 +139,7 @@ From `develop` branch: for the last major version. It is the same workflow as fo
 4. Commit the version changes
 5. Merge the release branch into `develop` (via a merge request)
 6. Create the version tag on `develop` (E.g., v2.4.0). It must correspond to the version set in `pyproject.toml` (checked in the CI)
-7. The package will be automatically built and published to the Gitlab package repository and PyPI. 
+7. The package will be automatically built and published to the Gitlab package repository and PyPI.
 8. Delete the release branch
 
 From a maintenance branch: for previous major versions (e.g, v3 at 3.2.1 → 3.3.0, while `develop` is at v4.x.y).
