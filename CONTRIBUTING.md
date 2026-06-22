@@ -38,9 +38,17 @@ For testing purposes, you can manually publish a package from a merge request wi
 > ⚠️  **Important**: Always bump the version in `pyproject.toml` **before** publishing a test package.
 > Without bumping, projects pinned to the current stable version may inadvertently install your dev package instead.
 
-1. Run manually the job `publish-package` from the Gitlab CI interface. <!-- TODO: update to the Github registry when the migration is done -->
-2. The package version will be `X.Y.Z+branch-name` (e.g., `1.2.3+feature-branch`) and will be available in the Gitlab package repository. <!-- TODO: update to the Github registry when the migration is done -->
-3. In the target project, reference the test version in the `pyproject.toml` file: <!-- TODO: update to the Github registry when the migration is done -->
+1. Run manually the job `publish-package` from the Gitlab CI interface.
+2. The package version will be `X.Y.Z+branch-name` (e.g., `1.2.3+feature-branch`) and will be available in the Gitlab package repository.
+3. In the target project, reference the test version in the `pyproject.toml` file:
+```toml
+[[tool.poetry.source]]
+name = "pyfxlib-gitlab"
+url = "https://gitlab.pricefx.eu/api/v4/projects/12158/packages/pypi/simple"
+priority = "explicit"
+```
+
+And in the bloc: `[tool.poetry.dependencies]`:
 ```toml
 pyfxlib = { version = "X.Y.Z+branch-name", source = "pyfxlib-gitlab" }
 ```
@@ -110,7 +118,7 @@ poetry version major   # for breaking changes (4.2.0 → 5.0.0)
 5. Commit the version changes
 6. Merge the release branch into `develop` (via a merge request)
 7. Create the version tag on `develop` (E.g., v5.0.0). It must correspond to the version set in `pyproject.toml` (checked in the CI)
-8. The package will be automatically built and published to both the Gitlab package repository and PyPI. <!-- TODO: update to the Github registry when the migration is done -->
+8. The package will be automatically built and published to both the Gitlab package repository and PyPI.
 9. Delete the release branch
 
 #### New Minor Version (e.g. 2.3.4 → 2.4.0)
@@ -126,7 +134,7 @@ From `develop` branch: for the last major version. It is the same workflow as fo
 4. Commit the version changes
 5. Merge the release branch into `develop` (via a merge request)
 6. Create the version tag on `develop` (E.g., v2.4.0). It must correspond to the version set in `pyproject.toml` (checked in the CI)
-7. The package will be automatically built and published to the Gitlab package repository and PyPI. <!-- TODO: update to the Github registry when the migration is done -->
+7. The package will be automatically built and published to the Gitlab package repository and PyPI. 
 8. Delete the release branch
 
 From a maintenance branch: for previous major versions (e.g, v3 at 3.2.1 → 3.3.0, while `develop` is at v4.x.y).
