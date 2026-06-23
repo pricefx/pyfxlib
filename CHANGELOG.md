@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.0] - 2026-06-23
+
+### Changed
+- pyfxlib is now publicly available on [PyPI](https://pypi.org/project/pyfxlib/).
+  The source code is hosted on [GitHub](https://github.com/pricefx/pyfxlib), making
+  it easier to integrate pyfxlib in your projects without requiring access to
+  Pricefx internal infrastructure.
+
 ## [0.7.0] - 2026-04-29
 
 ### Changed
