@@ -1,6 +1,7 @@
 # pyfxlib
 
 A set of utilities to be able to use the Pricefx API from a Python package.
+The package is available on [PyPI](https://pypi.org/project/pyfxlib/) and can be installed with pip or Poetry.
 
 ## Installation
 
