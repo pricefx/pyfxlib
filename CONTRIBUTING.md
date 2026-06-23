@@ -2,6 +2,10 @@
 
 A set of utilities to be able to use the Pricefx API from a Python package.
 
+The working repository is available at: https://gitlab.pricefx.eu/pricefx/pyfxlib (Pricefx users only).
+The public mirror is available at: https://github.com/pricefx/pyfxlib.
+All the protected branches of the Gitlab repository are automatically mirrored to the public Github repository.
+
 ## Installing the project locally
 
 If you want to install the project locally (to use the API from a script, debug a python job locally or just hack around):
@@ -19,9 +23,7 @@ The `./devkit/check-all.sh` offers a convenient method to run all tests at once.
 
 ## Use pyfxlib in another project
 
-### From PyPI (recommended for external users)
-
-Simply install the package:
+Simply install the package from Pypi:
 
 ```bash
 pip install pyfxlib
@@ -33,30 +35,6 @@ Or with Poetry:
 poetry add pyfxlib
 ```
 
-### From Pricefx internal Gitlab registry (deprecated)
-
-The project needs to have access to the pyfxlib package. If you use poetry, configure its access:
-- in a Gitlab CI: `poetry config http-basic.pyfxlib-gitlab gitlab-ci-token ${CI_JOB_TOKEN}`
-- locally: `poetry config http-basic.pyfxlib-gitlab <your-username> <your-personal-access-token>`
-
-And the pyproject.toml file must contain the repository definition:
-
-```toml
-[[tool.poetry.source]]
-
-name = "pyfxlib-gitlab"
-url = "https://gitlab.pricefx.eu/api/v4/projects/12158/packages/pypi/simple"
-priority = "explicit"
-```
-
-And then in the `[tool.poetry.dependencies]` section:
-```toml
-pyfxlib = { version = "X.Y.*", source = "pyfxlib-gitlab" }
-```
-
-**Note**: Token configuration may be required in various contexts (CI/CD pipelines, Docker, etc.).
-For a complete working example, see the [Python Engine CI configuration](https://gitlab.pricefx.eu/engineering/pricefx-python-engine/-/blob/main/.gitlab-ci.yml).
-
 ### Testing an unreleased version of pyfxlib in another project (internal Pricefx)
 
 For testing purposes, you can manually publish a package from a merge request without creating an official release tag.
@@ -67,6 +45,14 @@ For testing purposes, you can manually publish a package from a merge request wi
 1. Run manually the job `publish-package` from the Gitlab CI interface.
 2. The package version will be `X.Y.Z+branch-name` (e.g., `1.2.3+feature-branch`) and will be available in the Gitlab package repository.
 3. In the target project, reference the test version in the `pyproject.toml` file:
+```toml
+[[tool.poetry.source]]
+name = "pyfxlib-gitlab"
+url = "https://gitlab.pricefx.eu/api/v4/projects/12158/packages/pypi/simple"
+priority = "explicit"
+```
+
+And in the bloc: `[tool.poetry.dependencies]`:
 ```toml
 pyfxlib = { version = "X.Y.Z+branch-name", source = "pyfxlib-gitlab" }
 ```
@@ -113,23 +99,32 @@ They must be set only on:
 
 When a tag is set, the package is automatically created.
 
+### Third-party licenses
+
+If you add, remove, or update a dependency in `pyproject.toml`, update the following files accordingly:
+
+- `THIRDPARTY.txt`: run `poetry run pip-licenses` and replace the file content
+- `NOTICE`: check if any new direct dependency has a Apache 2.0 license with a NOTICE file, MPL-2.0, or LGPL license,
+  and if so, add the required notices in this file.
+
 ### Release Workflows
 
 #### New Major Version (e.g. 4.2.3 → 5.0.0)
 
 1. Create a maintenance branch from `develop` for the current major version (E.g., `v4` if you're bumping from v4.x.y to v5.0.0).
   This allows future hotfixes on the previous major version.
-2. Create a release branch from `develop` (E.g., release/v5.0.0)
-3. Update the version in `pyproject.toml`:
+2. Mark the created maintenance branch as protected in Gitlab. **It is necessary for the branch to be mirrored in the public Github repository.**
+3. Create a release branch from `develop` (E.g., release/v5.0.0)
+4. Update the version in `pyproject.toml`:
 ```commandline
 poetry version major   # for breaking changes (4.2.0 → 5.0.0)
 ```
-4. Add the breaking changes to the `CHANGELOG.md` file under a new section with the new version and date.
-5. Commit the version changes
-6. Merge the release branch into `develop` (via a merge request)
-7. Create the version tag on `develop` (E.g., v5.0.0). It must correspond to the version set in `pyproject.toml` (checked in the CI)
-8. The package will be automatically built and published to both the Gitlab package repository and PyPI.
-9. Delete the release branch
+5. Add the breaking changes to the `CHANGELOG.md` file under a new section with the new version and date.
+6. Commit the version changes
+7. Merge the release branch into `develop` (via a merge request)
+8. Create the version tag on `develop` (E.g., v5.0.0). It must correspond to the version set in `pyproject.toml` (checked in the CI)
+9. The package will be automatically built and published to both the Gitlab package repository and PyPI.
+10. Delete the release branch
 
 #### New Minor Version (e.g. 2.3.4 → 2.4.0)
 

@@ -53,10 +53,10 @@ toml-sort = "*"
 types-jsonschema = "^4.21"
 
 [tool.poetry.urls]
-Changelog = "https://knowledge.pricefx.com/configuration-engineer-knowledge-base/reference/optimization-reference/engines/pyfxlib-python-sdk-for-pricefx/pyfxlib-changelog"
+Changelog = "https://github.com/pricefx/pyfxlib/blob/develop/CHANGELOG.md"
 Documentation = "https://developer.pricefx.eu/pricefx-api/pyfxlib/index.html"
 Homepage = "https://pypi.org/project/pyfxlib/"
-Repository = "https://gitlab.pricefx.eu/engineering/pyfxlib"
+Repository = "https://github.com/pricefx/pyfxlib"
 
 [tool.black]
 line-length = 100
