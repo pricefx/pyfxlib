@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0] - 2026-07-31
+
+### Added
+- `push_pandas` and `update_pandas` now support the `LOB` field type via
+  `manual_fields_specs`. Pushing a `LOB` field requires Pricefx core `16.3.13`
+  or later (16.x) / `17.0.4` or later (17.x), `RuntimeError` otherwise.
+- `push_pandas` and `update_pandas` gained a `check_oversized_values` parameter:
+  when `True`, warns about `TEXT`/`LOB` values exceeding what the backend
+  accepts (255 / 10000 characters) and would otherwise be silently truncated
+  on push without error.
+- A one-time warning is logged whenever TEXT/LOB fields are pushed, regardless of 
+  the above flag.
+
 ## [1.0.0] - 2026-06-23
 
 ### Changed
