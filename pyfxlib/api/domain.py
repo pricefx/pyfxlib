@@ -341,6 +341,7 @@ class TableMutable(AbstractTable):
         dataframe: pd.DataFrame,
         on_unsupported_type: str = "error",
         inplace: bool = False,
+        check_oversized_values: bool = False,
     ) -> None:
         """Update this table from a dataframe.
 
@@ -358,9 +359,21 @@ class TableMutable(AbstractTable):
 
             inplace: do the required data prep operations in place
                      (will mutate the source dataframe ; optional, default: False)
+
+            check_oversized_values: if True, scan TEXT/LOB columns for values longer than the
+                backend accepts and warn about the ones that would be silently truncated on
+                push (optional, default: False).
         """
         _, conv_dataframe = pandasutil.to_field_collection_spec(
             dataframe, on_unsupported_type=on_unsupported_type, inplace=inplace
+        )
+        text_fields_spec = [
+            {"name": field.get("name"), "type": field.get("type")}
+            for field in self.fields
+            if field.get("name") in conv_dataframe.columns and field.get("type") in ["TEXT", "LOB"]
+        ]
+        pandasutil.advise_about_truncation_risk(
+            text_fields_spec, conv_dataframe, check_oversized_values
         )
         retry(lambda: self.update(AvroStream.from_dataframe(conv_dataframe)), 0)
 
@@ -489,7 +502,15 @@ class TableMutableSource(TableSource[TableMutable]):
             label: the label of the new table (optional, defaults to name)
             replace_existing: if True then removes the preceding table having the same name if
                               it exists before pushing the data (default = True).
+
+        Raises:
+            RuntimeError: if a declared field type requires a newer backend than the one
+                connected (e.g. a LOB field against a core older than 16.3.13 / 17.0.4).
         """
+        # TODO: temporary LOB version gate — remove this call as part of deleting the whole
+        #       gating block once we no longer support backends under 18. See
+        #       pandasutil._FIELD_TYPE_MIN_BACKEND_VERSION.
+        pandasutil.check_backend_supports_field_types(fields_spec, self._conn.backend_version)
         if isinstance(self, Owned):
             self._conn.create_table(
                 name,
@@ -516,6 +537,7 @@ class TableMutableSource(TableSource[TableMutable]):
         column_labels: dict[str, str] | None = None,
         manual_fields_specs: pandasutil.FieldSpecs | None = None,
         keep_index: bool = True,
+        check_oversized_values: bool = False,
     ) -> None:
         """Push a pandas dataframe as a new table.
 
@@ -544,6 +566,9 @@ class TableMutableSource(TableSource[TableMutable]):
             keep_index: if False, index won't be kept as one of the columns in exported table,
                 in this case, at least one of the columns must be set as key in
                 manual specs (optional, default: True)
+            check_oversized_values: if True, scan TEXT/LOB columns for values longer than the
+                backend accepts and warn about the ones that would be silently truncated on
+                push (optional, default: False).
 
         Raises:
             ValueError: if manual_fields_specs is used at the same time
@@ -576,6 +601,8 @@ class TableMutableSource(TableSource[TableMutable]):
                 keep_index,
                 inplace,
             )
+
+        pandasutil.advise_about_truncation_risk(fields_spec, conv_dataframe, check_oversized_values)
 
         retry(
             lambda: self.push(

@@ -22,6 +22,7 @@ Contains also schema type conversion functions
 from collections.abc import Callable
 import datetime
 from enum import StrEnum
+import logging
 from typing import Any, NamedTuple
 
 import numpy as np
@@ -33,6 +34,10 @@ from pandas.api.types import (
     is_numeric_dtype,
     is_string_dtype,
 )
+
+from pyfxlib.schema import BackendVersion
+
+LOGGER = logging.getLogger(__name__)
 
 
 def to_pricefx_type(column: pd.Series) -> str | None:
@@ -186,6 +191,11 @@ class FieldSpecs:
         ("MONEY", "NUMBER"),
         ("QUANTITY", "NUMBER"),
         ("UOM", "TEXT"),
+        # LOB is a large-text field type. It is stored/encoded exactly like TEXT
+        # (an Avro string); it is never auto-inferred and must be set explicitly via
+        # manual field specs. The backend maps a STRING Avro payload to a LOB field,
+        # but only from the core versions declared in _FIELD_TYPE_MIN_BACKEND_VERSION.
+        ("LOB", "TEXT"),
     ]:
         _field_type_to_dtype[extended_type] = _field_type_to_dtype[base_type]
 
@@ -261,6 +271,179 @@ class FieldSpecs:
                 )
 
         self.schema[col_name] = col_schema
+
+
+# ---------------------------------------------------------------------------------------
+# TEMPORARY LOB version gating. This whole block (the map below plus _backend_supports_
+# field_type, _format_version_requirement, check_backend_supports_field_types, and the call
+# in DataSources.push) exists only because LOB push needs the core AvroData gate fix, which
+# lands per major (16.3.13 / 17.0.4). It is scaffolding, not a general mechanism.
+#
+# TODO: remove this entire block once we no longer support backends under 18 (every
+#       supported backend then carries the fix). Deleting the map, the three helpers and
+#       the push call site restores the plain, ungated push path.
+# ---------------------------------------------------------------------------------------
+#
+# Minimum Pricefx core version that supports a given field type on the push path, declared
+# as one lower bound per major version: {major: (major, minor, patch)}. This is the version
+# requirement carried by the field type itself; push checks it against the live backend
+# version before sending the data.
+#
+# It is deliberately NOT a single scalar floor: the backend support for a type is
+# backported per major, so version numbers are not monotonic across majors with respect to
+# "has the fix". For example 17.0.3 is numerically higher than 16.3.13 yet predates the
+# 17.0 backport. Within a single major versions ARE monotonic, so one lower bound per major
+# is enough. A backend on a major newer than every listed major is assumed to support the
+# type (cut from a develop that already had the fix). Types absent from this map have no
+# version requirement.
+_FIELD_TYPE_MIN_BACKEND_VERSION: dict[str, dict[int, tuple[int, int, int]]] = {
+    # LOB push requires the core AvroData gate fix (accept a STRING avro payload for a
+    # LOB field), backported to 16.3.13 on the 16.x major and 17.0.4 on the 17.x major.
+    "LOB": {16: (16, 3, 13), 17: (17, 0, 4)},
+}
+
+
+def _backend_supports_field_type(field_type: str, backend_version: dict[str, int | None]) -> bool:
+    """Whether a backend at the given version supports pushing `field_type`.
+
+    Field types without a declared requirement are always supported.
+    """
+    bounds = _FIELD_TYPE_MIN_BACKEND_VERSION.get(field_type)
+    if not bounds:
+        return True
+    major = backend_version.get("major") or 0
+    version = (major, backend_version.get("minor") or 0, backend_version.get("patch") or 0)
+    if major in bounds:
+        # Same major as a declared bound: versions are monotonic within a major.
+        return version >= bounds[major]
+    # No bound for this major: supported only if the major is newer than every declared
+    # major (assumed to carry the fix); older majors are unsupported.
+    return major > max(bounds)
+
+
+def _format_version_requirement(field_type: str) -> str:
+    """Human-readable "X.Y.Z or A.B.C" requirement string for a gated field type."""
+    return " or ".join(
+        f"{major}.{minor}.{patch}"
+        for major, minor, patch in sorted(_FIELD_TYPE_MIN_BACKEND_VERSION[field_type].values())
+    )
+
+
+def check_backend_supports_field_types(
+    fields_spec: list[dict[str, Any]],
+    backend_version_provider: Callable[[], dict[str, int | None]],
+) -> None:
+    """Ensure the backend version supports every version-gated field type being pushed.
+
+    The backend version is fetched lazily through `backend_version_provider`, and only
+    when the fields actually contain a version-gated type, so an ordinary push pays no
+    extra round-trip.
+
+    Args:
+        fields_spec: the field specification list about to be pushed.
+        backend_version_provider: callable returning the backend version dict, as from
+            Connection.backend_version().
+    Raises:
+        RuntimeError: if a declared field type is not supported by the backend version.
+    """
+    gated = [field for field in fields_spec if field.get("type") in _FIELD_TYPE_MIN_BACKEND_VERSION]
+    if not gated:
+        return
+    backend_version = backend_version_provider()
+    for field in gated:
+        field_type = field["type"]
+        if not _backend_supports_field_type(field_type, backend_version):
+            current_version = BackendVersion(
+                major=backend_version.get("major") or 0,
+                minor=backend_version.get("minor"),
+                patch=backend_version.get("patch"),
+            )
+            raise RuntimeError(
+                f"Field {field.get('name', '?')!r} of type {field_type} requires a newer"
+                f" Pricefx core: {field_type} is supported from"
+                f" {_format_version_requirement(field_type)} up."
+                f" Current backend version: {current_version}"
+            )
+
+
+# Maximum value length the Pricefx core accepts for a given field type before silently
+# truncating it (net.pricefx.common.api.pa.DataType#parse truncates rather than rejecting).
+# Duplicated here from core's DataType.MAX_STRING_LENGTH/MAX_LOB_LENGTH: pyfxlib has no way
+# to fetch these from the backend, so if core ever changes them, this map must be updated too.
+_FIELD_TYPE_MAX_VALUE_LENGTH: dict[str, int] = {
+    "TEXT": 255,
+    "LOB": 10000,
+}
+
+
+def warn_about_oversized_values(
+    fields_spec: list[dict[str, Any]], conv_dataframe: pd.DataFrame
+) -> None:
+    """Warn (does not raise) about values that the backend will silently truncate on push.
+
+    Args:
+        fields_spec: the field specification list about to be pushed.
+        conv_dataframe: the dataframe about to be pushed, with column names matching
+            `fields_spec`.
+    """
+    for field in fields_spec:
+        max_length = _FIELD_TYPE_MAX_VALUE_LENGTH.get(field.get("type", ""))
+        col_name = field.get("name")
+        if max_length is None or col_name not in conv_dataframe:
+            continue
+        lengths = conv_dataframe[col_name].dropna().astype(str).str.len()
+        overflowing = lengths[lengths > max_length]
+        if not overflowing.empty:
+            suggestion = (
+                " Consider declaring this field as LOB in manual_fields_specs instead."
+                if field["type"] == "TEXT"
+                else ""
+            )
+            LOGGER.warning(
+                "Field %r of type %s has %d value(s) longer than %d characters (longest: %d)."
+                " The Pricefx backend will silently truncate them to %d characters on push.%s",
+                col_name,
+                field["type"],
+                len(overflowing),
+                max_length,
+                int(lengths.max()),
+                max_length,
+                suggestion,
+            )
+
+
+_TRUNCATION_RISK_ADVISED = False
+
+
+def advise_about_truncation_risk(
+    fields_spec: list[dict[str, Any]], conv_dataframe: pd.DataFrame, with_check: bool = False
+) -> None:
+    """Warn once per process that TEXT/LOB values may be silently truncated by the backend.
+
+    Args:
+        fields_spec: the field specification list about to be pushed.
+        conv_dataframe: dataframe to push, already modified by to_field_collection_spec(),
+                used only if with_check is set to True.
+        with_check: if True, scan TEXT/LOB columns for values longer than the
+                backend accepts and warn about the ones that would be silently truncated on
+                push (optional, default: False).
+    """
+    global _TRUNCATION_RISK_ADVISED
+    existing_text_fields = any(
+        field.get("type") in _FIELD_TYPE_MAX_VALUE_LENGTH for field in fields_spec
+    )
+    if not _TRUNCATION_RISK_ADVISED and existing_text_fields:
+        _TRUNCATION_RISK_ADVISED = True
+        LOGGER.warning(
+            "Pushing TEXT or LOB field(s): the Pricefx backend silently truncates values longer"
+            " than %d characters for TEXT, %d for LOB, without raising any error. You can pass"
+            " check_oversized_values=True to push_pandas/update_pandas to check whether any of"
+            " your values are actually affected.",
+            _FIELD_TYPE_MAX_VALUE_LENGTH["TEXT"],
+            _FIELD_TYPE_MAX_VALUE_LENGTH["LOB"],
+        )
+    if existing_text_fields and with_check:
+        warn_about_oversized_values(fields_spec, conv_dataframe)
 
 
 def _update_fields_spec(

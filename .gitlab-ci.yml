@@ -4,7 +4,7 @@ stages:
   - deploy
 
 variables:
-  BACKEND_TARGET_TAG: "15-0-stable"
+  BACKEND_TARGET_TAG: "16-stable"
   POETRY_VERSION: "2.0.1"
 
 .mr-develop-release-only:
