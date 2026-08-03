@@ -1003,3 +1003,40 @@ def test_push_pandas_should_be_able_to_define_field_types(
 
     fields_remapped = {field["name"]: field for field in pushed_table["fields"]}
     assert all(fields_remapped[col]["type"] == col.upper() for col in columns)
+
+
+def test_push_pandas_should_support_lob_field_with_long_text(
+    _conn: ConnectionAsync,
+    _partition: Partition,
+):
+    # given an instance without any datasource
+    assert len(list(_partition.datasources())) == 0
+
+    # when pushing a datasource with a manually-declared LOB column holding >255 chars.
+    # LOB push requires the pricefx-core AvroData gate fix (accept a STRING avro payload for
+    # a LOB field), available from core 16.3.13 / 17.0.4 up. On older backends pyfxlib's own
+    # version gate raises RuntimeError before sending; from 16.3.13 / 17.0.4 onwards the push
+    # succeeds.
+    long_text = "x" * 1000
+    dataframe = pd.DataFrame({"key": ["k1"], "bigtext": [long_text]}).set_index("key")
+    specs = FieldSpecs()
+    specs.set_col_specs("bigtext", type="LOB")
+
+    _partition.datasources().push_pandas("lob_datasource", dataframe, manual_fields_specs=specs)
+
+    # then the field is declared as LOB
+    table = _partition.datasources()[0]
+    bigtext_field = next(field for field in table.fields if field["name"] == "bigtext")
+    assert bigtext_field["type"] == "LOB"
+
+    # and the >255 char value round-trips intact
+    assert table.to_pandas()["bigtext"].iloc[0] == long_text
+
+    # and appending another LOB row via update_pandas works (plain-string payload accepted)
+    other_text = "y" * 2000
+    append_df = pd.DataFrame({"key": ["k2"], "bigtext": [other_text]}).set_index("key")
+    table.update_pandas(append_df)
+
+    fetched = table.to_pandas().sort_index()
+    assert fetched.loc["k1", "bigtext"] == long_text
+    assert fetched.loc["k2", "bigtext"] == other_text
