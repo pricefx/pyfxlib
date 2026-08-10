@@ -298,9 +298,18 @@ class ConnectionAsync(ABC):
 
     @abstractmethod
     async def stream_dm_data(
-        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+        self,
+        typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+        criteria: AdvancedCriteria | None = None,
     ) -> AsyncIterator[bytes]:
-        """Stream the content of a data source."""
+        """Stream the content of a data source.
+
+        Args:
+            typedid: the typed id of the data source to stream
+            chunk_size: the size in bytes of the yielded chunks
+            criteria: optional server-side row filter
+        """
         yield b""
 
     @abstractmethod
@@ -771,13 +780,17 @@ class ConnectionRemote(ConnectionAsync):
             await self.session.post(f"{self.endpoint}/uploadmanager.deleteslot/{uploadslot}")
 
     async def stream_dm_data(
-        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+        self,
+        typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+        criteria: AdvancedCriteria | None = None,
     ) -> AsyncIterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
         async for chunk in self.session.get_stream(
             f"{self.endpoint}/datamart.fetch/{typedid}?stream&timeout={self._DM_FETCH_TIMEOUT}",
             chunk_size=chunk_size,
             params={"output": "csv"},
+            json={"data": criteria.model_dump()} if criteria else None,
         ):
             yield chunk
 
@@ -1200,9 +1213,22 @@ class ConnectionLocal(ConnectionAsync):
                 file.write(buffer)
 
     async def stream_dm_data(
-        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+        self,
+        typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+        criteria: AdvancedCriteria | None = None,
     ) -> AsyncIterator[bytes]:
-        """See `ConnectionAsync` corresponding method."""
+        """See `ConnectionAsync` corresponding method.
+
+        `criteria` is not applied: this implementation always streams the full
+        local file unfiltered. A warning is logged when `criteria` is set.
+        """
+        if criteria is not None:
+            LOGGER.warning(
+                "ConnectionLocal doesn't support server-side row filtering: "
+                "streaming the full local file for '%s' unfiltered.",
+                typedid,
+            )
         with open(self._data_sources_path / f"{typedid}.csv", "rb") as fin:
             while chunk := fin.read(chunk_size):
                 yield chunk
@@ -1492,10 +1518,15 @@ class ConnectionComposed(ConnectionAsync):
         await self._dispatch["model_tables"].update_table(typedid, data)
 
     async def stream_dm_data(
-        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+        self,
+        typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+        criteria: AdvancedCriteria | None = None,
     ) -> AsyncIterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
-        async for chunk in self._dispatch["pa_tables"].stream_dm_data(typedid, chunk_size):
+        async for chunk in self._dispatch["pa_tables"].stream_dm_data(
+            typedid, chunk_size, criteria
+        ):
             yield chunk
 
     async def fetch_paginated_dm_data(
@@ -1766,10 +1797,13 @@ class ConnectionSync:
         return self._run_sync(self._conn.update_table(typedid, data))
 
     def stream_dm_data(
-        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+        self,
+        typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+        criteria: AdvancedCriteria | None = None,
     ) -> Iterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
-        return self._sync_iterator(self._conn.stream_dm_data(typedid, chunk_size))
+        return self._sync_iterator(self._conn.stream_dm_data(typedid, chunk_size, criteria))
 
     def fetch_paginated_dm_data(
         self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
