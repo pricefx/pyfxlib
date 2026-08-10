@@ -18,7 +18,7 @@ Note that, unless explicitly noted, creating or modifying an object
 from this package will *not* update the corresponding platform entity.
 """
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 import io
 from typing import Any, cast, Generic, IO, TypeVar
 import warnings
@@ -35,6 +35,7 @@ from pyfxlib.lowlevel.connection import (
 from pyfxlib.lowlevel.constants import _DEFAULT_PAGE_SIZE, _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.session import retry
 from pyfxlib.schema.core import JobStatus
+from pyfxlib.schema.query import AdvancedCriteria, FieldRule, Operator
 
 T = TypeVar("T")
 
@@ -159,9 +160,26 @@ class AbstractTable(BasicEntity, ABC):
     and optionally ``key`` (bool) and ``dimension`` (bool)...
     """
 
-    def stream(self, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE) -> Iterator[bytes]:
-        """Stream the content of this table."""
-        return self._conn.stream_dm_data(self.typedid, chunk_size)
+    def stream(
+        self,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+        filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
+        filter_aggregator: Operator = Operator.AND,
+    ) -> Iterator[bytes]:
+        """Stream the content of this table.
+
+        Args:
+            chunk_size: the size in bytes of the yielded chunks
+            filters: optional server-side row filter. Either a `dict` mapping field
+                names to values, a sequence of `FieldRule`, or an `AdvancedCriteria`
+                for more complex combinations (all combined with `and` by default).
+            filter_aggregator: how multiple filters are combined (default: `and`).
+                Ignored when `filters` is an `AdvancedCriteria`.
+        """
+        criteria = (
+            None if filters is None else AdvancedCriteria.from_filters(filters, filter_aggregator)
+        )
+        return self._conn.stream_dm_data(self.typedid, chunk_size, criteria)
 
     def fetch_paginated(
         self, page_size: int = _DEFAULT_PAGE_SIZE
@@ -187,13 +205,25 @@ class AbstractTable(BasicEntity, ABC):
             )
         return key_cols
 
-    def to_pandas(self, **args: dict[str, Any]) -> pd.DataFrame:
+    def to_pandas(
+        self,
+        filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
+        filter_aggregator: Operator = Operator.AND,
+        **args: dict[str, Any],
+    ) -> pd.DataFrame:
         """Get a `pd.DataFrame` with the table content.
 
         Key columns are set as the DataFrame index.
+
+        Args:
+            filters: optional server-side row filter. Either a `dict` mapping field
+                names to values, a sequence of `FieldRule`, or an `AdvancedCriteria`.
+            filter_aggregator: how multiple filters are combined (default: `and`).
+                Ignored when `filters` is an `AdvancedCriteria`.
+            **args: extra arguments forwarded to `pd.read_csv`.
         """
         with io.BytesIO() as buff:
-            for data in self.stream():
+            for data in self.stream(filters=filters, filter_aggregator=filter_aggregator):
                 buff.write(data)
             buff.seek(0)
             df = cast(pd.DataFrame, pd.read_csv(buff, sep=",", **args))

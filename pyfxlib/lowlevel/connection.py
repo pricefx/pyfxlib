@@ -163,7 +163,7 @@ class ConnectionAsync(ABC):
     async def list_objects(
         self,
         type_code: str,
-        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
+        filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
         filter_aggregator: Operator | None = None,
         start_row: int | None = None,
         max_rows: int | None = None,
@@ -178,8 +178,9 @@ class ConnectionAsync(ABC):
 
         Args:
             type_code: Entity TypeCode
-            filters: a list of filters
-            filter_aggregator: logical operator to combine multiple filters (default: Operator.OR)
+            filters: a `{field: value}` dict, a sequence of `FieldRule`, or an
+                `AdvancedCriteria` (in which case `filter_aggregator` is ignored)
+            filter_aggregator: logical operator to combine multiple filters (default: Operator.AND)
             start_row: Starting index (0-based)
             max_rows: Max results (1-200, default 5)
             sort: field on which to sort the data
@@ -538,15 +539,6 @@ class ConnectionRemote(ConnectionAsync):
     def __repr__(self) -> str:
         return f"ConnectionRemote({self.endpoint})"
 
-    @staticmethod
-    def _build_criteria(
-        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
-        filter_aggregator: Operator | None = None,
-    ) -> AdvancedCriteria | None:
-        if not filters:
-            return None
-        return AdvancedCriteria(operator=filter_aggregator or Operator.OR, criteria=filters)
-
     async def _fc_spec(self, typedid: str) -> dict | None:
         objectid = typedid.split(".")[0]
         fc_type = typedid.split(".")[1]
@@ -645,7 +637,7 @@ class ConnectionRemote(ConnectionAsync):
     async def list_objects(
         self,
         type_code: str,
-        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
+        filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
         filter_aggregator: Operator | None = None,
         start_row: int | None = None,
         max_rows: int | None = None,
@@ -654,7 +646,11 @@ class ConnectionRemote(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         start_row = start_row or 0
         end_row = start_row + max(min(max_rows, 200), 1) if max_rows is not None else None
-        criteria = self._build_criteria(filters, filter_aggregator)
+        criteria = (
+            None
+            if filters is None
+            else AdvancedCriteria.from_filters(filters, filter_aggregator or Operator.AND)
+        )
         body = {
             "startRow": start_row,
             "endRow": end_row,
@@ -840,12 +836,12 @@ class ConnectionRemote(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         criteria = None
         if filters:
-            criteria = self._build_criteria(
-                [
+            criteria = AdvancedCriteria(
+                operator=Operator.AND,
+                criteria=[
                     FieldRule(field_name=key, operator=FilterOperator.IEQUALS, value=value)
                     for key, value in filters.items()
                 ],
-                Operator.AND,
             )
         response = await self.session.post(
             f"{self.endpoint}/pricegridmanager.fetch/{lpg_id}",
@@ -1116,7 +1112,7 @@ class ConnectionLocal(ConnectionAsync):
     async def list_objects(
         self,
         type_code: str,
-        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
+        filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
         filter_aggregator: Operator | None = None,
         start_row: int | None = None,
         max_rows: int | None = None,
@@ -1451,7 +1447,7 @@ class ConnectionComposed(ConnectionAsync):
     async def list_objects(
         self,
         type_code: str,
-        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
+        filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
         filter_aggregator: Operator | None = None,
         start_row: int | None = None,
         max_rows: int | None = None,
@@ -1726,7 +1722,7 @@ class ConnectionSync:
     def list_objects(
         self,
         type_code: str,
-        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
+        filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
         filter_aggregator: Operator | None = None,
         start_row: int | None = None,
         max_rows: int | None = None,
