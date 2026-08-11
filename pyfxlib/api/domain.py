@@ -165,6 +165,7 @@ class AbstractTable(BasicEntity, ABC):
         chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
         filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
         filter_aggregator: Operator = Operator.AND,
+        columns: Sequence[str] | None = None,
     ) -> Iterator[bytes]:
         """Stream the content of this table.
 
@@ -175,17 +176,19 @@ class AbstractTable(BasicEntity, ABC):
                 for more complex combinations (all combined with `and` by default).
             filter_aggregator: how multiple filters are combined (default: `and`).
                 Ignored when `filters` is an `AdvancedCriteria`.
+            colums: option list of columns to fetch (default: all)
         """
         criteria = (
             None if filters is None else AdvancedCriteria.from_filters(filters, filter_aggregator)
         )
-        return self._conn.stream_dm_data(self.typedid, chunk_size, criteria)
+        return self._conn.stream_dm_data(self.typedid, chunk_size, criteria, columns)
 
     def fetch_paginated(
         self,
         page_size: int = _DEFAULT_PAGE_SIZE,
         filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
         filter_aggregator: Operator = Operator.AND,
+        columns: Sequence[str] | None = None,
     ) -> Iterator[list[dict[str, Any]]]:
         """Fetch the content of the table page by page.
 
@@ -195,13 +198,12 @@ class AbstractTable(BasicEntity, ABC):
                 names to values, a sequence of `FieldRule`, or an `AdvancedCriteria`.
             filter_aggregator: how multiple filters are combined (default: `and`).
                 Ignored when `filters` is an `AdvancedCriteria`.
+            colums: option list of columns to fetch (default: all)
         """
         criteria = (
-            None
-            if filters is None
-            else AdvancedCriteria.from_filters(filters, filter_aggregator)
+            None if filters is None else AdvancedCriteria.from_filters(filters, filter_aggregator)
         )
-        return self._conn.fetch_paginated_dm_data(self.typedid, page_size, criteria)
+        return self._conn.fetch_paginated_dm_data(self.typedid, page_size, criteria, columns)
 
     def to_file(self, file_path: str) -> None:
         """Write table content to file.
@@ -225,6 +227,7 @@ class AbstractTable(BasicEntity, ABC):
         self,
         filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
         filter_aggregator: Operator = Operator.AND,
+        columns: Sequence[str] | None = None,
         **args: dict[str, Any],
     ) -> pd.DataFrame:
         """Get a `pd.DataFrame` with the table content.
@@ -236,10 +239,13 @@ class AbstractTable(BasicEntity, ABC):
                 names to values, a sequence of `FieldRule`, or an `AdvancedCriteria`.
             filter_aggregator: how multiple filters are combined (default: `and`).
                 Ignored when `filters` is an `AdvancedCriteria`.
+            colums: option list of columns to fetch (default: all)
             **args: extra arguments forwarded to `pd.read_csv`.
         """
         with io.BytesIO() as buff:
-            for data in self.stream(filters=filters, filter_aggregator=filter_aggregator):
+            for data in self.stream(
+                filters=filters, filter_aggregator=filter_aggregator, columns=columns
+            ):
                 buff.write(data)
             buff.seek(0)
             df = cast(pd.DataFrame, pd.read_csv(buff, sep=",", **args))
@@ -251,6 +257,7 @@ class AbstractTable(BasicEntity, ABC):
         page_size: int = _DEFAULT_PAGE_SIZE,
         filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
         filter_aggregator: Operator = Operator.AND,
+        columns: Sequence[str] | None = None,
     ) -> pd.DataFrame:
         """Get a DataFrame via paginated fetch.
 
@@ -262,10 +269,11 @@ class AbstractTable(BasicEntity, ABC):
                 names to values, a sequence of `FieldRule`, or an `AdvancedCriteria`.
             filter_aggregator: how multiple filters are combined (default: `and`).
                 Ignored when `filters` is an `AdvancedCriteria`.
+            colums: option list of columns to fetch (default: all)
         """
         dfs = []
         for page in self.fetch_paginated(
-            page_size, filters=filters, filter_aggregator=filter_aggregator
+            page_size, filters=filters, filter_aggregator=filter_aggregator, columns=columns
         ):
             dfs.append(pd.DataFrame(page))
         df = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()

@@ -303,6 +303,7 @@ class ConnectionAsync(ABC):
         typedid: str,
         chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
         criteria: AdvancedCriteria | None = None,
+        columns: Sequence[str] | None = None,
     ) -> AsyncIterator[bytes]:
         """Stream the content of a data source.
 
@@ -310,6 +311,7 @@ class ConnectionAsync(ABC):
             typedid: the typed id of the data source to stream
             chunk_size: the size in bytes of the yielded chunks
             criteria: optional server-side row filter
+            columns: optional list of columns to keep (default: all)
         """
         yield b""
 
@@ -319,6 +321,7 @@ class ConnectionAsync(ABC):
         typedid: str,
         page_size: int = _DEFAULT_PAGE_SIZE,
         criteria: AdvancedCriteria | None = None,
+        columns: Sequence[str] | None = None,
     ) -> AsyncIterator[list[dict[str, Any]]]:
         """Fetch the content of a data source using paginated requests.
 
@@ -328,6 +331,7 @@ class ConnectionAsync(ABC):
             typedid: the typed id of the data source to fetch
             page_size: the number of rows to fetch per page
             criteria: optional server-side row filter
+            columns: optional list of columns to keep (default: all)
         """
         yield []
 
@@ -788,13 +792,19 @@ class ConnectionRemote(ConnectionAsync):
         typedid: str,
         chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
         criteria: AdvancedCriteria | None = None,
+        columns: Sequence[str] | None = None,
     ) -> AsyncIterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
+        body: dict[str, Any] = {}
+        if criteria is not None:
+            body["data"] = criteria.model_dump()
+        if columns is not None:
+            body["resultFields"] = list(columns)
         async for chunk in self.session.get_stream(
             f"{self.endpoint}/datamart.fetch/{typedid}?stream&timeout={self._DM_FETCH_TIMEOUT}",
             chunk_size=chunk_size,
             params={"output": "csv"},
-            json={"data": criteria.model_dump()} if criteria else None,
+            json=body or None,
         ):
             yield chunk
 
@@ -803,6 +813,7 @@ class ConnectionRemote(ConnectionAsync):
         typedid: str,
         page_size: int = _DEFAULT_PAGE_SIZE,
         criteria: AdvancedCriteria | None = None,
+        columns: Sequence[str] | None = None,
     ) -> AsyncIterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method."""
         sort_by: list[str] = []
@@ -818,6 +829,7 @@ class ConnectionRemote(ConnectionAsync):
                     "endRow": start_row + page_size,
                     "sortBy": sort_by,
                     "data": criteria.model_dump() if criteria else None,
+                    "resultFields": list(columns) if columns else None,
                 },
             )
             data = response.json()["response"]["data"]
@@ -1229,6 +1241,7 @@ class ConnectionLocal(ConnectionAsync):
         typedid: str,
         chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
         criteria: AdvancedCriteria | None = None,
+        columns: Sequence[str] | None = None,
     ) -> AsyncIterator[bytes]:
         """See `ConnectionAsync` corresponding method.
 
@@ -1241,15 +1254,20 @@ class ConnectionLocal(ConnectionAsync):
                 "streaming the full local file for '%s' unfiltered.",
                 typedid,
             )
-        with open(self._data_sources_path / f"{typedid}.csv", "rb") as fin:
-            while chunk := fin.read(chunk_size):
-                yield chunk
+        content = (
+            pd.read_csv(self._data_sources_path / f"{typedid}.csv", usecols=columns)
+            .to_csv(index=False)
+            .encode()
+        )
+        for start in range(0, len(content), chunk_size):
+            yield content[start : start + chunk_size]
 
     async def fetch_paginated_dm_data(
         self,
         typedid: str,
         page_size: int = _DEFAULT_PAGE_SIZE,
         criteria: AdvancedCriteria | None = None,
+        columns: Sequence[str] | None = None,
     ) -> AsyncIterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method.
 
@@ -1262,7 +1280,11 @@ class ConnectionLocal(ConnectionAsync):
                 "reading the full local file for '%s' unfiltered.",
                 typedid,
             )
-        for chunk in pd.read_csv(self._data_sources_path / f"{typedid}.csv", chunksize=page_size):
+        for chunk in pd.read_csv(
+            self._data_sources_path / f"{typedid}.csv",
+            chunksize=page_size,
+            usecols=columns,
+        ):
             yield chunk.to_dict(orient="records")
 
     async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
@@ -1547,10 +1569,11 @@ class ConnectionComposed(ConnectionAsync):
         typedid: str,
         chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
         criteria: AdvancedCriteria | None = None,
+        columns: Sequence[str] | None = None,
     ) -> AsyncIterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
         async for chunk in self._dispatch["pa_tables"].stream_dm_data(
-            typedid, chunk_size, criteria
+            typedid, chunk_size, criteria, columns
         ):
             yield chunk
 
@@ -1559,10 +1582,11 @@ class ConnectionComposed(ConnectionAsync):
         typedid: str,
         page_size: int = _DEFAULT_PAGE_SIZE,
         criteria: AdvancedCriteria | None = None,
+        columns: Sequence[str] | None = None,
     ) -> AsyncIterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method."""
         async for page in self._dispatch["pa_tables"].fetch_paginated_dm_data(
-            typedid, page_size, criteria
+            typedid, page_size, criteria, columns
         ):
             yield page
 
@@ -1831,18 +1855,24 @@ class ConnectionSync:
         typedid: str,
         chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
         criteria: AdvancedCriteria | None = None,
+        columns: Sequence[str] | None = None,
     ) -> Iterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
-        return self._sync_iterator(self._conn.stream_dm_data(typedid, chunk_size, criteria))
+        return self._sync_iterator(
+            self._conn.stream_dm_data(typedid, chunk_size, criteria, columns)
+        )
 
     def fetch_paginated_dm_data(
         self,
         typedid: str,
         page_size: int = _DEFAULT_PAGE_SIZE,
         criteria: AdvancedCriteria | None = None,
+        columns: Sequence[str] | None = None,
     ) -> Iterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method."""
-        return self._sync_iterator(self._conn.fetch_paginated_dm_data(typedid, page_size, criteria))
+        return self._sync_iterator(
+            self._conn.fetch_paginated_dm_data(typedid, page_size, criteria, columns)
+        )
 
     def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
