@@ -182,10 +182,26 @@ class AbstractTable(BasicEntity, ABC):
         return self._conn.stream_dm_data(self.typedid, chunk_size, criteria)
 
     def fetch_paginated(
-        self, page_size: int = _DEFAULT_PAGE_SIZE
+        self,
+        page_size: int = _DEFAULT_PAGE_SIZE,
+        filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
+        filter_aggregator: Operator = Operator.AND,
     ) -> Iterator[list[dict[str, Any]]]:
-        """Fetch the content of the table page by page."""
-        return self._conn.fetch_paginated_dm_data(self.typedid, page_size)
+        """Fetch the content of the table page by page.
+
+        Args:
+            page_size: the number of rows to fetch per page
+            filters: optional server-side row filter. Either a `dict` mapping field
+                names to values, a sequence of `FieldRule`, or an `AdvancedCriteria`.
+            filter_aggregator: how multiple filters are combined (default: `and`).
+                Ignored when `filters` is an `AdvancedCriteria`.
+        """
+        criteria = (
+            None
+            if filters is None
+            else AdvancedCriteria.from_filters(filters, filter_aggregator)
+        )
+        return self._conn.fetch_paginated_dm_data(self.typedid, page_size, criteria)
 
     def to_file(self, file_path: str) -> None:
         """Write table content to file.
@@ -230,13 +246,27 @@ class AbstractTable(BasicEntity, ABC):
         key_cols = self._key_colums(df)
         return df.set_index(key_cols) if key_cols else df
 
-    def to_pandas_paginated(self, page_size: int = _DEFAULT_PAGE_SIZE) -> pd.DataFrame:
+    def to_pandas_paginated(
+        self,
+        page_size: int = _DEFAULT_PAGE_SIZE,
+        filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
+        filter_aggregator: Operator = Operator.AND,
+    ) -> pd.DataFrame:
         """Get a DataFrame via paginated fetch.
 
         Key columns are set as the DataFrame index
+
+        Args:
+            page_size: the number of rows to fetch per page
+            filters: optional server-side row filter. Either a `dict` mapping field
+                names to values, a sequence of `FieldRule`, or an `AdvancedCriteria`.
+            filter_aggregator: how multiple filters are combined (default: `and`).
+                Ignored when `filters` is an `AdvancedCriteria`.
         """
         dfs = []
-        for page in self.fetch_paginated(page_size):
+        for page in self.fetch_paginated(
+            page_size, filters=filters, filter_aggregator=filter_aggregator
+        ):
             dfs.append(pd.DataFrame(page))
         df = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
         key_cols = self._key_colums(df)
