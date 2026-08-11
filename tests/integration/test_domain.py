@@ -46,6 +46,7 @@ from pyfxlib.api.domain import ModelObject, Partition, PlatformJob
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.connection import ConnectionAsync
 from pyfxlib.lowlevel.pandasutil import FieldSpecs
+from pyfxlib.schema.query import AdvancedCriteria, FieldRule, FilterOperator, Operator
 
 __all__ = [
     "_async_conn",
@@ -228,6 +229,88 @@ def test_model_object_should_be_able_to_create_and_read_owned_tables(
     fetched_df = table.to_pandas()
     assert fetched_df.index.name == "column1"
     assert (dataframe.set_index("column1") == fetched_df).all().all()
+
+
+@pytest.mark.parametrize("fetch_method", ["to_pandas", "to_pandas_paginated"])
+def test_model_object_table_should_be_filterable_with_dict_list_and_advanced_criteria(
+    _conn: ConnectionAsync, _model_object: dict[str, Any], fetch_method: str
+):
+    # given a table with several rows, only one of which matches product=A and customer=Y
+    mo = ModelObject.from_conn(_conn, _model_object["typedId"])
+    data = {
+        "product": ["A", "A", "B", "B"],
+        "customer": ["X", "Y", "X", "Y"],
+        "amount": [1, 2, 3, 4],
+    }
+    df = pd.DataFrame(data)
+    mo.tables().push(
+        "a_table",
+        [
+            {"name": "product", "type": "TEXT"},
+            {"name": "customer", "type": "TEXT"},
+            {"name": "amount", "type": "INTEGER"},
+        ],
+        AvroStream.from_dataframe(df),
+        "a_table_label",
+        replace_existing=True,
+    )
+    table = mo.tables()[0]
+    fetch = getattr(table, fetch_method)
+
+    expected = df[(df["product"] == "A") & (df["customer"] == "Y")].reset_index(drop=True)
+
+    # when filtering with a plain dict
+    df_from_dict = fetch(filters={"product": "A", "customer": "Y"})
+
+    # and with a sequence of FieldRule
+    field_rules = [
+        FieldRule(field_name="product", operator=FilterOperator.EQUALS, value="A"),
+        FieldRule(field_name="customer", operator=FilterOperator.EQUALS, value="Y"),
+    ]
+    df_from_list = fetch(filters=field_rules)
+
+    # and with an equivalent AdvancedCriteria
+    df_from_advanced = fetch(filters=AdvancedCriteria(operator=Operator.AND, criteria=field_rules))
+
+    # then all three forms return the same, correctly filtered result
+    for result in (df_from_dict, df_from_list, df_from_advanced):
+        assert (result.reset_index(drop=True)[list(data.keys())] == expected).all().all()
+
+
+@pytest.mark.parametrize("fetch_method", ["to_pandas", "to_pandas_paginated"])
+def test_model_object_table_should_be_able_to_project_a_subset_of_columns(
+    _conn: ConnectionAsync, _model_object: dict[str, Any], fetch_method: str
+):
+    # given a table with several columns
+    mo = ModelObject.from_conn(_conn, _model_object["typedId"])
+    data = {
+        "product": ["A", "B"],
+        "customer": ["X", "Y"],
+        "amount": [1, 2],
+    }
+    df = pd.DataFrame(data)
+    mo.tables().push(
+        "a_table",
+        [
+            {"name": "product", "type": "TEXT"},
+            {"name": "customer", "type": "TEXT"},
+            {"name": "amount", "type": "INTEGER"},
+        ],
+        AvroStream.from_dataframe(df),
+        "a_table_label",
+        replace_existing=True,
+    )
+    table = mo.tables()[0]
+    fetch = getattr(table, fetch_method)
+
+    # when fetching with only a subset of columns
+    result = fetch(columns=["product", "amount"])
+
+    # then only the requested columns are returned, with the expected content
+    assert set(result.columns) == {"product", "amount"}
+    expected = df.sort_values("product").reset_index(drop=True)[["product", "amount"]]
+    actual = result.sort_values("product").reset_index(drop=True)
+    assert (actual == expected).all().all()
 
 
 _VALID_DATAFRAME_CONTENT = [
