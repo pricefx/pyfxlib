@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date, datetime
 from enum import StrEnum, unique
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import alias_generators, BaseModel, ConfigDict, Field
 
@@ -131,9 +131,9 @@ class FieldRule(BaseModel):
 
     field_name: str
     operator: FilterOperator
-    value: Any | None = None
-    start: Any | None = None
-    end: Any | None = None
+    value: Optional[Any] = None
+    start: Optional[Any] = None
+    end: Optional[Any] = None
 
 
 class AdvancedCriteria(BaseModel):
@@ -269,8 +269,8 @@ class PADatamart(BaseModel):
 
     kind: Literal["datamart"] = "datamart"
     datamart_unique_name: str
-    currency: str | None = None
-    uom: str | None = None
+    currency: Optional[str] = None
+    uom: Optional[str] = None
 
 
 class PADataFeed(BaseModel):
@@ -298,4 +298,4 @@ class QueryAnswerMeta(BaseModel):
     """Metadata for the result of the query."""
 
     columns: list[QueryAnswerMetaColumn]
-    tables: list[Table] | None = None
+    tables: Optional[list[Table]] = None

@@ -20,7 +20,7 @@ from this package will *not* update the corresponding platform entity.
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Sequence
 import io
-from typing import Any, cast, Generic, IO, TypeVar
+from typing import Any, cast, Generic, IO, Optional, TypeVar
 import warnings
 
 import pandas as pd
@@ -57,9 +57,9 @@ class PlatformJob:
 
     def update_status(
         self,
-        progress: int | None = None,
-        msg: str | None = None,
-        results: dict[str, Any] | None = None,
+        progress: Optional[int] = None,
+        msg: Optional[str] = None,
+        results: Optional[dict[str, Any]] = None,
     ) -> None:
         """Update the job status on the platform.
 
@@ -73,8 +73,8 @@ class PlatformJob:
 
     def update_progress(
         self,
-        progress: int | None,
-        msg: str | None = None,
+        progress: Optional[int],
+        msg: Optional[str] = None,
     ) -> None:
         """Update job status progress."""
         self.update_status(progress, msg)
@@ -123,12 +123,12 @@ class BasicEntity(IdentifiableEntity):
         self,
         conn: ConnectionSync,
         typedid: str,
-        unique_name: str | None = None,
-        label: str | None = None,
-        created_by: int | None = None,
-        created_date: str | None = None,
-        last_update_by: int | None = None,
-        last_update_date: str | None = None,
+        unique_name: Optional[str] = None,
+        label: Optional[str] = None,
+        created_by: Optional[int] = None,
+        created_date: Optional[str] = None,
+        last_update_by: Optional[int] = None,
+        last_update_date: Optional[str] = None,
     ):
         """Get the representation corresponding to a pricefx Entity."""
         IdentifiableEntity.__init__(self, conn, typedid)
@@ -163,9 +163,9 @@ class AbstractTable(BasicEntity, ABC):
     def stream(
         self,
         chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
-        filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
+        filters: Optional[dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria] = None,
         filter_aggregator: Operator = Operator.AND,
-        columns: Sequence[str] | None = None,
+        columns: Optional[Sequence[str]] = None,
     ) -> Iterator[bytes]:
         """Stream the content of this table.
 
@@ -186,9 +186,9 @@ class AbstractTable(BasicEntity, ABC):
     def fetch_paginated(
         self,
         page_size: int = _DEFAULT_PAGE_SIZE,
-        filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
+        filters: Optional[dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria] = None,
         filter_aggregator: Operator = Operator.AND,
-        columns: Sequence[str] | None = None,
+        columns: Optional[Sequence[str]] = None,
     ) -> Iterator[list[dict[str, Any]]]:
         """Fetch the content of the table page by page.
 
@@ -225,9 +225,9 @@ class AbstractTable(BasicEntity, ABC):
 
     def to_pandas(
         self,
-        filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
+        filters: Optional[dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria] = None,
         filter_aggregator: Operator = Operator.AND,
-        columns: Sequence[str] | None = None,
+        columns: Optional[Sequence[str]] = None,
         **args: dict[str, Any],
     ) -> pd.DataFrame:
         """Get a `pd.DataFrame` with the table content.
@@ -255,9 +255,9 @@ class AbstractTable(BasicEntity, ABC):
     def to_pandas_paginated(
         self,
         page_size: int = _DEFAULT_PAGE_SIZE,
-        filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria | None = None,
+        filters: Optional[dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria] = None,
         filter_aggregator: Operator = Operator.AND,
-        columns: Sequence[str] | None = None,
+        columns: Optional[Sequence[str]] = None,
     ) -> pd.DataFrame:
         """Get a DataFrame via paginated fetch.
 
@@ -295,14 +295,14 @@ class TableImmutable(AbstractTable):
         self,
         conn: ConnectionSync,
         typedid: str,
-        unique_name: str | None = None,
-        name: str | None = None,
-        label: str | None = None,
-        created_by: int | None = None,
-        created_date: str | None = None,
-        last_update_by: int | None = None,
-        last_update_date: str | None = None,
-        fields: list[dict[str, Any]] | None = None,
+        unique_name: Optional[str] = None,
+        name: Optional[str] = None,
+        label: Optional[str] = None,
+        created_by: Optional[int] = None,
+        created_date: Optional[str] = None,
+        last_update_by: Optional[int] = None,
+        last_update_date: Optional[str] = None,
+        fields: Optional[list[dict[str, Any]]] = None,
     ) -> None:
         """Get the representation corresponding to a Model Type."""
         BasicEntity.__init__(
@@ -348,14 +348,14 @@ class TableMutable(AbstractTable):
         self,
         conn: ConnectionSync,
         typedid: str,
-        unique_name: str | None = None,
-        name: str | None = None,
-        label: str | None = None,
-        created_by: int | None = None,
-        created_date: str | None = None,
-        last_update_by: int | None = None,
-        last_update_date: str | None = None,
-        fields: list[dict[str, Any]] | None = None,
+        unique_name: Optional[str] = None,
+        name: Optional[str] = None,
+        label: Optional[str] = None,
+        created_by: Optional[int] = None,
+        created_date: Optional[str] = None,
+        last_update_by: Optional[int] = None,
+        last_update_date: Optional[str] = None,
+        fields: Optional[list[dict[str, Any]]] = None,
     ) -> None:
         """Get the representation corresponding to a Model Type."""
         BasicEntity.__init__(
@@ -464,7 +464,7 @@ class ItemCollection(ABC, Generic[Item]):
     def __iter__(self) -> Iterator[Item]:
         pass
 
-    def __getitem__(self, i: int | str) -> Item | None:
+    def __getitem__(self, i: int | str) -> Optional[Item]:
         if isinstance(i, int):
             return list(self)[i]
         return self.get_by_name(i)
@@ -477,7 +477,7 @@ class ItemCollection(ABC, Generic[Item]):
         """Get the item with the given typedid."""
         pass
 
-    def get_by_name(self, name: str) -> Item | None:
+    def get_by_name(self, name: str) -> Optional[Item]:
         """Get an item by name.
 
         Returns:
@@ -498,7 +498,7 @@ class TableSource(ItemCollection[TableType], ABC):
         self,
         conn: ConnectionSync,
         type_code: str,
-        req_params: dict[str, Any] | None = None,
+        req_params: Optional[dict[str, Any]] = None,
     ) -> None:
         self._conn = conn
         self.type_code = type_code
@@ -524,7 +524,7 @@ class TableImmutableSource(TableSource[TableImmutable]):
         self,
         conn: ConnectionSync,
         type_code: str,
-        req_params: dict[str, Any] | None = None,
+        req_params: Optional[dict[str, Any]] = None,
     ) -> None:
         TableSource.__init__(self, conn, type_code, req_params)
 
@@ -539,7 +539,7 @@ class TableMutableSource(TableSource[TableMutable]):
         self,
         conn: ConnectionSync,
         type_code: str,
-        req_params: dict[str, Any] | None = None,
+        req_params: Optional[dict[str, Any]] = None,
     ) -> None:
         TableSource.__init__(self, conn, type_code, req_params)
 
@@ -551,7 +551,7 @@ class TableMutableSource(TableSource[TableMutable]):
         name: str,
         fields_spec: list[dict],
         content: AvroStream,
-        label: str | None = None,
+        label: Optional[str] = None,
         replace_existing: bool = True,
     ) -> None:
         """Add a new table to the collection of tables on the platform.
@@ -597,13 +597,13 @@ class TableMutableSource(TableSource[TableMutable]):
         self,
         table_name: str,
         dataframe: pd.DataFrame,
-        table_label: str | None = None,
-        dimensions: list[str] | None = None,
+        table_label: Optional[str] = None,
+        dimensions: Optional[list[str]] = None,
         on_unsupported_type: str = "error",
         replace_existing: bool = True,
         inplace: bool = False,
-        column_labels: dict[str, str] | None = None,
-        manual_fields_specs: pandasutil.FieldSpecs | None = None,
+        column_labels: Optional[dict[str, str]] = None,
+        manual_fields_specs: Optional[pandasutil.FieldSpecs] = None,
         keep_index: bool = True,
         check_oversized_values: bool = False,
     ) -> None:
@@ -795,8 +795,8 @@ class CalculationItem(IdentifiableEntity, Owned):
         typedid: str,
         key1: str,
         key2: str,
-        value: str | None,
-        status: str | None,
+        value: Optional[str],
+        status: Optional[str],
         created_by: int,
         created_date: str,
         last_update_by: int,
@@ -886,7 +886,7 @@ class ModelType(BasicEntity):
         conn: ConnectionSync,
         typedid: str,
         unique_name: str,
-        label: str | None,
+        label: Optional[str],
         created_by: int,
         created_date: str,
         last_update_by: int,
@@ -952,14 +952,14 @@ class DMModel(Model):
         self,
         conn: ConnectionSync,
         typedid: str,
-        unique_name: str | None = None,
-        label: str | None = None,
-        created_by: int | None = None,
-        created_date: str | None = None,
-        last_update_by: int | None = None,
-        last_update_date: str | None = None,
-        model_type: ModelType | None = None,
-        calcitems_table_id: str | None = None,
+        unique_name: Optional[str] = None,
+        label: Optional[str] = None,
+        created_by: Optional[int] = None,
+        created_date: Optional[str] = None,
+        last_update_by: Optional[int] = None,
+        last_update_date: Optional[str] = None,
+        model_type: Optional[ModelType] = None,
+        calcitems_table_id: Optional[str] = None,
     ):
         """Get the representation corresponding to a DM Model."""
         Model.__init__(
@@ -992,7 +992,7 @@ class DMModel(Model):
         """Get the tables owned by the model."""
         return self._tables
 
-    def calculation_items(self) -> CalculationItems | None:
+    def calculation_items(self) -> Optional[CalculationItems]:
         """Get the calculation items of the model."""
         return self._calc_items
 
@@ -1056,13 +1056,13 @@ class ModelObject(Model):
         self,
         conn: ConnectionSync,
         typedid: str,
-        unique_name: str | None = None,
-        label: str | None = None,
-        created_by: int | None = None,
-        created_date: str | None = None,
-        last_update_by: int | None = None,
-        last_update_date: str | None = None,
-        model_class: str | None = None,
+        unique_name: Optional[str] = None,
+        label: Optional[str] = None,
+        created_by: Optional[int] = None,
+        created_date: Optional[str] = None,
+        last_update_by: Optional[int] = None,
+        last_update_date: Optional[str] = None,
+        model_class: Optional[str] = None,
     ):
         """Get the representation corresponding to a ModelObject."""
         Model.__init__(

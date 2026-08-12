@@ -23,7 +23,7 @@ from collections.abc import Callable
 import datetime
 from enum import StrEnum
 import logging
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Optional
 
 import numpy as np
 import pandas as pd
@@ -40,7 +40,7 @@ from pyfxlib.schema import BackendVersion
 LOGGER = logging.getLogger(__name__)
 
 
-def to_pricefx_type(column: pd.Series) -> str | None:
+def to_pricefx_type(column: pd.Series) -> Optional[str]:
     """Returns the pricefx column type corresponding to the given pandas Series data.
 
     Return None if the given numpy type is not supported.
@@ -52,7 +52,7 @@ def to_pricefx_type(column: pd.Series) -> str | None:
     return col_type.pricefx if col_type is not None else None
 
 
-def to_avro_type(column: pd.Series) -> str | dict[str, Any] | None:
+def to_avro_type(column: pd.Series) -> Optional[str | dict[str, Any]]:
     """Returns the avro type declaration corresponding to the given pandas Series data.
 
     Return None if the given numpy type is not supported.
@@ -66,10 +66,10 @@ def to_avro_type(column: pd.Series) -> str | dict[str, Any] | None:
 
 def to_field_collection_spec(
     dataframe: pd.DataFrame,
-    dimensions: list[str] | None = None,
+    dimensions: Optional[list[str]] = None,
     on_unsupported_type: str = "error",
     inplace: bool = False,
-    column_labels: dict[str, str] | None = None,
+    column_labels: Optional[dict[str, str]] = None,
 ) -> tuple[list[dict[str, Any]], pd.DataFrame]:
     """
     Returns the pricefx field collection spec and the corresponding DataFrame.
@@ -210,14 +210,14 @@ class FieldSpecs:
     def set_col_specs(
         self,
         col_name: str,
-        name: str | None = None,
-        label: str | None = None,
-        type: str | None = None,
-        key: bool | None = False,
-        distribution_key: bool | None = False,
-        dimension: bool | None = False,
-        format: str | None = None,
-        measure_type: str | None = None,
+        name: Optional[str] = None,
+        label: Optional[str] = None,
+        type: Optional[str] = None,
+        key: Optional[bool] = False,
+        distribution_key: Optional[bool] = False,
+        dimension: Optional[bool] = False,
+        format: Optional[str] = None,
+        measure_type: Optional[str] = None,
     ) -> None:
         """Set specs for single column.
 
@@ -303,7 +303,9 @@ _FIELD_TYPE_MIN_BACKEND_VERSION: dict[str, dict[int, tuple[int, int, int]]] = {
 }
 
 
-def _backend_supports_field_type(field_type: str, backend_version: dict[str, int | None]) -> bool:
+def _backend_supports_field_type(
+    field_type: str, backend_version: dict[str, Optional[int]]
+) -> bool:
     """Whether a backend at the given version supports pushing `field_type`.
 
     Field types without a declared requirement are always supported.
@@ -331,7 +333,7 @@ def _format_version_requirement(field_type: str) -> str:
 
 def check_backend_supports_field_types(
     fields_spec: list[dict[str, Any]],
-    backend_version_provider: Callable[[], dict[str, int | None]],
+    backend_version_provider: Callable[[], dict[str, Optional[int]]],
 ) -> None:
     """Ensure the backend version supports every version-gated field type being pushed.
 
@@ -530,7 +532,7 @@ class _ColumnType(NamedTuple):
     pricefx: str
 
 
-def _column_type(column: pd.Series) -> _ColumnType | None:
+def _column_type(column: pd.Series) -> Optional[_ColumnType]:
     dtype = _column_dtype(column)
     if (isinstance(dtype, type) and issubclass(dtype, str)) or pd.StringDtype().is_dtype(dtype):
         return _ColumnType("string", "TEXT")
