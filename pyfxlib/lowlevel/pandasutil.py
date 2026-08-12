@@ -303,9 +303,7 @@ _FIELD_TYPE_MIN_BACKEND_VERSION: dict[str, dict[int, tuple[int, int, int]]] = {
 }
 
 
-def _backend_supports_field_type(
-    field_type: str, backend_version: dict[str, Optional[int]]
-) -> bool:
+def _backend_supports_field_type(field_type: str, backend_version: BackendVersion) -> bool:
     """Whether a backend at the given version supports pushing `field_type`.
 
     Field types without a declared requirement are always supported.
@@ -313,8 +311,8 @@ def _backend_supports_field_type(
     bounds = _FIELD_TYPE_MIN_BACKEND_VERSION.get(field_type)
     if not bounds:
         return True
-    major = backend_version.get("major") or 0
-    version = (major, backend_version.get("minor") or 0, backend_version.get("patch") or 0)
+    major = backend_version.major
+    version = (major, backend_version.minor or 0, backend_version.patch or 0)
     if major in bounds:
         # Same major as a declared bound: versions are monotonic within a major.
         return version >= bounds[major]
@@ -333,7 +331,7 @@ def _format_version_requirement(field_type: str) -> str:
 
 def check_backend_supports_field_types(
     fields_spec: list[dict[str, Any]],
-    backend_version_provider: Callable[[], dict[str, Optional[int]]],
+    backend_version_provider: Callable[[], BackendVersion],
 ) -> None:
     """Ensure the backend version supports every version-gated field type being pushed.
 
@@ -343,8 +341,7 @@ def check_backend_supports_field_types(
 
     Args:
         fields_spec: the field specification list about to be pushed.
-        backend_version_provider: callable returning the backend version dict, as from
-            Connection.backend_version().
+        backend_version_provider: callable returning the backend version.
     Raises:
         RuntimeError: if a declared field type is not supported by the backend version.
     """
@@ -355,16 +352,11 @@ def check_backend_supports_field_types(
     for field in gated:
         field_type = field["type"]
         if not _backend_supports_field_type(field_type, backend_version):
-            current_version = BackendVersion(
-                major=backend_version.get("major") or 0,
-                minor=backend_version.get("minor"),
-                patch=backend_version.get("patch"),
-            )
             raise RuntimeError(
                 f"Field {field.get('name', '?')!r} of type {field_type} requires a newer"
                 f" Pricefx core: {field_type} is supported from"
                 f" {_format_version_requirement(field_type)} up."
-                f" Current backend version: {current_version}"
+                f" Current backend version: {backend_version}"
             )
 
 

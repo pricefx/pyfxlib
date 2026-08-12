@@ -578,7 +578,9 @@ class TableMutableSource(TableSource[TableMutable]):
         # TODO: temporary LOB version gate — remove this call as part of deleting the whole
         #       gating block once we no longer support backends under 18. See
         #       pandasutil._FIELD_TYPE_MIN_BACKEND_VERSION.
-        pandasutil.check_backend_supports_field_types(fields_spec, self._conn.backend_version)
+        pandasutil.check_backend_supports_field_types(
+            fields_spec, self._conn._fetch_backend_version
+        )
         if isinstance(self, Owned):
             self._conn.create_table(
                 name,
