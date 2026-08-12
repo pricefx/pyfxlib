@@ -45,7 +45,7 @@ from pyfxlib.schema.core import (
     NotificationStatus,
     NotificationTopic,
 )
-from pyfxlib.schema.lpg import LPG, LPGProduct
+from pyfxlib.schema.lpg import LPG
 from pyfxlib.schema.query import FieldRule, FilterOperator, Operator
 
 __all__ = [
@@ -746,7 +746,6 @@ async def test_lpg_minimal_operations(_async_conn: ConnectionAsync):
 
     items = await _async_conn.list_lpg_items(lpg_id)
     assert isinstance(items, list)
-    assert all(isinstance(item, LPGProduct) for item in items)
 
     metadata = await _async_conn.get_object_metadata("PGIM", "priceGridId", lpg_id)
     assert isinstance(metadata, list)

@@ -875,7 +875,7 @@ class ConnectionRemote(ConnectionAsync):
             f"{self.endpoint}/pricegridmanager.fetch/{lpg_id}",
             json={"data": criteria.model_dump() if criteria else None},
         )
-        return response.json()["response"]["data"]
+        return [LPGProduct.model_validate(item) for item in response.json()["response"]["data"]]
 
     async def update_lpg(
         self,
