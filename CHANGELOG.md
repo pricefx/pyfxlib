@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `stream`, `fetch_paginated`, `to_pandas`, and `to_pandas_paginated` on table
+  entities now accept an optional `filters` argument for server-side row filtering,
+  and an optional `columns` argument to fetch a subset of columns instead of the full table.
+
 ## [1.1.0] - 2026-07-31
 
 ### Added
