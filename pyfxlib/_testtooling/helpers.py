@@ -15,7 +15,7 @@
 from collections.abc import Iterator
 from io import TextIOBase
 import json
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import ParseResult
 
 import pandas as pd
@@ -85,7 +85,7 @@ class _IntegrationRemote:
     async def new_model_object(
         self,
         unique_name: str,
-        model_class: dict[str, Any] | None = None,
+        model_class: Optional[dict[str, Any]] = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         mc = model_class if model_class is not None else await self.new_model_class()
         return (
@@ -115,7 +115,7 @@ class _IntegrationRemote:
             },
         )
 
-    async def new_empty_datamart(self, name: str, fields_spec: list[dict] | None):
+    async def new_empty_datamart(self, name: str, fields_spec: Optional[list[dict]]):
         response = await self._session.post(
             self.endpoint_url("datamart.newfc/DM"),
             json={"data": {"uniqueName": name, "label": name}},
@@ -153,7 +153,7 @@ class _StringIteratorIO(TextIOBase):
     def readable(self):
         return True
 
-    def read(self, n: int | None = None):
+    def read(self, n: Optional[int] = None):
         while not self._buffer:
             try:
                 self._buffer = next(self._iterator).decode("utf-8")

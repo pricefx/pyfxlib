@@ -20,7 +20,7 @@ This module defines a DSL for checking a configuration is valid.
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from configparser import ConfigParser
-from typing import Any
+from typing import Any, Optional
 
 
 class SpecError(Exception):
@@ -199,7 +199,7 @@ class SectionSpec(ComposedSpec):
         self,
         section: str,
         required: bool = True,
-        specs: list[Spec] | None = None,
+        specs: Optional[list[Spec]] = None,
     ) -> None:
         self._section = section
         self._required = required
@@ -218,14 +218,14 @@ class SectionSpec(ComposedSpec):
         """Add a spec from a function that must be checked."""
         return self.with_spec(FunctionSpec(cond, diag_msg))
 
-    def must_contains(self, key: str, possible_values: list[Any] | None = None) -> "SectionSpec":
+    def must_contains(self, key: str, possible_values: Optional[list[Any]] = None) -> "SectionSpec":
         """Add required key to section spec."""
         self.with_spec(SectionMustContainKeySpec(self._section, key))
         if possible_values is not None:
             self.with_spec(PossibleValuesSpec(self._section, key, possible_values))
         return self
 
-    def may_contains(self, key: str, possible_values: list[Any] | None = None) -> "SectionSpec":
+    def may_contains(self, key: str, possible_values: Optional[list[Any]] = None) -> "SectionSpec":
         """Add optional key to section spec."""
         self.with_spec(OptionalSpec(SectionMustContainKeySpec(self._section, key)))
         if possible_values is not None:

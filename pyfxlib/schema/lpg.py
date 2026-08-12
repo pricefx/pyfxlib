@@ -1,7 +1,7 @@
 """Pricefx List Price Grid (LPG) domain objects."""
 
 from enum import StrEnum, unique
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import alias_generators, AliasChoices, BaseModel, ConfigDict, Field
 from typing_extensions import override
@@ -77,9 +77,9 @@ class LPGProduct(BaseModel):
     typed_id: str
     sku: str
     label: str
-    key2: str | None = None
-    workflow_status: LPGProductWorkflowStatus | None = None
-    approval_state: LPGProductApprovalState | None = None
+    key2: Optional[str] = None
+    workflow_status: Optional[LPGProductWorkflowStatus] = None
+    approval_state: Optional[LPGProductApprovalState] = None
     allowed_overrides: str = ""
 
     def extra(self) -> dict[str, Any]:

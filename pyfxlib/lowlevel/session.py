@@ -27,7 +27,7 @@ import logging
 import os
 import subprocess
 import time
-from typing import Any, cast, overload
+from typing import Any, cast, Optional, overload
 
 from httpx import AsyncClient, HTTPError, HTTPStatusError, Response, TimeoutException
 
@@ -115,7 +115,7 @@ class PfxAuthMethod(ABC):
         raise NotImplementedError
 
 
-def pfx_session(auth: PfxAuthMethod, session: AsyncClient | None = None) -> PfxSession:
+def pfx_session(auth: PfxAuthMethod, session: Optional[AsyncClient] = None) -> PfxSession:
     """
     Default PfxSession constructor.
 
@@ -127,7 +127,7 @@ def pfx_session(auth: PfxAuthMethod, session: AsyncClient | None = None) -> PfxS
 
 
 def pfx_session_from_token_file(
-    token_file_path: str, session: AsyncClient | None = None
+    token_file_path: str, session: Optional[AsyncClient] = None
 ) -> PfxSession:
     """
     Default PfxSession constructor using a token file as auth method.
@@ -139,7 +139,7 @@ def pfx_session_from_token_file(
     return pfx_session(PfxAuthTokenFile(token_file_path), session)
 
 
-def pfx_session_from_token(token: str, session: AsyncClient | None = None) -> PfxSession:
+def pfx_session_from_token(token: str, session: Optional[AsyncClient] = None) -> PfxSession:
     """
     Default PfxSession constructor using a static token.
 
@@ -188,8 +188,8 @@ class RetryPfxSession(PfxSession):
     def __init__(
         self,
         wrapped: PfxSession,
-        retry_predicate: Callable[[HTTPError], bool] | None = None,
-        retry_delays: list[int] | None = None,
+        retry_predicate: Optional[Callable[[HTTPError], bool]] = None,
+        retry_delays: Optional[list[int]] = None,
     ) -> None:
         self._wrapped: PfxSession = wrapped
         self._retry_predicate: Callable[[HTTPError], bool] = (
@@ -272,9 +272,9 @@ async def async_retry(  # noqa: E704
 async def async_retry(
     method: Callable[[], Awaitable[Response]] | Callable[[], Awaitable[None]],
     nb_tries: int,
-    retry_delays: list[int] | None = None,
+    retry_delays: Optional[list[int]] = None,
     retry_predicate: Callable[[HTTPError], bool] = _default_retry_predicate,
-) -> Response | None:
+) -> Optional[Response]:
     """
     Wrapper function that retries requests a given number of time before failing.
 
@@ -345,9 +345,9 @@ def retry(  # noqa: E704
 def retry(
     method: Callable[[], Response] | Callable[[], None],
     nb_tries: int,
-    retry_delays: list[int] | None = None,
+    retry_delays: Optional[list[int]] = None,
     retry_predicate: Callable[[HTTPError], bool] = _default_retry_predicate,
-) -> Response | None:
+) -> Optional[Response]:
     """
     Wrapper function that retries requests a given number of time before failing.
 
@@ -403,7 +403,7 @@ class SimplePfxSession(PfxSession):
     By default, it raises an error for client error or server error responses.
     """
 
-    def __init__(self, auth: PfxAuthMethod, session: AsyncClient | None = None) -> None:
+    def __init__(self, auth: PfxAuthMethod, session: Optional[AsyncClient] = None) -> None:
         """
         Constructor of SimplePfxSession.
 
@@ -491,7 +491,7 @@ class SimplePfxSession(PfxSession):
             del self._session.headers[key]
 
 
-def _error_response_body(err: HTTPStatusError) -> str | None:
+def _error_response_body(err: HTTPStatusError) -> Optional[str]:
     if err.response is not None and err.response.text is not None:
         return err.response.text
     return None
@@ -599,7 +599,7 @@ class PfxAuthUserPass(PfxAuthMethod):
         self._credential = base64.urlsafe_b64encode(
             bytes(f"{partition}/{user}:{passwd_provider()}", "utf-8")
         )
-        self.pfxtoken: str | None = None
+        self.pfxtoken: Optional[str] = None
 
     def _refresh_token(self, session: AsyncClient, response: Response) -> None:
         if "X-PriceFx-jwt" in response.cookies:

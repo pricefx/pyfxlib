@@ -31,7 +31,7 @@ import os
 from pathlib import Path
 import re
 import threading
-from typing import Any, cast, IO, TypeVar
+from typing import Any, cast, IO, Optional, TypeVar
 
 from httpx import HTTPStatusError
 import pandas as pd
@@ -98,7 +98,7 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
-    async def backend_version(self) -> dict[str, int | None]:
+    async def backend_version(self) -> dict[str, Optional[int]]:
         """Fetch the backend version information.
 
         Returns:
@@ -122,7 +122,7 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
-    async def list_users(self, criteria: AdvancedCriteria | None = None) -> list[UserInfo]:
+    async def list_users(self, criteria: Optional[AdvancedCriteria] = None) -> list[UserInfo]:
         """List all users available in the system.
 
         Args:
@@ -163,11 +163,11 @@ class ConnectionAsync(ABC):
     async def list_objects(
         self,
         type_code: str,
-        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
-        filter_aggregator: Operator | None = None,
-        start_row: int | None = None,
-        max_rows: int | None = None,
-        sort_by: str | None = None,
+        filters: Optional[dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria] = None,
+        filter_aggregator: Optional[Operator] = None,
+        start_row: Optional[int] = None,
+        max_rows: Optional[int] = None,
+        sort_by: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """List all the elements of a given type with optional filtering and pagination.
 
@@ -178,8 +178,9 @@ class ConnectionAsync(ABC):
 
         Args:
             type_code: Entity TypeCode
-            filters: a list of filters
-            filter_aggregator: logical operator to combine multiple filters (default: Operator.OR)
+            filters: a `{field: value}` dict, a sequence of `FieldRule`, or an
+                `AdvancedCriteria` (in which case `filter_aggregator` is ignored)
+            filter_aggregator: logical operator to combine multiple filters (default: Operator.AND)
             start_row: Starting index (0-based)
             max_rows: Max results (1-200, default 5)
             sort: field on which to sort the data
@@ -239,7 +240,7 @@ class ConnectionAsync(ABC):
     async def get_fc(
         self,
         typedid: str,
-        params: dict[str, Any] | None = None,
+        params: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """Get the attributes of a specific field collection."""
         pass
@@ -248,7 +249,7 @@ class ConnectionAsync(ABC):
     async def list_fcs(
         self,
         type_code: str,
-        params: dict[str, Any] | None = None,
+        params: Optional[dict[str, Any]] = None,
     ) -> list[dict[str, Any]]:
         """List all the fields collections of a given type."""
         pass
@@ -259,8 +260,8 @@ class ConnectionAsync(ABC):
         name: str,
         fields_spec: list[dict],
         content: AvroStream,
-        label: str | None = None,
-        owner_typedid: str | None = None,
+        label: Optional[str] = None,
+        owner_typedid: Optional[str] = None,
         replace_existing: bool = True,
     ) -> None:
         """Create a table in the backend.
@@ -298,18 +299,39 @@ class ConnectionAsync(ABC):
 
     @abstractmethod
     async def stream_dm_data(
-        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+        self,
+        typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+        criteria: Optional[AdvancedCriteria] = None,
+        columns: Optional[Sequence[str]] = None,
     ) -> AsyncIterator[bytes]:
-        """Stream the content of a data source."""
+        """Stream the content of a data source.
+
+        Args:
+            typedid: the typed id of the data source to stream
+            chunk_size: the size in bytes of the yielded chunks
+            criteria: optional server-side row filter
+            columns: optional list of columns to keep (default: all)
+        """
         yield b""
 
     @abstractmethod
     async def fetch_paginated_dm_data(
-        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+        self,
+        typedid: str,
+        page_size: int = _DEFAULT_PAGE_SIZE,
+        criteria: Optional[AdvancedCriteria] = None,
+        columns: Optional[Sequence[str]] = None,
     ) -> AsyncIterator[list[dict[str, Any]]]:
         """Fetch the content of a data source using paginated requests.
 
         More reliable than stream_dm_data for large datasets.
+
+        Args:
+            typedid: the typed id of the data source to fetch
+            page_size: the number of rows to fetch per page
+            criteria: optional server-side row filter
+            columns: optional list of columns to keep (default: all)
         """
         yield []
 
@@ -344,7 +366,7 @@ class ConnectionAsync(ABC):
 
     @abstractmethod
     async def list_lpg_items(
-        self, lpg_id: int, filters: dict[str, Any] | None = None
+        self, lpg_id: int, filters: Optional[dict[str, Any]] = None
     ) -> list[LPGProduct]:
         """Fetch the item data from an LPG.
 
@@ -422,7 +444,7 @@ class ConnectionAsync(ABC):
         yield b""
 
     @abstractmethod
-    async def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
+    async def import_files(self, files: dict[str, tuple[Optional[str], bytes | str, str]]) -> str:
         """Import files to the backend.
 
         Args:
@@ -442,9 +464,9 @@ class ConnectionAsync(ABC):
         self,
         jst_id: int,
         status_code: JobStatus,
-        progress: int | None,
-        msg: str | None = None,
-        results: dict[str, Any] | None = None,
+        progress: Optional[int],
+        msg: Optional[str] = None,
+        results: Optional[dict[str, Any]] = None,
     ) -> None:
         """Update the job status on the backend.
 
@@ -491,10 +513,10 @@ class ConnectionAsync(ABC):
         assignee_id: int,
         due_date: str,
         description: str,
-        recommendations: str | None = None,
-        originator_typed_id: str | None = None,
-        dashboard_inputs: dict[str, Any] | None = None,
-        dashboard_preferences: dict[str, Any] | None = None,
+        recommendations: Optional[str] = None,
+        originator_typed_id: Optional[str] = None,
+        dashboard_inputs: Optional[dict[str, Any]] = None,
+        dashboard_preferences: Optional[dict[str, Any]] = None,
         action_item_type: str = "__DEFAULT__",
     ) -> dict[str, Any]:
         """Create an action item.
@@ -529,16 +551,7 @@ class ConnectionRemote(ConnectionAsync):
     def __repr__(self) -> str:
         return f"ConnectionRemote({self.endpoint})"
 
-    @staticmethod
-    def _build_criteria(
-        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
-        filter_aggregator: Operator | None = None,
-    ) -> AdvancedCriteria | None:
-        if not filters:
-            return None
-        return AdvancedCriteria(operator=filter_aggregator or Operator.OR, criteria=filters)
-
-    async def _fc_spec(self, typedid: str) -> dict | None:
+    async def _fc_spec(self, typedid: str) -> Optional[dict]:
         objectid = typedid.split(".")[0]
         fc_type = typedid.split(".")[1]
         response_value = await self.session.post(
@@ -569,7 +582,7 @@ class ConnectionRemote(ConnectionAsync):
         response = await self.session.post(f"{self.endpoint}/login/extended")
         return response.json()
 
-    async def backend_version(self) -> dict[str, int | None]:
+    async def backend_version(self) -> dict[str, Optional[int]]:
         """See `ConnectionAsync` corresponding method."""
         response = await self.login_extended()
         backend_version = str(response["response"]["data"][0]["extendedData"]["Release"])
@@ -601,7 +614,7 @@ class ConnectionRemote(ConnectionAsync):
         )
         return response.json()["response"]
 
-    async def list_users(self, criteria: AdvancedCriteria | None = None) -> list[UserInfo]:
+    async def list_users(self, criteria: Optional[AdvancedCriteria] = None) -> list[UserInfo]:
         """See `ConnectionAsync` corresponding method."""
         body: dict[str, Any] = {"operationType": "fetch", "textMatchStyle": "exact"}
         if criteria is not None:
@@ -636,16 +649,20 @@ class ConnectionRemote(ConnectionAsync):
     async def list_objects(
         self,
         type_code: str,
-        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
-        filter_aggregator: Operator | None = None,
-        start_row: int | None = None,
-        max_rows: int | None = None,
-        sort_by: str | None = None,
+        filters: Optional[dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria] = None,
+        filter_aggregator: Optional[Operator] = None,
+        start_row: Optional[int] = None,
+        max_rows: Optional[int] = None,
+        sort_by: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         start_row = start_row or 0
         end_row = start_row + max(min(max_rows, 200), 1) if max_rows is not None else None
-        criteria = self._build_criteria(filters, filter_aggregator)
+        criteria = (
+            None
+            if filters is None
+            else AdvancedCriteria.from_filters(filters, filter_aggregator or Operator.AND)
+        )
         body = {
             "startRow": start_row,
             "endRow": end_row,
@@ -691,7 +708,7 @@ class ConnectionRemote(ConnectionAsync):
         )
         return response.json()["response"]["data"]
 
-    async def get_fc(self, typedid: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def get_fc(self, typedid: str, params: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(
             f"{self.endpoint}/datamart.getfcs/{typedid}",
@@ -700,7 +717,7 @@ class ConnectionRemote(ConnectionAsync):
         return response.json()["response"]["data"][0]
 
     async def list_fcs(
-        self, type_code: str, params: dict[str, Any] | None = None
+        self, type_code: str, params: Optional[dict[str, Any]] = None
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(
@@ -713,8 +730,8 @@ class ConnectionRemote(ConnectionAsync):
         name: str,
         fields_spec: list[dict],
         content: AvroStream,
-        label: str | None = None,
-        owner_typedid: str | None = None,
+        label: Optional[str] = None,
+        owner_typedid: Optional[str] = None,
         replace_existing: bool = True,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
@@ -771,18 +788,32 @@ class ConnectionRemote(ConnectionAsync):
             await self.session.post(f"{self.endpoint}/uploadmanager.deleteslot/{uploadslot}")
 
     async def stream_dm_data(
-        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+        self,
+        typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+        criteria: Optional[AdvancedCriteria] = None,
+        columns: Optional[Sequence[str]] = None,
     ) -> AsyncIterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
+        body: dict[str, Any] = {}
+        if criteria is not None:
+            body["data"] = criteria.model_dump()
+        if columns is not None:
+            body["resultFields"] = list(columns)
         async for chunk in self.session.get_stream(
             f"{self.endpoint}/datamart.fetch/{typedid}?stream&timeout={self._DM_FETCH_TIMEOUT}",
             chunk_size=chunk_size,
             params={"output": "csv"},
+            json=body or None,
         ):
             yield chunk
 
     async def fetch_paginated_dm_data(
-        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+        self,
+        typedid: str,
+        page_size: int = _DEFAULT_PAGE_SIZE,
+        criteria: Optional[AdvancedCriteria] = None,
+        columns: Optional[Sequence[str]] = None,
     ) -> AsyncIterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method."""
         sort_by: list[str] = []
@@ -793,7 +824,13 @@ class ConnectionRemote(ConnectionAsync):
         while True:
             response = await self.session.post(
                 f"{self.endpoint}/datamart.fetch/{typedid}",
-                json={"startRow": start_row, "endRow": start_row + page_size, "sortBy": sort_by},
+                json={
+                    "startRow": start_row,
+                    "endRow": start_row + page_size,
+                    "sortBy": sort_by,
+                    "data": criteria.model_dump() if criteria else None,
+                    "resultFields": list(columns) if columns else None,
+                },
             )
             data = response.json()["response"]["data"]
             if not data:
@@ -822,17 +859,17 @@ class ConnectionRemote(ConnectionAsync):
         )
 
     async def list_lpg_items(
-        self, lpg_id: int, filters: dict[str, Any] | None = None
+        self, lpg_id: int, filters: Optional[dict[str, Any]] = None
     ) -> list[LPGProduct]:
         """See `ConnectionAsync` corresponding method."""
         criteria = None
         if filters:
-            criteria = self._build_criteria(
-                [
+            criteria = AdvancedCriteria(
+                operator=Operator.AND,
+                criteria=[
                     FieldRule(field_name=key, operator=FilterOperator.IEQUALS, value=value)
                     for key, value in filters.items()
                 ],
-                Operator.AND,
             )
         response = await self.session.post(
             f"{self.endpoint}/pricegridmanager.fetch/{lpg_id}",
@@ -927,7 +964,7 @@ class ConnectionRemote(ConnectionAsync):
         except Exception as e:
             raise Exception(f"Error while fetching attached file '{attachment_typedid}'") from e
 
-    async def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
+    async def import_files(self, files: dict[str, tuple[Optional[str], bytes | str, str]]) -> str:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(
             f"{self.endpoint}/optimization.modelimport",
@@ -939,9 +976,9 @@ class ConnectionRemote(ConnectionAsync):
         self,
         jst_id: int,
         status_code: JobStatus,
-        progress: int | None,
-        msg: str | None = None,
-        results: dict[str, Any] | None = None,
+        progress: Optional[int],
+        msg: Optional[str] = None,
+        results: Optional[dict[str, Any]] = None,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
         data: dict[str, Any] = {
@@ -991,10 +1028,10 @@ class ConnectionRemote(ConnectionAsync):
         assignee_id: int,
         due_date: str,
         description: str,
-        recommendations: str | None = None,
-        originator_typed_id: str | None = None,
-        dashboard_inputs: dict[str, Any] | None = None,
-        dashboard_preferences: dict[str, Any] | None = None,
+        recommendations: Optional[str] = None,
+        originator_typed_id: Optional[str] = None,
+        dashboard_inputs: Optional[dict[str, Any]] = None,
+        dashboard_preferences: Optional[dict[str, Any]] = None,
         action_item_type: str = "__DEFAULT__",
     ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
@@ -1034,7 +1071,7 @@ class ConnectionLocal(ConnectionAsync):
     def __init__(
         self,
         path: Path,
-        logformat: str | None = None,
+        logformat: Optional[str] = None,
     ) -> None:
         self.path = path
 
@@ -1074,7 +1111,7 @@ class ConnectionLocal(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return {"response": {"data": [{"extendedData": {"Release": "99.0-SNAPSHOT"}}]}}
 
-    async def backend_version(self) -> dict[str, int | None]:
+    async def backend_version(self) -> dict[str, Optional[int]]:
         """See `ConnectionAsync` corresponding method."""
         return {"major": 99, "minor": None, "patch": None}
 
@@ -1082,7 +1119,7 @@ class ConnectionLocal(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return {}
 
-    async def list_users(self, criteria: AdvancedCriteria | None = None) -> list[UserInfo]:
+    async def list_users(self, criteria: Optional[AdvancedCriteria] = None) -> list[UserInfo]:
         """See `ConnectionAsync` corresponding method."""
         return []
 
@@ -1103,11 +1140,11 @@ class ConnectionLocal(ConnectionAsync):
     async def list_objects(
         self,
         type_code: str,
-        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
-        filter_aggregator: Operator | None = None,
-        start_row: int | None = None,
-        max_rows: int | None = None,
-        sort_by: str | None = None,
+        filters: Optional[dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria] = None,
+        filter_aggregator: Optional[Operator] = None,
+        start_row: Optional[int] = None,
+        max_rows: Optional[int] = None,
+        sort_by: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method.
 
@@ -1151,7 +1188,7 @@ class ConnectionLocal(ConnectionAsync):
     async def get_fc(
         self,
         typedid: str,
-        params: dict[str, Any] | None = None,
+        params: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method.
 
@@ -1162,7 +1199,7 @@ class ConnectionLocal(ConnectionAsync):
     async def list_fcs(
         self,
         type_code: str,
-        params: dict[str, Any] | None = None,
+        params: Optional[dict[str, Any]] = None,
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method.
 
@@ -1175,8 +1212,8 @@ class ConnectionLocal(ConnectionAsync):
         name: str,
         fields_spec: list[dict],
         content: AvroStream,
-        label: str | None = None,
-        owner_typedid: str | None = None,
+        label: Optional[str] = None,
+        owner_typedid: Optional[str] = None,
         replace_existing: bool = True,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
@@ -1200,18 +1237,54 @@ class ConnectionLocal(ConnectionAsync):
                 file.write(buffer)
 
     async def stream_dm_data(
-        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+        self,
+        typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+        criteria: Optional[AdvancedCriteria] = None,
+        columns: Optional[Sequence[str]] = None,
     ) -> AsyncIterator[bytes]:
-        """See `ConnectionAsync` corresponding method."""
-        with open(self._data_sources_path / f"{typedid}.csv", "rb") as fin:
-            while chunk := fin.read(chunk_size):
-                yield chunk
+        """See `ConnectionAsync` corresponding method.
+
+        `criteria` is not applied: this implementation always streams the full
+        local file unfiltered. A warning is logged when `criteria` is set.
+        """
+        if criteria is not None:
+            LOGGER.warning(
+                "ConnectionLocal doesn't support server-side row filtering: "
+                "streaming the full local file for '%s' unfiltered.",
+                typedid,
+            )
+        content = (
+            pd.read_csv(self._data_sources_path / f"{typedid}.csv", usecols=columns)
+            .to_csv(index=False)
+            .encode()
+        )
+        for start in range(0, len(content), chunk_size):
+            yield content[start : start + chunk_size]
 
     async def fetch_paginated_dm_data(
-        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+        self,
+        typedid: str,
+        page_size: int = _DEFAULT_PAGE_SIZE,
+        criteria: Optional[AdvancedCriteria] = None,
+        columns: Optional[Sequence[str]] = None,
     ) -> AsyncIterator[list[dict[str, Any]]]:
-        """See `ConnectionAsync` corresponding method."""
-        for chunk in pd.read_csv(self._data_sources_path / f"{typedid}.csv", chunksize=page_size):
+        """See `ConnectionAsync` corresponding method.
+
+        `criteria` is not applied: this implementation always reads the full
+        local file unfiltered. A warning is logged when `criteria` is set.
+        """
+        if criteria is not None:
+            LOGGER.warning(
+                "ConnectionLocal doesn't support server-side row filtering: "
+                "reading the full local file for '%s' unfiltered.",
+                typedid,
+            )
+        for chunk in pd.read_csv(
+            self._data_sources_path / f"{typedid}.csv",
+            chunksize=page_size,
+            usecols=columns,
+        ):
             yield chunk.to_dict(orient="records")
 
     async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
@@ -1237,7 +1310,7 @@ class ConnectionLocal(ConnectionAsync):
             csv.writer(out).writerow([key1, key2, value])
 
     async def list_lpg_items(
-        self, lpg_id: int, filters: dict[str, Any] | None = None
+        self, lpg_id: int, filters: Optional[dict[str, Any]] = None
     ) -> list[LPGProduct]:
         """See `ConnectionAsync` corresponding method.
 
@@ -1311,7 +1384,7 @@ class ConnectionLocal(ConnectionAsync):
             while chunk := fin.read(chunk_size):
                 yield chunk
 
-    async def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
+    async def import_files(self, files: dict[str, tuple[Optional[str], bytes | str, str]]) -> str:
         """See `ConnectionAsync` corresponding method."""
         return ""
 
@@ -1319,9 +1392,9 @@ class ConnectionLocal(ConnectionAsync):
         self,
         jst_id: int,
         status_code: JobStatus,
-        progress: int | None,
-        msg: str | None = None,
-        results: dict[str, Any] | None = None,
+        progress: Optional[int],
+        msg: Optional[str] = None,
+        results: Optional[dict[str, Any]] = None,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
         logfile = self._logs_path / f"{str(jst_id)}.txt"
@@ -1359,10 +1432,10 @@ class ConnectionLocal(ConnectionAsync):
         assignee_id: int,
         due_date: str,
         description: str,
-        recommendations: str | None = None,
-        originator_typed_id: str | None = None,
-        dashboard_inputs: dict[str, Any] | None = None,
-        dashboard_preferences: dict[str, Any] | None = None,
+        recommendations: Optional[str] = None,
+        originator_typed_id: Optional[str] = None,
+        dashboard_inputs: Optional[dict[str, Any]] = None,
+        dashboard_preferences: Optional[dict[str, Any]] = None,
         action_item_type: str = "__DEFAULT__",
     ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
@@ -1399,7 +1472,7 @@ class ConnectionComposed(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return await self._default.login_extended()
 
-    async def backend_version(self) -> dict[str, int | None]:
+    async def backend_version(self) -> dict[str, Optional[int]]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.backend_version()
 
@@ -1407,7 +1480,7 @@ class ConnectionComposed(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return await self._default.send_notification(notification)
 
-    async def list_users(self, criteria: AdvancedCriteria | None = None) -> list[UserInfo]:
+    async def list_users(self, criteria: Optional[AdvancedCriteria] = None) -> list[UserInfo]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.list_users(criteria)
 
@@ -1425,11 +1498,11 @@ class ConnectionComposed(ConnectionAsync):
     async def list_objects(
         self,
         type_code: str,
-        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
-        filter_aggregator: Operator | None = None,
-        start_row: int | None = None,
-        max_rows: int | None = None,
-        sort_by: str | None = None,
+        filters: Optional[dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria] = None,
+        filter_aggregator: Optional[Operator] = None,
+        start_row: Optional[int] = None,
+        max_rows: Optional[int] = None,
+        sort_by: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.list_objects(
@@ -1460,7 +1533,7 @@ class ConnectionComposed(ConnectionAsync):
     async def get_fc(
         self,
         typedid: str,
-        params: dict[str, Any] | None = None,
+        params: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.get_fc(typedid)
@@ -1468,7 +1541,7 @@ class ConnectionComposed(ConnectionAsync):
     async def list_fcs(
         self,
         type_code: str,
-        params: dict[str, Any] | None = None,
+        params: Optional[dict[str, Any]] = None,
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.list_fcs(type_code, params)
@@ -1478,8 +1551,8 @@ class ConnectionComposed(ConnectionAsync):
         name: str,
         fields_spec: list[dict],
         content: AvroStream,
-        label: str | None = None,
-        owner_typedid: str | None = None,
+        label: Optional[str] = None,
+        owner_typedid: Optional[str] = None,
         replace_existing: bool = True,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
@@ -1492,17 +1565,29 @@ class ConnectionComposed(ConnectionAsync):
         await self._dispatch["model_tables"].update_table(typedid, data)
 
     async def stream_dm_data(
-        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+        self,
+        typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+        criteria: Optional[AdvancedCriteria] = None,
+        columns: Optional[Sequence[str]] = None,
     ) -> AsyncIterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
-        async for chunk in self._dispatch["pa_tables"].stream_dm_data(typedid, chunk_size):
+        async for chunk in self._dispatch["pa_tables"].stream_dm_data(
+            typedid, chunk_size, criteria, columns
+        ):
             yield chunk
 
     async def fetch_paginated_dm_data(
-        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+        self,
+        typedid: str,
+        page_size: int = _DEFAULT_PAGE_SIZE,
+        criteria: Optional[AdvancedCriteria] = None,
+        columns: Optional[Sequence[str]] = None,
     ) -> AsyncIterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method."""
-        async for page in self._dispatch["pa_tables"].fetch_paginated_dm_data(typedid, page_size):
+        async for page in self._dispatch["pa_tables"].fetch_paginated_dm_data(
+            typedid, page_size, criteria, columns
+        ):
             yield page
 
     async def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
@@ -1514,7 +1599,7 @@ class ConnectionComposed(ConnectionAsync):
         await self._dispatch["model_parameters"].push_calcitem(typedid, key1, key2, value)
 
     async def list_lpg_items(
-        self, lpg_id: int, filters: dict[str, Any] | None = None
+        self, lpg_id: int, filters: Optional[dict[str, Any]] = None
     ) -> list[LPGProduct]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.list_lpg_items(lpg_id, filters)
@@ -1562,7 +1647,7 @@ class ConnectionComposed(ConnectionAsync):
         ):
             yield chunk
 
-    async def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
+    async def import_files(self, files: dict[str, tuple[Optional[str], bytes | str, str]]) -> str:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.import_files(files)
 
@@ -1570,9 +1655,9 @@ class ConnectionComposed(ConnectionAsync):
         self,
         jst_id: int,
         status_code: JobStatus,
-        progress: int | None,
-        msg: str | None = None,
-        results: dict[str, Any] | None = None,
+        progress: Optional[int],
+        msg: Optional[str] = None,
+        results: Optional[dict[str, Any]] = None,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
         await self._dispatch["job_updates"].update_status(
@@ -1593,10 +1678,10 @@ class ConnectionComposed(ConnectionAsync):
         assignee_id: int,
         due_date: str,
         description: str,
-        recommendations: str | None = None,
-        originator_typed_id: str | None = None,
-        dashboard_inputs: dict[str, Any] | None = None,
-        dashboard_preferences: dict[str, Any] | None = None,
+        recommendations: Optional[str] = None,
+        originator_typed_id: Optional[str] = None,
+        dashboard_inputs: Optional[dict[str, Any]] = None,
+        dashboard_preferences: Optional[dict[str, Any]] = None,
         action_item_type: str = "__DEFAULT__",
     ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
@@ -1669,7 +1754,7 @@ class ConnectionSync:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.login_extended())
 
-    def backend_version(self) -> dict[str, int | None]:
+    def backend_version(self) -> dict[str, Optional[int]]:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.backend_version())
 
@@ -1677,7 +1762,7 @@ class ConnectionSync:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.send_notification(notification))
 
-    def list_users(self, criteria: AdvancedCriteria | None = None) -> list[UserInfo]:
+    def list_users(self, criteria: Optional[AdvancedCriteria] = None) -> list[UserInfo]:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.list_users(criteria))
 
@@ -1695,11 +1780,11 @@ class ConnectionSync:
     def list_objects(
         self,
         type_code: str,
-        filters: Sequence[FieldRule | AdvancedCriteria] | None = None,
-        filter_aggregator: Operator | None = None,
-        start_row: int | None = None,
-        max_rows: int | None = None,
-        sort_by: str | None = None,
+        filters: Optional[dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria] = None,
+        filter_aggregator: Optional[Operator] = None,
+        start_row: Optional[int] = None,
+        max_rows: Optional[int] = None,
+        sort_by: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(
@@ -1732,7 +1817,7 @@ class ConnectionSync:
     def get_fc(
         self,
         typedid: str,
-        params: dict[str, Any] | None = None,
+        params: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.get_fc(typedid, params))
@@ -1740,7 +1825,7 @@ class ConnectionSync:
     def list_fcs(
         self,
         type_code: str,
-        params: dict[str, Any] | None = None,
+        params: Optional[dict[str, Any]] = None,
     ) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.list_fcs(type_code, params))
@@ -1750,8 +1835,8 @@ class ConnectionSync:
         name: str,
         fields_spec: list[dict],
         content: AvroStream,
-        label: str | None = None,
-        owner_typedid: str | None = None,
+        label: Optional[str] = None,
+        owner_typedid: Optional[str] = None,
         replace_existing: bool = True,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
@@ -1766,16 +1851,28 @@ class ConnectionSync:
         return self._run_sync(self._conn.update_table(typedid, data))
 
     def stream_dm_data(
-        self, typedid: str, chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE
+        self,
+        typedid: str,
+        chunk_size: int = _DEFAULT_STREAM_CHUNK_SIZE,
+        criteria: Optional[AdvancedCriteria] = None,
+        columns: Optional[Sequence[str]] = None,
     ) -> Iterator[bytes]:
         """See `ConnectionAsync` corresponding method."""
-        return self._sync_iterator(self._conn.stream_dm_data(typedid, chunk_size))
+        return self._sync_iterator(
+            self._conn.stream_dm_data(typedid, chunk_size, criteria, columns)
+        )
 
     def fetch_paginated_dm_data(
-        self, typedid: str, page_size: int = _DEFAULT_PAGE_SIZE
+        self,
+        typedid: str,
+        page_size: int = _DEFAULT_PAGE_SIZE,
+        criteria: Optional[AdvancedCriteria] = None,
+        columns: Optional[Sequence[str]] = None,
     ) -> Iterator[list[dict[str, Any]]]:
         """See `ConnectionAsync` corresponding method."""
-        return self._sync_iterator(self._conn.fetch_paginated_dm_data(typedid, page_size))
+        return self._sync_iterator(
+            self._conn.fetch_paginated_dm_data(typedid, page_size, criteria, columns)
+        )
 
     def get_calcitems(self, typedid: str) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
@@ -1786,7 +1883,7 @@ class ConnectionSync:
         return self._run_sync(self._conn.push_calcitem(typedid, key1, key2, value))
 
     def list_lpg_items(
-        self, lpg_id: int, filters: dict[str, Any] | None = None
+        self, lpg_id: int, filters: Optional[dict[str, Any]] = None
     ) -> list[LPGProduct]:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.list_lpg_items(lpg_id, filters))
@@ -1835,7 +1932,7 @@ class ConnectionSync:
             self._conn.pull_file(owner_typedid, attachment_typedid, chunk_size)
         )
 
-    def import_files(self, files: dict[str, tuple[str | None, bytes | str, str]]) -> str:
+    def import_files(self, files: dict[str, tuple[Optional[str], bytes | str, str]]) -> str:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.import_files(files))
 
@@ -1843,9 +1940,9 @@ class ConnectionSync:
         self,
         jst_id: int,
         status_code: JobStatus,
-        progress: int | None,
-        msg: str | None = None,
-        results: dict[str, Any] | None = None,
+        progress: Optional[int],
+        msg: Optional[str] = None,
+        results: Optional[dict[str, Any]] = None,
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.update_status(jst_id, status_code, progress, msg, results))
@@ -1864,10 +1961,10 @@ class ConnectionSync:
         assignee_id: int,
         due_date: str,
         description: str,
-        recommendations: str | None = None,
-        originator_typed_id: str | None = None,
-        dashboard_inputs: dict[str, Any] | None = None,
-        dashboard_preferences: dict[str, Any] | None = None,
+        recommendations: Optional[str] = None,
+        originator_typed_id: Optional[str] = None,
+        dashboard_inputs: Optional[dict[str, Any]] = None,
+        dashboard_preferences: Optional[dict[str, Any]] = None,
         action_item_type: str = "__DEFAULT__",
     ) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""

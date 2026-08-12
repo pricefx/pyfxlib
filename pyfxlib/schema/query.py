@@ -1,3 +1,17 @@
+# Copyright 2025-2026 Pricefx
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Pricefx query-related domain objects validators."""
 
 from __future__ import annotations
@@ -5,7 +19,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date, datetime
 from enum import StrEnum, unique
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import alias_generators, BaseModel, ConfigDict, Field
 
@@ -117,9 +131,9 @@ class FieldRule(BaseModel):
 
     field_name: str
     operator: FilterOperator
-    value: Any | None = None
-    start: Any | None = None
-    end: Any | None = None
+    value: Optional[Any] = None
+    start: Optional[Any] = None
+    end: Optional[Any] = None
 
 
 class AdvancedCriteria(BaseModel):
@@ -132,6 +146,44 @@ class AdvancedCriteria(BaseModel):
     constructor: Literal["AdvancedCriteria"] = Field(
         default="AdvancedCriteria", alias="_constructor"
     )
+
+    @classmethod
+    def from_dict(
+        cls, filters: dict[str, Any], filter_aggregator: Operator = Operator.AND
+    ) -> AdvancedCriteria:
+        """Build an equality criteria from a simple `{field: value}` dict.
+
+        Args:
+            filters: mapping of field name to expected value (equality match)
+            filter_aggregator: how the per-field equality checks are combined (default: `and`)
+        """
+        return cls(
+            operator=filter_aggregator,
+            criteria=[
+                FieldRule(field_name=field_name, operator=FilterOperator.EQUALS, value=value)
+                for field_name, value in filters.items()
+            ],
+        )
+
+    @classmethod
+    def from_filters(
+        cls,
+        filters: dict[str, Any] | Sequence[FieldRule] | AdvancedCriteria,
+        filter_aggregator: Operator = Operator.AND,
+    ) -> AdvancedCriteria:
+        """Normalize a `dict`, a sequence of `FieldRule` or an `AdvancedCriteria`.
+
+        Args:
+            filters: a `{field: value}` dict (equality match per key), a sequence of
+                `FieldRule`, or an already-built `AdvancedCriteria` (returned as-is).
+            filter_aggregator: how multiple conditions are combined, for the
+                `dict`/sequence forms (default: `and`). Ignored for `AdvancedCriteria`.
+        """
+        if isinstance(filters, AdvancedCriteria):
+            return filters
+        if isinstance(filters, dict):
+            return cls.from_dict(filters, filter_aggregator)
+        return cls(operator=filter_aggregator, criteria=list(filters))
 
 
 AdvancedCriteria.model_rebuild()
@@ -217,8 +269,8 @@ class PADatamart(BaseModel):
 
     kind: Literal["datamart"] = "datamart"
     datamart_unique_name: str
-    currency: str | None = None
-    uom: str | None = None
+    currency: Optional[str] = None
+    uom: Optional[str] = None
 
 
 class PADataFeed(BaseModel):
@@ -246,4 +298,4 @@ class QueryAnswerMeta(BaseModel):
     """Metadata for the result of the query."""
 
     columns: list[QueryAnswerMetaColumn]
-    tables: list[Table] | None = None
+    tables: Optional[list[Table]] = None

@@ -1,6 +1,7 @@
 """Core Pricefx domain objects: backend, users, notifications, jobs."""
 
 from enum import Enum, StrEnum, unique
+from typing import Optional
 
 from pydantic import alias_generators, BaseModel, ConfigDict, Field, model_validator
 from typing_extensions import override, Self
@@ -19,8 +20,8 @@ class BackendVersion(BaseModel):
     """Backend version information."""
 
     major: int
-    minor: int | None = None
-    patch: int | None = None
+    minor: Optional[int] = None
+    patch: Optional[int] = None
 
     @override
     def __str__(self) -> str:
@@ -37,8 +38,8 @@ class UserInfo(BaseModel):
 
     login_name: str
     email: str
-    first_name: str | None = None
-    last_name: str | None = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     typed_id: str
     activated: bool
 
@@ -120,13 +121,13 @@ class Notification(BaseModel):
     status: NotificationStatus
     topic: NotificationTopic
     action_type: NotificationActionType = Field(default=NotificationActionType.INFO_MESSAGE)
-    action: str | None = Field(default=None, max_length=2000)
-    action_label: str | None = Field(default=None, max_length=255)
-    recipients: list[dict[str, str]] | None = None
-    valid_from: str | None = None
-    valid_until: str | None = None
-    due_date: str | None = None
-    dismissible: bool | None = None
+    action: Optional[str] = Field(default=None, max_length=2000)
+    action_label: Optional[str] = Field(default=None, max_length=255)
+    recipients: Optional[list[dict[str, str]]] = None
+    valid_from: Optional[str] = None
+    valid_until: Optional[str] = None
+    due_date: Optional[str] = None
+    dismissible: Optional[bool] = None
 
     @model_validator(mode="after")
     def check_action(self) -> Self:

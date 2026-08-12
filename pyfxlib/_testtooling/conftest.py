@@ -15,7 +15,7 @@
 import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator, Callable
 import os
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import ParseResult, urlparse
 
 from _pytest.fixtures import fixture
@@ -59,8 +59,8 @@ class _RaisingExceptionSession(RetryPfxSession):
         self,
         wrapped: PfxSession,
         retries: int,
-        exception_to_raise: Exception | None = TimeoutException("timeout"),
-        endpoints_to_fail: list | None = None,
+        exception_to_raise: Optional[Exception] = TimeoutException("timeout"),
+        endpoints_to_fail: Optional[list] = None,
     ) -> None:
         super().__init__(wrapped)
         self._wrapped: PfxSession = wrapped

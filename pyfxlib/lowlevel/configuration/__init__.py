@@ -19,7 +19,7 @@ from configparser import ConfigParser
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 import uuid
 
 from pyfxlib.api.domain import DMModel, Model, ModelObject, PlatformJob
@@ -48,7 +48,7 @@ LOGS_CONFIG_SECTION = "logging"
 JOB_CONFIG_SECTION = "job"
 
 
-def _remote_conn_from_config(config: ConfigParser) -> ConnectionAsync | None:
+def _remote_conn_from_config(config: ConfigParser) -> Optional[ConnectionAsync]:
     """Create a remote Connection from config."""
     auth_values = ["token", "login"]
     pass_values = ["prompt", "keyring", "command"]
@@ -112,7 +112,7 @@ def _remote_conn_from_config(config: ConfigParser) -> ConnectionAsync | None:
     )
 
 
-def _local_conn_from_config(config: ConfigParser) -> ConnectionAsync | None:
+def _local_conn_from_config(config: ConfigParser) -> Optional[ConnectionAsync]:
     """Create a local Connection from config."""
     my_spec = (
         spec.optional_section(LOCALCONNECTION_CONFIG_SECTION)
@@ -189,7 +189,7 @@ def user_params_from_config(config: ConfigParser) -> dict[str, Any]:
 
 def logging_from_config(
     config: ConfigParser,
-) -> Callable[[str | None, int | None], None] | None:
+) -> Optional[Callable[[Optional[str], Optional[int]], None]]:
     """Create logging facility from config."""
     loglevels = {
         "critical": logging.CRITICAL,
@@ -237,7 +237,7 @@ def logging_from_config(
     logger.addHandler(loghandler)
     logger.setLevel(logging.DEBUG)
 
-    def _log(msg: str | None, progress: int | None) -> None:
+    def _log(msg: Optional[str], progress: Optional[int]) -> None:
         logger.log(
             loglevel,
             msg if msg is not None else "",
@@ -249,7 +249,7 @@ def logging_from_config(
     return _log
 
 
-def model_from_config(config: ConfigParser, conn: ConnectionSync) -> Model | None:
+def model_from_config(config: ConfigParser, conn: ConnectionSync) -> Optional[Model]:
     """Create PO model from config."""
     modeltypedid = config.get(JOB_CONFIG_SECTION, "modeltypedid", fallback=None)
     if modeltypedid is None:
@@ -259,7 +259,7 @@ def model_from_config(config: ConfigParser, conn: ConnectionSync) -> Model | Non
     return DMModel.from_conn(conn, modeltypedid)
 
 
-def job_from_config(config: ConfigParser, conn: ConnectionSync) -> PlatformJob | None:
+def job_from_config(config: ConfigParser, conn: ConnectionSync) -> Optional[PlatformJob]:
     """Create Job from config."""
     jst_id = config.getint(JOB_CONFIG_SECTION, "jst_id", fallback=None)
     if jst_id is None:
