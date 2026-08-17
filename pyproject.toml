@@ -25,7 +25,7 @@ packages = [
   {include = "pyfxlib/_testtooling"}
 ]
 readme = "README.md"
-version = "1.2.1"
+version = "1.2.2"
 
 [tool.poetry.dependencies]
 fastavro = {version = "^1.9"}
@@ -35,7 +35,7 @@ pandas = {version = "^2.2"}
 pydantic = {version = ">=2.11.7"}
 python = ">=3.11,<4.0"
 SecretStorage = {version = "^3.3", platform = "linux"}
-setuptools = {version = "^80.0"}
+setuptools = {version = ">=83.0.0"}
 
 [tool.poetry.group.dev.dependencies]
 black = "*"
