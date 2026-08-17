@@ -126,7 +126,7 @@ class FieldRule(BaseModel):
     """FieldRule class for query criteria on a given field."""
 
     model_config = ConfigDict(
-        serialize_by_alias=True, populate_by_name=True, alias_generator=alias_generators.to_camel
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
     )
 
     field_name: str
@@ -139,7 +139,7 @@ class FieldRule(BaseModel):
 class AdvancedCriteria(BaseModel):
     """AdvancedCriteria class for combining multiple FieldRules with logical operators."""
 
-    model_config = ConfigDict(serialize_by_alias=True, populate_by_name=True)
+    model_config = ConfigDict(serialize_by_alias=True, validate_by_name=True)
 
     operator: Operator
     criteria: Sequence[FieldRule | AdvancedCriteria]
@@ -242,7 +242,7 @@ class ProductExtensionRows(BaseModel):
     """Product extension rows table."""
 
     model_config = ConfigDict(
-        serialize_by_alias=True, populate_by_name=True, alias_generator=alias_generators.to_camel
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
     )
 
     kind: Literal["productExtensionRows"] = "productExtensionRows"
@@ -253,7 +253,7 @@ class PADataSource(BaseModel):
     """Data source table."""
 
     model_config = ConfigDict(
-        serialize_by_alias=True, populate_by_name=True, alias_generator=alias_generators.to_camel
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
     )
 
     kind: Literal["datasource"] = "datasource"
@@ -264,7 +264,7 @@ class PADatamart(BaseModel):
     """Datamart table."""
 
     model_config = ConfigDict(
-        serialize_by_alias=True, populate_by_name=True, alias_generator=alias_generators.to_camel
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
     )
 
     kind: Literal["datamart"] = "datamart"
@@ -277,7 +277,7 @@ class PADataFeed(BaseModel):
     """Data feed table."""
 
     model_config = ConfigDict(
-        serialize_by_alias=True, populate_by_name=True, alias_generator=alias_generators.to_camel
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
     )
 
     kind: Literal["datafeed"] = "datafeed"

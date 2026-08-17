@@ -46,7 +46,7 @@ class UserInfo(BaseModel):
     """User information."""
 
     model_config = ConfigDict(
-        alias_generator=alias_generators.to_camel, populate_by_name=True, serialize_by_alias=True
+        alias_generator=alias_generators.to_camel, validate_by_name=True, serialize_by_alias=True
     )
 
     login_name: str
@@ -125,7 +125,7 @@ class Notification(BaseModel):
     """
 
     model_config = ConfigDict(
-        serialize_by_alias=True, populate_by_name=True, alias_generator=alias_generators.to_camel
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
     )
 
     title: str
