@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.2.2] - 2026-08-18
+
+### Changed
+- `setuptools` minimal version is now `0.83.0` for security (CVE-2026-59890)
+
 ## [1.2.1] - 2026-08-12
 
 ### Added
