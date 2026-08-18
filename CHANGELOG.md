@@ -1,6 +1,16 @@
 # Changelog
 
-## [Unreleased]
+## [1.2.1] - 2026-08-12
+
+### Added
+- `BackendVersion.parse()` classmethod to parse a Pricefx backend version string
+  (e.g. `"15.2.0"`, `"15.2.0-SNAPSHOT"`) into a `BackendVersion` instance.
+
+### Fixed
+- `list_lpg_items` now returns validated `LPGProduct` instances as documented,
+  instead of raw dicts.
+
+## [1.2.0] - 2026-08-12
 
 ### Added
 - `stream`, `fetch_paginated`, `to_pandas`, and `to_pandas_paginated` on table

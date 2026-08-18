@@ -26,6 +26,7 @@ from pyfxlib.lowlevel.pandasutil import (
     FieldSpecs,
     to_field_collection_spec,
 )
+from pyfxlib.schema import BackendVersion
 
 UNSUPPORTED_DATA = [
     [[1, 2]],
@@ -305,13 +306,6 @@ def test_field_specs_should_reject_unknown_field_type():
         FieldSpecs().set_col_specs("col", type="NOT_A_TYPE")
 
 
-def _version(spec: str) -> dict[str, int | None]:
-    parts = [int(p) for p in spec.split(".")]
-    return {"major": None, "minor": None, "patch": None} | dict(
-        zip(["major", "minor", "patch"], parts)
-    )
-
-
 @pytest.mark.parametrize(
     "backend, supported",
     [
@@ -336,15 +330,15 @@ def test_lob_push_is_gated_per_major_version(backend, supported):
     # NOT a scalar floor (17.0.3 > 16.3.13 yet is unsupported)
     fields_spec = [{"name": "bigtext", "type": "LOB"}]
     if supported:
-        check_backend_supports_field_types(fields_spec, lambda: _version(backend))
+        check_backend_supports_field_types(fields_spec, lambda: BackendVersion.parse(backend))
     else:
         with pytest.raises(RuntimeError, match="requires a newer Pricefx core"):
-            check_backend_supports_field_types(fields_spec, lambda: _version(backend))
+            check_backend_supports_field_types(fields_spec, lambda: BackendVersion.parse(backend))
 
 
 def test_non_gated_field_types_never_query_the_backend_version():
     # a push without any version-gated field must not pay a backend_version round-trip
-    def _must_not_be_called() -> dict[str, int | None]:
+    def _must_not_be_called() -> BackendVersion:
         raise AssertionError("backend_version must not be queried for non-gated types")
 
     fields_spec = [{"name": "a", "type": "TEXT"}, {"name": "b", "type": "NUMBER"}]

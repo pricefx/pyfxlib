@@ -22,7 +22,7 @@ class LPG(BaseModel):
     model_config = ConfigDict(
         frozen=True,
         alias_generator=alias_generators.to_camel,
-        populate_by_name=True,
+        validate_by_name=True,
         serialize_by_alias=True,
     )
 
@@ -69,7 +69,7 @@ class LPGProduct(BaseModel):
         frozen=True,
         extra="allow",
         alias_generator=alias_generators.to_camel,
-        populate_by_name=True,
+        validate_by_name=True,
         serialize_by_alias=True,
     )
 

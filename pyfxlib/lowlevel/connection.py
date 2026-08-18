@@ -41,6 +41,7 @@ from pyfxlib.lowlevel.constants import _DEFAULT_PAGE_SIZE, _DEFAULT_STREAM_CHUNK
 from pyfxlib.lowlevel.session import PfxSession
 from pyfxlib.schema import (
     AdvancedCriteria,
+    BackendVersion,
     FieldRule,
     FilterOperator,
     JobStatus,
@@ -97,7 +98,6 @@ class ConnectionAsync(ABC):
         """
         pass
 
-    @abstractmethod
     async def backend_version(self) -> dict[str, Optional[int]]:
         """Fetch the backend version information.
 
@@ -105,6 +105,16 @@ class ConnectionAsync(ABC):
             A dict containing at least the major version,
             optionally the minor and the patch values,
              e.g. {"major": 15, "minor": 2, "patch": 0}.
+        """
+        return (await self._fetch_backend_version()).model_dump()
+
+    @abstractmethod
+    async def _fetch_backend_version(self) -> BackendVersion:
+        """Fetch the backend version information, validated, for internal pyfxlib use only.
+
+        `backend_version()` is the public, backward-compatible dict-returning counterpart
+        (existing consumers of the Connection interface, e.g. genfx, python-engine, rely on
+        that shape); internally pyfxlib should circulate this validated model instead.
         """
         pass
 
@@ -582,27 +592,22 @@ class ConnectionRemote(ConnectionAsync):
         response = await self.session.post(f"{self.endpoint}/login/extended")
         return response.json()
 
-    async def backend_version(self) -> dict[str, Optional[int]]:
-        """See `ConnectionAsync` corresponding method."""
+    async def _fetch_backend_version(self) -> BackendVersion:
+        """Fetch and validate the backend version, for internal use.
+
+        `backend_version()` exposes this as a plain dict for backward compatibility with
+        existing consumers of the Connection interface (e.g. genfx, python-engine); internally
+        pyfxlib should circulate the validated `BackendVersion` model instead.
+        """
         response = await self.login_extended()
-        backend_version = str(response["response"]["data"][0]["extendedData"]["Release"])
-        try:
-            if backend_version.endswith("-SNAPSHOT"):
-                backend_version = backend_version[: -len("-SNAPSHOT")]
-            splitted = [int(v) for v in backend_version.split(".")]
-            return {"major": None, "minor": None, "patch": None} | {
-                k: v for k, v in zip(["major", "minor", "patch"], splitted)
-            }
-        except ValueError as err:
-            raise ValueError(
-                f"Invalid version format: {backend_version}. Expected format is 'major.minor.patch' or 'major.minor' or 'major' with int values.",  # noqa: E501
-            ) from err
+        release = str(response["response"]["data"][0]["extendedData"]["Release"])
+        return BackendVersion.parse(release)
 
     async def send_notification(self, notification: Notification) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        backend_version = await self.backend_version()
-        if ((backend_version["major"] or 0) < 15) or (
-            (backend_version["major"] or 0) == 15 and (backend_version["minor"] or 0) < 2
+        backend_version = await self._fetch_backend_version()
+        if (backend_version.major < 15) or (
+            backend_version.major == 15 and (backend_version.minor or 0) < 2
         ):
             raise RuntimeError(
                 "Notifications are not supported by backend versions below 15.2. "
@@ -875,7 +880,7 @@ class ConnectionRemote(ConnectionAsync):
             f"{self.endpoint}/pricegridmanager.fetch/{lpg_id}",
             json={"data": criteria.model_dump() if criteria else None},
         )
-        return response.json()["response"]["data"]
+        return [LPGProduct.model_validate(item) for item in response.json()["response"]["data"]]
 
     async def update_lpg(
         self,
@@ -1111,9 +1116,9 @@ class ConnectionLocal(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return {"response": {"data": [{"extendedData": {"Release": "99.0-SNAPSHOT"}}]}}
 
-    async def backend_version(self) -> dict[str, Optional[int]]:
+    async def _fetch_backend_version(self) -> BackendVersion:
         """See `ConnectionAsync` corresponding method."""
-        return {"major": 99, "minor": None, "patch": None}
+        return BackendVersion(major=99)
 
     async def send_notification(self, notification: Notification) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
@@ -1472,9 +1477,9 @@ class ConnectionComposed(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return await self._default.login_extended()
 
-    async def backend_version(self) -> dict[str, Optional[int]]:
+    async def _fetch_backend_version(self) -> BackendVersion:
         """See `ConnectionAsync` corresponding method."""
-        return await self._default.backend_version()
+        return await self._default._fetch_backend_version()
 
     async def send_notification(self, notification: Notification) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
@@ -1753,6 +1758,10 @@ class ConnectionSync:
     def login_extended(self) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.login_extended())
+
+    def _fetch_backend_version(self) -> BackendVersion:
+        """See `ConnectionAsync` corresponding method."""
+        return self._run_sync(self._conn._fetch_backend_version())
 
     def backend_version(self) -> dict[str, Optional[int]]:
         """See `ConnectionAsync` corresponding method."""

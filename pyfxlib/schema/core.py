@@ -23,6 +23,19 @@ class BackendVersion(BaseModel):
     minor: Optional[int] = None
     patch: Optional[int] = None
 
+    @classmethod
+    def parse(cls, version: str) -> Self:
+        """Parse a Pricefx backend version string, e.g. '15.2.0' or '15.2.0-SNAPSHOT'."""
+        version = version.removesuffix("-SNAPSHOT")
+        try:
+            parts = [int(part) for part in version.split(".")]
+        except ValueError as err:
+            raise ValueError(
+                f"Invalid version format: {version}. Expected format is 'major.minor.patch'"
+                " or 'major.minor' or 'major' with int values.",
+            ) from err
+        return cls.model_validate(dict(zip(["major", "minor", "patch"], parts)))
+
     @override
     def __str__(self) -> str:
         """Return a string representation of the version."""
@@ -33,7 +46,7 @@ class UserInfo(BaseModel):
     """User information."""
 
     model_config = ConfigDict(
-        alias_generator=alias_generators.to_camel, populate_by_name=True, serialize_by_alias=True
+        alias_generator=alias_generators.to_camel, validate_by_name=True, serialize_by_alias=True
     )
 
     login_name: str
@@ -112,7 +125,7 @@ class Notification(BaseModel):
     """
 
     model_config = ConfigDict(
-        serialize_by_alias=True, populate_by_name=True, alias_generator=alias_generators.to_camel
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
     )
 
     title: str
