@@ -19,8 +19,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date, datetime
 from enum import StrEnum, unique
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, TypeAlias
 
+import pandas as pd
 from pydantic import alias_generators, BaseModel, ConfigDict, Field
 
 
@@ -32,6 +33,7 @@ class Operator(StrEnum):
     OR = "or"
     NOT = "not"
 
+
 class OperationAgg(StrEnum):
     """Operation aggregate class."""
 
@@ -42,6 +44,7 @@ class OperationAgg(StrEnum):
     COUNT_ALL = "countAll"
     COUNT_NON_NULL = "countNonNull"
     COUNT_DISTINCT_NON_NULL = "countDistinctNonNull"
+
 
 class Operation(StrEnum):
     """Operation class."""
@@ -90,6 +93,7 @@ class Operation(StrEnum):
     CAST_AS_DATE_TIME = "castAsDateTime"
     CAST_AS_REAL = "castAsReal"
     CAST_AS_STRING = "castAsString"
+
 
 class FilterOperator(StrEnum):
     """Filter operators for search criteria."""
@@ -140,6 +144,7 @@ NUMERIC_FILTERS = [
     FilterOperator.INSET,
     FilterOperator.NOTINSET,
 ]
+
 DATE_FILTERS = [
     FilterOperator.EQUALS,
     FilterOperator.NOTEQUAL,
@@ -152,6 +157,7 @@ DATE_FILTERS = [
     FilterOperator.BETWEEN,
     FilterOperator.BETWEENINCLUSIVE,
 ]
+
 STRING_FILTERS = [
     FilterOperator.EQUALS,
     FilterOperator.IEQUALS,
@@ -290,10 +296,70 @@ class LiteralType(StrEnum):
         return str
 
 
+class CompanyParameterTables(BaseModel):
+    """Company parameter tables table."""
+
+    kind: Literal["companyParameterTables"] = "companyParameterTables"
+
+
+class CompanyParametersRows(BaseModel):
+    """Company parameters rows table."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["companyParameterRows"] = "companyParameterRows"
+    company_parameter_unique_name: str
+    target_date: Optional[date] = None
+
+
+class Customers(BaseModel):
+    """Customers table."""
+
+    kind: Literal["customers"] = "customers"
+
+
+class Sellers(BaseModel):
+    """Sellers table."""
+
+    kind: Literal["sellers"] = "sellers"
+
+
+class ActionItems(BaseModel):
+    """Action items table."""
+
+    kind: Literal["actionItems"] = "actionItems"
+
+
 class Products(BaseModel):
     """Products table."""
 
     kind: Literal["products"] = "products"
+
+
+class ProductCompetitions(BaseModel):
+    """Product competitions table."""
+
+    kind: Literal["productCompetitions"] = "productCompetitions"
+
+
+class ProductReferences(BaseModel):
+    """Product references table."""
+
+    kind: Literal["productReferences"] = "productReferences"
+
+
+class ProductBillOfMaterials(BaseModel):
+    """Product bill of materials table."""
+
+    kind: Literal["productBillOfMaterials"] = "productBillOfMaterials"
+
+
+class JobStatusTrackers(BaseModel):
+    """Job status trackers table."""
+
+    kind: Literal["jobStatusTrackers"] = "jobStatusTrackers"
 
 
 class ProductExtensionRows(BaseModel):
@@ -307,11 +373,171 @@ class ProductExtensionRows(BaseModel):
     product_extension_name: str
 
 
-class CompanyParametersRows(BaseModel):
-    """Company parameters rows table."""
+class CustomerExtensionRows(BaseModel):
+    """Customer extension rows table."""
 
-    kind: Literal["companyParameterRow"] = "companyParameterRow"
-    name: str
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["customerExtensionRows"] = "customerExtensionRows"
+    customer_extension_name: str
+
+
+class SellerExtensionRows(BaseModel):
+    """Seller extension rows table."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["sellerExtensionRows"] = "sellerExtensionRows"
+    seller_extension_name: str
+
+
+class ConditionRecords(BaseModel):
+    """Condition records table."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["conditionRecords"] = "conditionRecords"
+    condition_record_set_unique_name: str
+
+
+class QuoteLineItems(BaseModel):
+    """Quote line items table."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["quoteLineItems"] = "quoteLineItems"
+    quote_unique_name: str
+
+
+class RebateLineItems(BaseModel):
+    """Rebate line items table."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["rebateLineItems"] = "rebateLineItems"
+    rebate_unique_name: str
+
+
+class ContractLineItems(BaseModel):
+    """Contract line items table."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["contractLineItems"] = "contractLineItems"
+    contract_unique_name: str
+
+
+class CompensationLineItems(BaseModel):
+    """Compensation line items table."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["compensationLineItems"] = "compensationLineItems"
+    compensation_unique_name: str
+
+
+class Claims(BaseModel):
+    """Claims table."""
+
+    kind: Literal["claims"] = "claims"
+
+
+class ClaimLineItems(BaseModel):
+    """Claim line items table."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["claimLineItems"] = "claimLineItems"
+    claim_unique_name: str
+
+
+class CalculationGrids(BaseModel):
+    """Calculation grids table."""
+
+    kind: Literal["calculationGrids"] = "calculationGrids"
+
+
+class CalculationGridLineItems(BaseModel):
+    """Calculation grid line items table."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["calculationGridLineItems"] = "calculationGridLineItems"
+    calculation_grid_id: int
+
+
+class PriceLists(BaseModel):
+    """Price lists table."""
+
+    kind: Literal["priceLists"] = "priceLists"
+
+
+class PriceListLineItems(BaseModel):
+    """Price list items table."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["priceListLineItems"] = "priceListLineItems"
+    price_list_id: int
+
+
+class PriceGrids(BaseModel):
+    """Price grids table."""
+
+    kind: Literal["priceGrids"] = "priceGrids"
+
+
+class PriceGridLineItems(BaseModel):
+    """Price grid line items table."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["priceGridLineItems"] = "priceGridLineItems"
+    price_grid_id: int
+
+
+class RebateRecords(BaseModel):
+    """Rebate records table."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["rebateRecords"] = "rebateRecords"
+    rebate_record_set_id: int
+
+
+class CompensationRecords(BaseModel):
+    """Compensation records table."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["compensationRecords"] = "compensationRecords"
+    compensation_record_set_id: int
 
 
 class PADataSource(BaseModel):
@@ -349,9 +575,76 @@ class PADataFeed(BaseModel):
     data_feed_unique_name: str
 
 
-Table = Products | ProductExtensionRows | PADataSource | PADatamart | PADataFeed
+class PAModelTable(BaseModel):
+    """PA Model table."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["modelTable"] = "modelTable"
+    model_unique_name: str
+    table_name: str
 
 
+class PARollup(BaseModel):
+    """PA Rollup table."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["rollup"] = "rollup"
+    rollup_label: str
+
+
+class CustomForms(BaseModel):
+    """Custom forms table."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["customForms"] = "customForms"
+    custom_form_type_unique_name: str
+
+
+Table: TypeAlias = (
+    CompanyParameterTables
+    | CompanyParametersRows
+    | Products
+    | ProductCompetitions
+    | ProductReferences
+    | ProductBillOfMaterials
+    | Customers
+    | Sellers
+    | ActionItems
+    | JobStatusTrackers
+    | ProductExtensionRows
+    | CustomerExtensionRows
+    | SellerExtensionRows
+    | ConditionRecords
+    | QuoteLineItems
+    | RebateLineItems
+    | ContractLineItems
+    | CompensationLineItems
+    | Claims
+    | ClaimLineItems
+    | CalculationGrids
+    | CalculationGridLineItems
+    | PriceLists
+    | PriceListLineItems
+    | PriceGrids
+    | PriceGridLineItems
+    | RebateRecords
+    | CompensationRecords
+    | PADataFeed
+    | PADataSource
+    | PADatamart
+    | PAModelTable
+    | PARollup
+    | CustomForms
+)
 # All Selectables
 
 
@@ -359,16 +652,82 @@ class SourceColumnReference(BaseModel):
     """Source column class."""
 
     kind: Literal["columnReference"] = "columnReference"
-    column: str
     source: Literal["table"] = "table"
+    column: str
 
 
 class PreviousStageColumnReference(BaseModel):
     """Previous stage column class."""
 
     kind: Literal["columnReference"] = "columnReference"
-    column: str
     source: Literal["previousStage"] = "previousStage"
+    column: str
+
+
+class InputColumnReference(BaseModel):
+    """Input column reference."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["inputColumnReference"] = "inputColumnReference"
+    source: Literal["table"] = "table"
+    input_name: str
+    column: str
+
+
+class OutputColumnReference(BaseModel):
+    """Output column reference."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["outputColumnReference"] = "outputColumnReference"
+    source: Literal["table"] = "table"
+    element_name: str
+    column: str
+
+
+class CalculationResultColumnReference(BaseModel):
+    """Calculation result column reference."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["calculationResultColumnReference"] = "calculationResultColumnReference"
+    source: Literal["table"] = "table"
+    element_name: str
+
+
+class ActiveCalculationResultColumnReference(BaseModel):
+    """Active calculation result column reference."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["activeCalculationResultColumnReference"] = (
+        "activeCalculationResultColumnReference"
+    )
+    source: Literal["table"] = "table"
+    element_name: str
+
+
+class PreviousCalculationResultColumnReference(BaseModel):
+    """Previous calculation result column reference."""
+
+    model_config = ConfigDict(
+        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
+    )
+
+    kind: Literal["previousCalculationResultColumnReference"] = (
+        "previousCalculationResultColumnReference"
+    )
+    source: Literal["table"] = "table"
+    element_name: str
 
 
 class LiteralValue(BaseModel):
@@ -388,7 +747,7 @@ class PreviousStageFunction(BaseModel):
 
 
 PreviousStageExpression: TypeAlias = (
-        LiteralValue | PreviousStageColumnReference | PreviousStageFunction
+    LiteralValue | PreviousStageColumnReference | PreviousStageFunction
 )
 
 
@@ -400,7 +759,21 @@ class SourceFunction(BaseModel):
     arguments: list["SourceExpression"]
 
 
-SourceExpression: TypeAlias = LiteralValue | SourceColumnReference | SourceFunction
+# Every expression addressable inside a source stage. The DTO has a single flat
+# `ExpressionDTO` hierarchy and `FunctionDTO.arguments` is a plain `List<ExpressionDTO>`,
+# so any reference kind nests at any depth. Which of them a given table actually accepts
+# is a runtime check server-side (`switch (t) { case InputsColumns c -> ...; default ->
+# throw }`), not something the wire format encodes.
+SourceExpression: TypeAlias = (
+    LiteralValue
+    | SourceColumnReference
+    | InputColumnReference
+    | OutputColumnReference
+    | CalculationResultColumnReference
+    | ActiveCalculationResultColumnReference
+    | PreviousCalculationResultColumnReference
+    | SourceFunction
+)
 
 
 class SourceSelectable(BaseModel):
@@ -431,10 +804,7 @@ class PreviousStageFunctionAgg(BaseModel):
 
 
 ExpressionAgg: TypeAlias = (
-        LiteralValue
-        | PreviousStageColumnReference
-        | PreviousStageFunctionAgg
-        | PreviousStageFunction
+    LiteralValue | PreviousStageColumnReference | PreviousStageFunctionAgg | PreviousStageFunction
 )
 
 
@@ -454,10 +824,8 @@ class Source(BaseModel):
 
     kind: Literal["source"] = "source"
     table: Table
-    columns: Optional[list[SourceSelectable]] = None
-    # Note: We disable this field because the LLM has trouble generating proper criteria
-    # instead we rely on explicity filter stage for now.
-    # criteria: Optional[SourceExpression] = None
+    columns: list[SourceSelectable] = Field(default_factory=list)
+    criteria: Optional[SourceExpression] = None
 
 
 class JoinType(StrEnum):
@@ -476,7 +844,15 @@ class JoinFunction(BaseModel):
 
 
 JoinExpression: TypeAlias = (
-        LiteralValue | PreviousStageColumnReference | SourceColumnReference | JoinFunction
+    LiteralValue
+    | PreviousStageColumnReference
+    | SourceColumnReference
+    | InputColumnReference
+    | OutputColumnReference
+    | CalculationResultColumnReference
+    | ActiveCalculationResultColumnReference
+    | PreviousCalculationResultColumnReference
+    | JoinFunction
 )
 
 
@@ -564,16 +940,16 @@ class Sort(BaseModel):
 
 
 Stage: TypeAlias = (
-        Source
-        | Join
-        | AddColumns
-        | RemoveColumns
-        | RetainColumns
-        | Filter
-        | Aggregate
-        | Distinct
-        | Sort
-        | Take
+    Source
+    | Join
+    | AddColumns
+    | RemoveColumns
+    | RetainColumns
+    | Filter
+    | Aggregate
+    | Distinct
+    | Take
+    | Sort
 )
 
 ###
@@ -584,6 +960,7 @@ class Pipeline(BaseModel):
 
     kind: Literal["pipeline"] = "pipeline"
     stages: list[Stage]
+
 
 class QueryAnswer(BaseModel):
     """Result of the query."""
