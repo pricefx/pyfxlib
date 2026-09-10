@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0] - 2026-09-21
+
+### Added
+- Completing schema for Query API: adding `Pipeline`, `Stage` (and the union it is built from
+`Source`, `JoinTable`, `JoinPipeline`, `AddColumns`, `RemoveColumns`, `RetainColumns`,
+`SelectColumns`, `Filter`, `Aggregate`, `Distinct`, `Take`, `Sort`), together with the
+expression, window function, function and selectable types the stages accept, and
+`QueryAnswer` for a result set (`query`, `meta`, `rows`, plus `to_pandas()`).
+- `PfxCamelCaseModel`, and `PfxPascalCaseModel`, the two base class every schema model now derives from. It
+carries the camel/pascal wire to python that configuration of each model used to
+repeat by hand, so subclasses declare only the configuration that differs. Exported from
+`pyfxlib.schema` for anyone defining their own domain objects.
+
 ## [1.2.2] - 2026-08-18
 
 ### Changed
