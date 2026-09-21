@@ -309,18 +309,23 @@ class LiteralType(StrEnum):
     def to_pandas_type(self) -> Any:
         """Convert the LiteralType to a Pandas type.
 
-        Same as to_py_type, except that date and datetime types are converted to datetime64[ns].
+        Same as to_py_type, except that date and datetime types are converted to datetime64[ns]
+        and nullable dtypes are used, so that NULL values coming back from the query are kept
+        as NA instead of raising (INTEGER) or being silently cast (STRING, BOOLEAN).
         """
         if self in [LiteralType.DATE_ONLY, LiteralType.DATE_TIME]:
             return "datetime64[ns]"
         if self == LiteralType.INTEGER:
-            return int
+            return "Int64"
         if self == LiteralType.REAL:
+            # float64 already represents NULL as NaN, so it needs no nullable dtype
             return float
         if self == LiteralType.BOOLEAN:
-            return bool
-        # Fall back to str parsing by default
-        return str
+            return "boolean"
+        if self == LiteralType.STRING:
+            return "string"
+        # Leave anything else as-is, so that structured values are not stringified
+        return "object"
 
 
 class CompanyParameterTables(BaseModel):
@@ -1064,21 +1069,21 @@ class AddColumns(BaseModel):
     """Add columns class."""
 
     kind: Literal["addColumns"] = "addColumns"
-    columns: list[PreviousStageSelectable]
+    columns: list[PreviousStageSelectable] = Field(min_length=1)
 
 
 class RemoveColumns(BaseModel):
     """Remove columns class."""
 
     kind: Literal["removeColumns"] = "removeColumns"
-    columns: list[str]
+    columns: list[str] = Field(min_length=1)
 
 
 class RetainColumns(BaseModel):
     """Retain columns class."""
 
     kind: Literal["retainColumns"] = "retainColumns"
-    columns: list[str]
+    columns: list[str] = Field(min_length=1)
 
 
 class SelectColumns(BaseModel):
@@ -1099,7 +1104,7 @@ class Aggregate(BaseModel):
     """Aggregate class."""
 
     kind: Literal["aggregate"] = "aggregate"
-    columns: list[PreviousStageSelectableAgg]
+    columns: list[PreviousStageSelectableAgg] = Field(min_length=1)
     dimensions: list[PreviousStageExpression]
 
 
@@ -1137,7 +1142,7 @@ class Sort(BaseModel):
     """Sort class."""
 
     kind: Literal["sort"] = "sort"
-    orders: list[Order]
+    orders: list[Order] = Field(min_length=1)
 
 
 Stage: TypeAlias = (
@@ -1161,7 +1166,7 @@ class Pipeline(BaseModel):
     """Pipeline class."""
 
     kind: Literal["pipeline"] = "pipeline"
-    stages: list[Stage]
+    stages: list[Stage] = Field(min_length=1)
 
 
 class QueryAnswer(BaseModel):
