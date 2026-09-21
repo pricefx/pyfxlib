@@ -664,6 +664,14 @@ class PreviousStageColumnReference(BaseModel):
     column: str
 
 
+class PipelineColumnReference(BaseModel):
+    """Joined pipeline column class."""
+
+    kind: Literal["columnReference"] = "columnReference"
+    source: Literal["pipeline"] = "pipeline"
+    column: str
+
+
 class InputColumnReference(BaseModel):
     """Input column reference."""
 
@@ -835,15 +843,15 @@ class JoinType(StrEnum):
     LEFT_OUTER = "LEFT_OUTER"
 
 
-class JoinFunction(BaseModel):
-    """Function class for joins."""
+class JoinTableFunction(BaseModel):
+    """Function class for joins against a table."""
 
     kind: Literal["function"] = "function"
     name: Operation
-    arguments: list["JoinExpression"]
+    arguments: list["JoinTableExpression"]
 
 
-JoinExpression: TypeAlias = (
+JoinTableExpression: TypeAlias = (
     LiteralValue
     | PreviousStageColumnReference
     | SourceColumnReference
@@ -852,18 +860,64 @@ JoinExpression: TypeAlias = (
     | CalculationResultColumnReference
     | ActiveCalculationResultColumnReference
     | PreviousCalculationResultColumnReference
-    | JoinFunction
+    | JoinTableFunction
 )
 
 
-class Join(BaseModel):
-    """Inner join class."""
+class JoinTableSelectable(BaseModel):
+    """Selectable class for joins against a table."""
+
+    kind: Literal["selectable"] = "selectable"
+    expression: JoinTableExpression
+    alias: str
+
+
+class JoinPipelineFunction(BaseModel):
+    """Function class for joins against a pipeline."""
+
+    kind: Literal["function"] = "function"
+    name: Operation
+    arguments: list["JoinPipelineExpression"]
+
+
+JoinPipelineExpression: TypeAlias = (
+    LiteralValue | PreviousStageColumnReference | PipelineColumnReference | JoinPipelineFunction
+)
+
+
+class JoinPipelineSelectable(BaseModel):
+    """Selectable class for joins against a pipeline."""
+
+    kind: Literal["selectable"] = "selectable"
+    expression: JoinPipelineExpression
+    alias: str
+
+
+class JoinTable(BaseModel):
+    """Join against a table."""
+
+    model_config = ConfigDict(extra="forbid")
 
     kind: Literal["join"] = "join"
     table: Table
     type: JoinType
-    columns: list[SourceSelectable]
-    criteria: JoinExpression
+    columns: list[JoinTableSelectable]
+    criteria: JoinTableExpression
+
+
+class JoinPipeline(BaseModel):
+    """Join against another pipeline."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["join"] = "join"
+    pipeline: "Pipeline"
+    type: JoinType
+    columns: list[JoinPipelineSelectable]
+    criteria: JoinPipelineExpression
+
+
+Join: TypeAlias = JoinTable | JoinPipeline
 
 
 class AddColumns(BaseModel):
