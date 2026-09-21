@@ -968,6 +968,13 @@ class RetainColumns(BaseModel):
     columns: list[str]
 
 
+class SelectColumns(BaseModel):
+    """Select columns class."""
+
+    kind: Literal["selectColumns"] = "selectColumns"
+    columns: list[PreviousStageSelectable] = Field(min_length=1)
+
+
 class Filter(BaseModel):
     """Filter class."""
 
@@ -1026,6 +1033,7 @@ Stage: TypeAlias = (
     | AddColumns
     | RemoveColumns
     | RetainColumns
+    | SelectColumns
     | Filter
     | Aggregate
     | Distinct
