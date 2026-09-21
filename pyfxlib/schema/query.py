@@ -773,6 +773,116 @@ class LiteralValue(BaseModel):
     value: Any
 
 
+@unique
+class WindowOperation(StrEnum):
+    """Functions the DTO dispatches through FunctionDTO's window overload.
+
+    A disjoint set from Operation: the window overload rejects every scalar name, and the
+    scalar overload rejects the ranking ones.
+    """
+
+    AVG = "avg"
+    COUNT_ALL = "countAll"
+    COUNT_NON_NULL = "countNonNull"
+    CUME_DIST = "cumeDist"
+    DENSE_RANK = "denseRank"
+    FIRST_VALUE = "firstValue"
+    LAG = "lag"
+    LAST_VALUE = "lastValue"
+    LEAD = "lead"
+    MAX = "max"
+    MIN = "min"
+    NTH_VALUE = "nthValue"
+    NTILE = "ntile"
+    PERCENT_RANK = "percentRank"
+    RANK = "rank"
+    ROW_NUMBER = "rowNumber"
+    SUM = "sum"
+
+
+@unique
+class FrameType(StrEnum):
+    """Window frame type class. Lower-case on the wire, unlike the other enums."""
+
+    ROWS = "rows"
+    RANGE = "range"
+    GROUP = "group"
+
+
+@unique
+class FrameExclusion(StrEnum):
+    """Window frame exclusion class."""
+
+    CURRENT_ROW = "CURRENT_ROW"
+    GROUP = "GROUP"
+    TIES = "TIES"
+    NONE = "NONE"
+
+
+@unique
+class BoundDirection(StrEnum):
+    """Window frame bound direction class."""
+
+    PRECEDING = "PRECEDING"
+    FOLLOWING = "FOLLOWING"
+
+
+class UnboundedBound(BaseModel):
+    """Window frame bound running to the start or end of the partition."""
+
+    type: Literal["unbounded"] = "unbounded"
+    direction: BoundDirection
+
+
+class OffsetBound(BaseModel):
+    """Window frame bound at a fixed offset from the current row."""
+
+    type: Literal["offset"] = "offset"
+    offset: int
+    direction: BoundDirection
+
+
+class CurrentRowBound(BaseModel):
+    """Window frame bound at the current row."""
+
+    type: Literal["currentRow"] = "currentRow"
+
+
+Bound: TypeAlias = UnboundedBound | OffsetBound | CurrentRowBound
+
+
+class Frame(BaseModel):
+    """Window frame class.
+
+    FrameDTO is a plain record rather than a QueryApiDTO, so unlike every other model here it
+    carries no `kind`, and its bounds discriminate on `type`.
+    """
+
+    type: FrameType
+    start: Bound
+    end: Bound
+    exclusion: FrameExclusion
+
+
+class PreviousStageWindowFunctionCall(BaseModel):
+    """The function a window function applies over its frame."""
+
+    kind: Literal["function"] = "function"
+    name: WindowOperation
+    arguments: list["PreviousStageExpression"] = Field(default_factory=list)
+
+
+class PreviousStageWindowFunction(BaseModel):
+    """Window function class."""
+
+    kind: Literal["windowFunction"] = "windowFunction"
+    frame: Frame
+    partitions: list["PreviousStageExpression"] = Field(default_factory=list)
+    filter: Optional["PreviousStageExpression"] = None
+    orders: list["Order"] = Field(default_factory=list)
+    function: PreviousStageWindowFunctionCall
+
+
 class PreviousStageFunction(BaseModel):
     """Function class."""
 
@@ -782,7 +892,10 @@ class PreviousStageFunction(BaseModel):
 
 
 PreviousStageExpression: TypeAlias = (
-    LiteralValue | PreviousStageColumnReference | PreviousStageFunction
+    LiteralValue
+    | PreviousStageColumnReference
+    | PreviousStageWindowFunction
+    | PreviousStageFunction
 )
 
 
