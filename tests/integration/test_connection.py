@@ -216,13 +216,23 @@ async def test_should_be_able_to_update_a_data_source(_async_conn: ConnectionAsy
     dataframe_append = pd.DataFrame(new_data, index=[3, 4])
     await _async_conn.update_table(ds_typedid, AvroStream.from_dataframe(dataframe_append))
 
-    # then the new content is added to the table
+    # then the new content is added to the table.
+    # The stream carries no ORDER BY, so rows from the appended batch can come back in either
+    # order. Sort both sides on the key column before comparing, as
+    # test_create_table_should_work_with_ten_million_lines_df does.
     expected_data = {
         "column1": ["key1", "key2", "key3", "key4"],
         "column2": [1, 12, 2, 24],
     }
     dataframe_expected = pd.DataFrame(expected_data)
     dataframe_downloaded = await collect_csv(_async_conn.stream_dm_data(ds_typedid, 128))
+    assert len(dataframe_downloaded) == len(dataframe_expected)
+    dataframe_expected.sort_values(
+        ["column1"], axis=0, ignore_index=True, ascending=True, inplace=True
+    )
+    dataframe_downloaded.sort_values(
+        ["column1"], axis=0, ignore_index=True, ascending=True, inplace=True
+    )
     assert (dataframe_expected == dataframe_downloaded[list(dataframe_expected.keys())]).all().all()
 
 
