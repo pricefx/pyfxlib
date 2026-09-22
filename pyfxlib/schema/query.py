@@ -22,7 +22,9 @@ from enum import StrEnum, unique
 from typing import Any, Literal, Optional, TypeAlias
 
 import pandas as pd
-from pydantic import alias_generators, BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from pyfxlib.schema.base import PfxCamelCaseModel
 
 
 @unique
@@ -216,12 +218,8 @@ STRING_FILTERS = [
 ]
 
 
-class FieldRule(BaseModel):
+class FieldRule(PfxCamelCaseModel):
     """FieldRule class for query criteria on a given field."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     field_name: str
     operator: FilterOperator
@@ -230,10 +228,8 @@ class FieldRule(BaseModel):
     end: Optional[Any] = None
 
 
-class AdvancedCriteria(BaseModel):
+class AdvancedCriteria(PfxCamelCaseModel):
     """AdvancedCriteria class for combining multiple FieldRules with logical operators."""
-
-    model_config = ConfigDict(serialize_by_alias=True, validate_by_name=True)
 
     operator: Operator
     criteria: Sequence[FieldRule | AdvancedCriteria]
@@ -332,267 +328,199 @@ class LiteralType(StrEnum):
         return "object"
 
 
-class CompanyParameterTables(BaseModel):
+class CompanyParameterTables(PfxCamelCaseModel):
     """Company parameter tables table."""
 
     kind: Literal["companyParameterTables"] = "companyParameterTables"
 
 
-class CompanyParametersRows(BaseModel):
+class CompanyParametersRows(PfxCamelCaseModel):
     """Company parameters rows table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["companyParameterRows"] = "companyParameterRows"
     company_parameter_unique_name: str
     target_date: Optional[date] = None
 
 
-class Customers(BaseModel):
+class Customers(PfxCamelCaseModel):
     """Customers table."""
 
     kind: Literal["customers"] = "customers"
 
 
-class Sellers(BaseModel):
+class Sellers(PfxCamelCaseModel):
     """Sellers table."""
 
     kind: Literal["sellers"] = "sellers"
 
 
-class ActionItems(BaseModel):
+class ActionItems(PfxCamelCaseModel):
     """Action items table."""
 
     kind: Literal["actionItems"] = "actionItems"
 
 
-class Products(BaseModel):
+class Products(PfxCamelCaseModel):
     """Products table."""
 
     kind: Literal["products"] = "products"
 
 
-class ProductCompetitions(BaseModel):
+class ProductCompetitions(PfxCamelCaseModel):
     """Product competitions table."""
 
     kind: Literal["productCompetitions"] = "productCompetitions"
 
 
-class ProductReferences(BaseModel):
+class ProductReferences(PfxCamelCaseModel):
     """Product references table."""
 
     kind: Literal["productReferences"] = "productReferences"
 
 
-class ProductBillOfMaterials(BaseModel):
+class ProductBillOfMaterials(PfxCamelCaseModel):
     """Product bill of materials table."""
 
     kind: Literal["productBillOfMaterials"] = "productBillOfMaterials"
 
 
-class JobStatusTrackers(BaseModel):
+class JobStatusTrackers(PfxCamelCaseModel):
     """Job status trackers table."""
 
     kind: Literal["jobStatusTrackers"] = "jobStatusTrackers"
 
 
-class ProductExtensionRows(BaseModel):
+class ProductExtensionRows(PfxCamelCaseModel):
     """Product extension rows table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["productExtensionRows"] = "productExtensionRows"
     product_extension_name: str
 
 
-class CustomerExtensionRows(BaseModel):
+class CustomerExtensionRows(PfxCamelCaseModel):
     """Customer extension rows table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["customerExtensionRows"] = "customerExtensionRows"
     customer_extension_name: str
 
 
-class SellerExtensionRows(BaseModel):
+class SellerExtensionRows(PfxCamelCaseModel):
     """Seller extension rows table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["sellerExtensionRows"] = "sellerExtensionRows"
     seller_extension_name: str
 
 
-class ConditionRecords(BaseModel):
+class ConditionRecords(PfxCamelCaseModel):
     """Condition records table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["conditionRecords"] = "conditionRecords"
     condition_record_set_unique_name: str
 
 
-class QuoteLineItems(BaseModel):
+class QuoteLineItems(PfxCamelCaseModel):
     """Quote line items table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["quoteLineItems"] = "quoteLineItems"
     quote_unique_name: str
 
 
-class RebateLineItems(BaseModel):
+class RebateLineItems(PfxCamelCaseModel):
     """Rebate line items table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["rebateLineItems"] = "rebateLineItems"
     rebate_unique_name: str
 
 
-class ContractLineItems(BaseModel):
+class ContractLineItems(PfxCamelCaseModel):
     """Contract line items table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["contractLineItems"] = "contractLineItems"
     contract_unique_name: str
 
 
-class CompensationLineItems(BaseModel):
+class CompensationLineItems(PfxCamelCaseModel):
     """Compensation line items table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["compensationLineItems"] = "compensationLineItems"
     compensation_unique_name: str
 
 
-class Claims(BaseModel):
+class Claims(PfxCamelCaseModel):
     """Claims table."""
 
     kind: Literal["claims"] = "claims"
 
 
-class ClaimLineItems(BaseModel):
+class ClaimLineItems(PfxCamelCaseModel):
     """Claim line items table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["claimLineItems"] = "claimLineItems"
     claim_unique_name: str
 
 
-class CalculationGrids(BaseModel):
+class CalculationGrids(PfxCamelCaseModel):
     """Calculation grids table."""
 
     kind: Literal["calculationGrids"] = "calculationGrids"
 
 
-class CalculationGridLineItems(BaseModel):
+class CalculationGridLineItems(PfxCamelCaseModel):
     """Calculation grid line items table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["calculationGridLineItems"] = "calculationGridLineItems"
     calculation_grid_id: int
 
 
-class PriceLists(BaseModel):
+class PriceLists(PfxCamelCaseModel):
     """Price lists table."""
 
     kind: Literal["priceLists"] = "priceLists"
 
 
-class PriceListLineItems(BaseModel):
+class PriceListLineItems(PfxCamelCaseModel):
     """Price list items table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["priceListLineItems"] = "priceListLineItems"
     price_list_id: int
 
 
-class PriceGrids(BaseModel):
+class PriceGrids(PfxCamelCaseModel):
     """Price grids table."""
 
     kind: Literal["priceGrids"] = "priceGrids"
 
 
-class PriceGridLineItems(BaseModel):
+class PriceGridLineItems(PfxCamelCaseModel):
     """Price grid line items table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["priceGridLineItems"] = "priceGridLineItems"
     price_grid_id: int
 
 
-class RebateRecords(BaseModel):
+class RebateRecords(PfxCamelCaseModel):
     """Rebate records table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["rebateRecords"] = "rebateRecords"
     rebate_record_set_id: int
 
 
-class CompensationRecords(BaseModel):
+class CompensationRecords(PfxCamelCaseModel):
     """Compensation records table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["compensationRecords"] = "compensationRecords"
     compensation_record_set_id: int
 
 
-class PADataSource(BaseModel):
+class PADataSource(PfxCamelCaseModel):
     """Data source table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["datasource"] = "datasource"
     data_source_unique_name: str
 
 
-class PADatamart(BaseModel):
+class PADatamart(PfxCamelCaseModel):
     """Datamart table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["datamart"] = "datamart"
     datamart_unique_name: str
@@ -600,46 +528,30 @@ class PADatamart(BaseModel):
     uom: Optional[str] = None
 
 
-class PADataFeed(BaseModel):
+class PADataFeed(PfxCamelCaseModel):
     """Data feed table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["datafeed"] = "datafeed"
     data_feed_unique_name: str
 
 
-class PAModelTable(BaseModel):
+class PAModelTable(PfxCamelCaseModel):
     """PA Model table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["modelTable"] = "modelTable"
     model_unique_name: str
     table_name: str
 
 
-class PARollup(BaseModel):
+class PARollup(PfxCamelCaseModel):
     """PA Rollup table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["rollup"] = "rollup"
     rollup_label: str
 
 
-class CustomForms(BaseModel):
+class CustomForms(PfxCamelCaseModel):
     """Custom forms table."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["customForms"] = "customForms"
     custom_form_type_unique_name: str
@@ -684,7 +596,7 @@ Table: TypeAlias = (
 # All Selectables
 
 
-class SourceColumnReference(BaseModel):
+class SourceColumnReference(PfxCamelCaseModel):
     """Source column class."""
 
     kind: Literal["columnReference"] = "columnReference"
@@ -692,7 +604,7 @@ class SourceColumnReference(BaseModel):
     column: str
 
 
-class PreviousStageColumnReference(BaseModel):
+class PreviousStageColumnReference(PfxCamelCaseModel):
     """Previous stage column class."""
 
     kind: Literal["columnReference"] = "columnReference"
@@ -700,7 +612,7 @@ class PreviousStageColumnReference(BaseModel):
     column: str
 
 
-class PipelineColumnReference(BaseModel):
+class PipelineColumnReference(PfxCamelCaseModel):
     """Joined pipeline column class."""
 
     kind: Literal["columnReference"] = "columnReference"
@@ -708,12 +620,8 @@ class PipelineColumnReference(BaseModel):
     column: str
 
 
-class InputColumnReference(BaseModel):
+class InputColumnReference(PfxCamelCaseModel):
     """Input column reference."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["inputColumnReference"] = "inputColumnReference"
     source: Literal["table"] = "table"
@@ -721,12 +629,8 @@ class InputColumnReference(BaseModel):
     column: str
 
 
-class OutputColumnReference(BaseModel):
+class OutputColumnReference(PfxCamelCaseModel):
     """Output column reference."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["outputColumnReference"] = "outputColumnReference"
     source: Literal["table"] = "table"
@@ -734,24 +638,16 @@ class OutputColumnReference(BaseModel):
     column: str
 
 
-class CalculationResultColumnReference(BaseModel):
+class CalculationResultColumnReference(PfxCamelCaseModel):
     """Calculation result column reference."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["calculationResultColumnReference"] = "calculationResultColumnReference"
     source: Literal["table"] = "table"
     element_name: str
 
 
-class ActiveCalculationResultColumnReference(BaseModel):
+class ActiveCalculationResultColumnReference(PfxCamelCaseModel):
     """Active calculation result column reference."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["activeCalculationResultColumnReference"] = (
         "activeCalculationResultColumnReference"
@@ -760,12 +656,8 @@ class ActiveCalculationResultColumnReference(BaseModel):
     element_name: str
 
 
-class PreviousCalculationResultColumnReference(BaseModel):
+class PreviousCalculationResultColumnReference(PfxCamelCaseModel):
     """Previous calculation result column reference."""
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     kind: Literal["previousCalculationResultColumnReference"] = (
         "previousCalculationResultColumnReference"
@@ -774,7 +666,7 @@ class PreviousCalculationResultColumnReference(BaseModel):
     element_name: str
 
 
-class LiteralValue(BaseModel):
+class LiteralValue(PfxCamelCaseModel):
     """Literal class."""
 
     kind: Literal["literal"] = "literal"
@@ -836,14 +728,14 @@ class BoundDirection(StrEnum):
     FOLLOWING = "FOLLOWING"
 
 
-class UnboundedBound(BaseModel):
+class UnboundedBound(PfxCamelCaseModel):
     """Window frame bound running to the start or end of the partition."""
 
     type: Literal["unbounded"] = "unbounded"
     direction: BoundDirection
 
 
-class OffsetBound(BaseModel):
+class OffsetBound(PfxCamelCaseModel):
     """Window frame bound at a fixed offset from the current row."""
 
     type: Literal["offset"] = "offset"
@@ -851,7 +743,7 @@ class OffsetBound(BaseModel):
     direction: BoundDirection
 
 
-class CurrentRowBound(BaseModel):
+class CurrentRowBound(PfxCamelCaseModel):
     """Window frame bound at the current row."""
 
     type: Literal["currentRow"] = "currentRow"
@@ -860,7 +752,7 @@ class CurrentRowBound(BaseModel):
 Bound: TypeAlias = UnboundedBound | OffsetBound | CurrentRowBound
 
 
-class Frame(BaseModel):
+class Frame(PfxCamelCaseModel):
     """Window frame class.
 
     FrameDTO is a plain record rather than a QueryApiDTO, so unlike every other model here it
@@ -873,7 +765,7 @@ class Frame(BaseModel):
     exclusion: FrameExclusion
 
 
-class PreviousStageWindowFunctionCall(BaseModel):
+class PreviousStageWindowFunctionCall(PfxCamelCaseModel):
     """The function a window function applies over its frame."""
 
     kind: Literal["function"] = "function"
@@ -881,7 +773,7 @@ class PreviousStageWindowFunctionCall(BaseModel):
     arguments: list["PreviousStageExpression"] = Field(default_factory=list)
 
 
-class PreviousStageWindowFunction(BaseModel):
+class PreviousStageWindowFunction(PfxCamelCaseModel):
     """Window function class."""
 
     kind: Literal["windowFunction"] = "windowFunction"
@@ -892,7 +784,7 @@ class PreviousStageWindowFunction(BaseModel):
     function: PreviousStageWindowFunctionCall
 
 
-class PreviousStageFunction(BaseModel):
+class PreviousStageFunction(PfxCamelCaseModel):
     """Function class."""
 
     kind: Literal["function"] = "function"
@@ -908,7 +800,7 @@ PreviousStageExpression: TypeAlias = (
 )
 
 
-class SourceFunction(BaseModel):
+class SourceFunction(PfxCamelCaseModel):
     """Source Function class."""
 
     kind: Literal["function"] = "function"
@@ -933,7 +825,7 @@ SourceExpression: TypeAlias = (
 )
 
 
-class SourceSelectable(BaseModel):
+class SourceSelectable(PfxCamelCaseModel):
     """Source Selectable class."""
 
     kind: Literal["selectable"] = "selectable"
@@ -941,7 +833,7 @@ class SourceSelectable(BaseModel):
     alias: str
 
 
-class PreviousStageSelectable(BaseModel):
+class PreviousStageSelectable(PfxCamelCaseModel):
     """Selectable class."""
 
     kind: Literal["selectable"] = "selectable"
@@ -952,7 +844,7 @@ class PreviousStageSelectable(BaseModel):
 # Special case for aggregable expressions
 
 
-class PreviousStageFunctionAgg(BaseModel):
+class PreviousStageFunctionAgg(PfxCamelCaseModel):
     """Function agg class."""
 
     kind: Literal["function"] = "function"
@@ -965,7 +857,7 @@ ExpressionAgg: TypeAlias = (
 )
 
 
-class PreviousStageSelectableAgg(BaseModel):
+class PreviousStageSelectableAgg(PfxCamelCaseModel):
     """Selectable agg class."""
 
     kind: Literal["selectable"] = "selectable"
@@ -976,7 +868,7 @@ class PreviousStageSelectableAgg(BaseModel):
 # All the stage types
 
 
-class Source(BaseModel):
+class Source(PfxCamelCaseModel):
     """Source class."""
 
     kind: Literal["source"] = "source"
@@ -993,7 +885,7 @@ class JoinType(StrEnum):
     LEFT_OUTER = "LEFT_OUTER"
 
 
-class JoinTableFunction(BaseModel):
+class JoinTableFunction(PfxCamelCaseModel):
     """Function class for joins against a table."""
 
     kind: Literal["function"] = "function"
@@ -1014,7 +906,7 @@ JoinTableExpression: TypeAlias = (
 )
 
 
-class JoinTableSelectable(BaseModel):
+class JoinTableSelectable(PfxCamelCaseModel):
     """Selectable class for joins against a table."""
 
     kind: Literal["selectable"] = "selectable"
@@ -1022,7 +914,7 @@ class JoinTableSelectable(BaseModel):
     alias: str
 
 
-class JoinPipelineFunction(BaseModel):
+class JoinPipelineFunction(PfxCamelCaseModel):
     """Function class for joins against a pipeline."""
 
     kind: Literal["function"] = "function"
@@ -1035,7 +927,7 @@ JoinPipelineExpression: TypeAlias = (
 )
 
 
-class JoinPipelineSelectable(BaseModel):
+class JoinPipelineSelectable(PfxCamelCaseModel):
     """Selectable class for joins against a pipeline."""
 
     kind: Literal["selectable"] = "selectable"
@@ -1043,7 +935,7 @@ class JoinPipelineSelectable(BaseModel):
     alias: str
 
 
-class JoinTable(BaseModel):
+class JoinTable(PfxCamelCaseModel):
     """Join against a table."""
 
     model_config = ConfigDict(extra="forbid")
@@ -1055,7 +947,7 @@ class JoinTable(BaseModel):
     criteria: JoinTableExpression
 
 
-class JoinPipeline(BaseModel):
+class JoinPipeline(PfxCamelCaseModel):
     """Join against another pipeline."""
 
     model_config = ConfigDict(extra="forbid")
@@ -1070,42 +962,42 @@ class JoinPipeline(BaseModel):
 Join: TypeAlias = JoinTable | JoinPipeline
 
 
-class AddColumns(BaseModel):
+class AddColumns(PfxCamelCaseModel):
     """Add columns class."""
 
     kind: Literal["addColumns"] = "addColumns"
     columns: list[PreviousStageSelectable] = Field(min_length=1)
 
 
-class RemoveColumns(BaseModel):
+class RemoveColumns(PfxCamelCaseModel):
     """Remove columns class."""
 
     kind: Literal["removeColumns"] = "removeColumns"
     columns: list[str] = Field(min_length=1)
 
 
-class RetainColumns(BaseModel):
+class RetainColumns(PfxCamelCaseModel):
     """Retain columns class."""
 
     kind: Literal["retainColumns"] = "retainColumns"
     columns: list[str] = Field(min_length=1)
 
 
-class SelectColumns(BaseModel):
+class SelectColumns(PfxCamelCaseModel):
     """Select columns class."""
 
     kind: Literal["selectColumns"] = "selectColumns"
     columns: list[PreviousStageSelectable] = Field(min_length=1)
 
 
-class Filter(BaseModel):
+class Filter(PfxCamelCaseModel):
     """Filter class."""
 
     kind: Literal["filter"] = "filter"
     criteria: PreviousStageExpression
 
 
-class Aggregate(BaseModel):
+class Aggregate(PfxCamelCaseModel):
     """Aggregate class."""
 
     kind: Literal["aggregate"] = "aggregate"
@@ -1113,13 +1005,13 @@ class Aggregate(BaseModel):
     dimensions: list[PreviousStageExpression]
 
 
-class Distinct(BaseModel):
+class Distinct(PfxCamelCaseModel):
     """Distinct class."""
 
     kind: Literal["distinct"] = "distinct"
 
 
-class Take(BaseModel):
+class Take(PfxCamelCaseModel):
     """Take class."""
 
     kind: Literal["take"] = "take"
@@ -1136,7 +1028,7 @@ class OrderDirection(StrEnum):
     DESC_NULLS_LAST = "DESC_NULLS_LAST"
 
 
-class Order(BaseModel):
+class Order(PfxCamelCaseModel):
     """Order class."""
 
     kind: Literal["order"] = "order"
@@ -1144,7 +1036,7 @@ class Order(BaseModel):
     direction: OrderDirection
 
 
-class Sort(BaseModel):
+class Sort(PfxCamelCaseModel):
     """Sort class."""
 
     kind: Literal["sort"] = "sort"
@@ -1168,14 +1060,14 @@ Stage: TypeAlias = (
 ###
 
 
-class Pipeline(BaseModel):
+class Pipeline(PfxCamelCaseModel):
     """Pipeline class."""
 
     kind: Literal["pipeline"] = "pipeline"
     stages: list[Stage] = Field(min_length=1)
 
 
-class QueryAnswer(BaseModel):
+class QueryAnswer(PfxCamelCaseModel):
     """Result of the query."""
 
     query: Pipeline
@@ -1194,14 +1086,14 @@ class QueryAnswer(BaseModel):
         ).astype(types_map)
 
 
-class QueryAnswerMetaColumn(BaseModel):
+class QueryAnswerMetaColumn(PfxCamelCaseModel):
     """Metadata for a column in the result of the query."""
 
     name: str
     type: LiteralType
 
 
-class QueryAnswerMeta(BaseModel):
+class QueryAnswerMeta(PfxCamelCaseModel):
     """Metadata for the result of the query."""
 
     columns: list[QueryAnswerMetaColumn]

@@ -1,5 +1,6 @@
 """Pricefx domain objects."""
 
+from pyfxlib.schema.base import PfxCamelCaseModel, PfxPascalCaseModel
 from pyfxlib.schema.core import (
     BackendVersion,
     JobStatus,
@@ -121,6 +122,9 @@ from pyfxlib.schema.query import (
 )
 
 __all__ = [
+    # Base class
+    "PfxCamelCaseModel",
+    "PfxPascalCaseModel",
     # Core domain objects
     "BackendVersion",
     "JobStatus",

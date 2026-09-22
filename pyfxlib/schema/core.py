@@ -3,8 +3,10 @@
 from enum import Enum, StrEnum, unique
 from typing import Optional
 
-from pydantic import alias_generators, BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 from typing_extensions import override, Self
+
+from pyfxlib.schema.base import PfxCamelCaseModel
 
 
 @unique
@@ -16,7 +18,7 @@ class JobStatus(Enum):
     FAILED = "FAILED"
 
 
-class BackendVersion(BaseModel):
+class BackendVersion(PfxCamelCaseModel):
     """Backend version information."""
 
     major: int
@@ -42,12 +44,8 @@ class BackendVersion(BaseModel):
         return f"{self.major}.{self.minor or 0}.{self.patch or 0}"
 
 
-class UserInfo(BaseModel):
+class UserInfo(PfxCamelCaseModel):
     """User information."""
-
-    model_config = ConfigDict(
-        alias_generator=alias_generators.to_camel, validate_by_name=True, serialize_by_alias=True
-    )
 
     login_name: str
     email: str
@@ -118,15 +116,11 @@ class NotificationActionType(StrEnum):
     CTX_LINK_AND_TOAST = "CTX_LINK_AND_TOAST"
 
 
-class Notification(BaseModel):
+class Notification(PfxCamelCaseModel):
     """Notification representation.
 
     More info in https://pricefx.atlassian.net/wiki/spaces/KB/pages/6878068738
     """
-
-    model_config = ConfigDict(
-        serialize_by_alias=True, validate_by_name=True, alias_generator=alias_generators.to_camel
-    )
 
     title: str
     message: str

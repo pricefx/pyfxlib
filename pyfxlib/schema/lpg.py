@@ -3,8 +3,10 @@
 from enum import StrEnum, unique
 from typing import Any, Optional
 
-from pydantic import alias_generators, AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, ConfigDict, Field
 from typing_extensions import override
+
+from pyfxlib.schema.base import PfxCamelCaseModel
 
 
 @unique
@@ -15,16 +17,11 @@ class LPGType(StrEnum):
     MATRIX = "MATRIX"
 
 
-class LPG(BaseModel):
+class LPG(PfxCamelCaseModel):
     """Representation of a Pricefx LPG."""
 
     # This makes the class hashable and enable comparison
-    model_config = ConfigDict(
-        frozen=True,
-        alias_generator=alias_generators.to_camel,
-        validate_by_name=True,
-        serialize_by_alias=True,
-    )
+    model_config = ConfigDict(frozen=True)
 
     version: int
     typed_id: str
@@ -62,16 +59,10 @@ class LPGProductApprovalState(StrEnum):
     DENIED = "DENIED"
 
 
-class LPGProduct(BaseModel):
+class LPGProduct(PfxCamelCaseModel):
     """Representation of a Pricefx LPG product."""
 
-    model_config = ConfigDict(
-        frozen=True,
-        extra="allow",
-        alias_generator=alias_generators.to_camel,
-        validate_by_name=True,
-        serialize_by_alias=True,
-    )
+    model_config = ConfigDict(frozen=True, extra="allow")
 
     version: int
     typed_id: str
