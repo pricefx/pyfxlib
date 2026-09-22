@@ -34,6 +34,7 @@ class Operator(StrEnum):
     NOT = "not"
 
 
+@unique
 class OperationAgg(StrEnum):
     """Operation aggregate class."""
 
@@ -46,6 +47,7 @@ class OperationAgg(StrEnum):
     COUNT_DISTINCT_NON_NULL = "countDistinctNonNull"
 
 
+@unique
 class Operation(StrEnum):
     """Operation class."""
 
@@ -122,6 +124,7 @@ class Operation(StrEnum):
     DATE_TIME_NOW = "dateTimeNow"
 
 
+@unique
 class FilterOperator(StrEnum):
     """Filter operators for search criteria."""
 
@@ -280,6 +283,7 @@ class AdvancedCriteria(BaseModel):
 AdvancedCriteria.model_rebuild()
 
 
+@unique
 class LiteralType(StrEnum):
     """Type of literal value in a query result column."""
 
@@ -981,6 +985,7 @@ class Source(BaseModel):
     criteria: Optional[SourceExpression] = None
 
 
+@unique
 class JoinType(StrEnum):
     """Join type class."""
 
@@ -1121,6 +1126,7 @@ class Take(BaseModel):
     count: int
 
 
+@unique
 class OrderDirection(StrEnum):
     """Order direction class."""
 

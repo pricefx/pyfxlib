@@ -21,7 +21,7 @@ Contains also schema type conversion functions
 
 from collections.abc import Callable
 import datetime
-from enum import StrEnum
+from enum import StrEnum, unique
 import logging
 from typing import Any, NamedTuple, Optional
 
@@ -152,6 +152,7 @@ def to_field_collection_spec(
 class FieldSpecs:
     """Structure for keeping user specifications for exported table fields."""
 
+    @unique
     class MeasureTypes(StrEnum):
         """Enum for keeping allowed measure types."""
 
