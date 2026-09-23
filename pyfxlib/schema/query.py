@@ -127,6 +127,33 @@ class Operation(StrEnum):
 
 
 @unique
+class WindowOperation(StrEnum):
+    """Functions the DTO dispatches through FunctionDTO's window overload.
+
+    A disjoint set from Operation: the window overload rejects every scalar name, and the
+    scalar overload rejects the ranking ones.
+    """
+
+    AVG = "avg"
+    COUNT_ALL = "countAll"
+    COUNT_NON_NULL = "countNonNull"
+    CUME_DIST = "cumeDist"
+    DENSE_RANK = "denseRank"
+    FIRST_VALUE = "firstValue"
+    LAG = "lag"
+    LAST_VALUE = "lastValue"
+    LEAD = "lead"
+    MAX = "max"
+    MIN = "min"
+    NTH_VALUE = "nthValue"
+    NTILE = "ntile"
+    PERCENT_RANK = "percentRank"
+    RANK = "rank"
+    ROW_NUMBER = "rowNumber"
+    SUM = "sum"
+
+
+@unique
 class FilterOperator(StrEnum):
     """Filter operators for search criteria."""
 
@@ -672,33 +699,6 @@ class LiteralValue(PfxCamelCaseModel):
     kind: Literal["literal"] = "literal"
     type: LiteralType
     value: Any
-
-
-@unique
-class WindowOperation(StrEnum):
-    """Functions the DTO dispatches through FunctionDTO's window overload.
-
-    A disjoint set from Operation: the window overload rejects every scalar name, and the
-    scalar overload rejects the ranking ones.
-    """
-
-    AVG = "avg"
-    COUNT_ALL = "countAll"
-    COUNT_NON_NULL = "countNonNull"
-    CUME_DIST = "cumeDist"
-    DENSE_RANK = "denseRank"
-    FIRST_VALUE = "firstValue"
-    LAG = "lag"
-    LAST_VALUE = "lastValue"
-    LEAD = "lead"
-    MAX = "max"
-    MIN = "min"
-    NTH_VALUE = "nthValue"
-    NTILE = "ntile"
-    PERCENT_RANK = "percentRank"
-    RANK = "rank"
-    ROW_NUMBER = "rowNumber"
-    SUM = "sum"
 
 
 @unique
