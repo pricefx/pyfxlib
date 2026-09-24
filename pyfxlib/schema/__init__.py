@@ -31,6 +31,12 @@ from pyfxlib.schema.lpg import (
     LPGProductWorkflowStatus,
     LPGType,
 )
+from pyfxlib.schema.optimization import (
+    CalculationResult,
+    LogicInput,
+    LogicOutput,
+    LogicParameters,
+)
 from pyfxlib.schema.query import (
     ActionItems,
     ActiveCalculationResultColumnReference,
@@ -153,6 +159,11 @@ __all__ = [
     "LPGProductApprovalState",
     "LPGProductWorkflowStatus",
     "LPGType",
+    # Optimization domain objects
+    "CalculationResult",
+    "LogicInput",
+    "LogicOutput",
+    "LogicParameters",
     # Query domain objects
     "ActionItems",
     "ActiveCalculationResultColumnReference",

@@ -19,6 +19,7 @@ import json
 from typing import Any
 import zipfile
 
+from httpx import HTTPStatusError
 import pandas as pd
 import pytest
 
@@ -35,6 +36,7 @@ from pyfxlib._testtooling.conftest import (
 from pyfxlib._testtooling.helpers import (
     _calculation_results_as_dict,
     _IntegrationRemote,
+    ModelLogicNature,
 )
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.connection import ConnectionAsync, ConnectionSync
@@ -840,6 +842,136 @@ async def test_query_meta_and_execute(_async_conn: ConnectionAsync):
         row[column_names.index("sku")] == sku and row[column_names.index("label")] == label
         for row in rows
     )
+
+
+async def _model_object_with_evaluation(
+    remote: _IntegrationRemote, logic_name: str, elements: dict[str, str]
+) -> dict[str, Any]:
+    """A model object whose class declares one evaluation, not attached to any step."""
+    await remote.new_model_logic(logic_name, elements)
+    model_class = await remote.new_model_class(
+        definition={
+            "evaluations": [{"name": "an_evaluation", "formulaName": logic_name}],
+            "calculations": [],
+            "steps": [{"name": "results", "label": "Results", "tabs": []}],
+        },
+    )
+    _, model_object = await remote.new_model_object("aModelObjectName", model_class)
+    return model_object
+
+
+@pytest.mark.asyncio
+async def test_list_model_logic_parameters(
+    _remote: _IntegrationRemote, _async_conn: ConnectionAsync
+):
+    # given a model object whose class has an evaluation declaring an input
+    logic_name = "anEvaluationLogic"
+    model_object = await _model_object_with_evaluation(
+        _remote, logic_name, {"Answer": "return 42", "Entry": 'api.stringUserEntry("aParameter")'}
+    )
+    # when listing the parameters of the evaluation logic
+    parameters = await _async_conn.list_model_logic_parameters(
+        model_object["typedId"], "results", logic_name
+    )
+    # then the declared input is listed
+    assert "aParameter" in [logic_input.name for logic_input in parameters.logic_inputs]
+    # and so are the elements the logic returns, in logic order
+    assert [logic_output.name for logic_output in parameters.logic_outputs] == [
+        "Answer",
+        "Entry",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_execute_model_logic(_remote: _IntegrationRemote, _async_conn: ConnectionAsync):
+    # given a model object whose class has an evaluation reading an input
+    logic_name = "anEvaluationLogic"
+    model_object = await _model_object_with_evaluation(
+        _remote, logic_name, {"Answer": "return 42", "Echo": "return input.aParameter"}
+    )
+    # when executing the evaluation logic with a parameter
+    results = await _async_conn.execute_model_logic(
+        model_object["typedId"], "results", logic_name, {"aParameter": "aValue"}
+    )
+    # then each displayed element comes back with its result, in logic order
+    assert [result.name for result in results] == ["Answer", "Echo"]
+    assert results[0].value == 42
+    assert results[1].value == "aValue"
+
+
+@pytest.mark.asyncio
+async def test_execute_model_logic_unknown_logic(
+    _remote: _IntegrationRemote, _async_conn: ConnectionAsync
+):
+    # given a model object
+    model_object = await _model_object_with_evaluation(
+        _remote, "anEvaluationLogic", {"Answer": "return 42"}
+    )
+    # when executing a logic that does not exist
+    # then the backend refusal is raised
+    with pytest.raises(HTTPStatusError):
+        await _async_conn.execute_model_logic(model_object["typedId"], "results", "noSuchLogic")
+
+
+@pytest.mark.asyncio
+async def test_calculate_model_step(_remote: _IntegrationRemote, _async_conn: ConnectionAsync):
+    # given a model object whose step has a calculation
+    logic_name = "aCalculationLogic"
+    await _remote.new_model_logic(
+        logic_name, {"Answer": "return 42"}, nature=ModelLogicNature.CALCULATION
+    )
+    model_class = await _remote.new_model_class(
+        definition={
+            "evaluations": [],
+            "calculations": [
+                {"name": "a_calculation", "type": "formula", "formulaName": logic_name}
+            ],
+            "steps": [
+                {
+                    "name": "definition",
+                    "label": "Definition",
+                    "calculation": "a_calculation",
+                    "tabs": [],
+                }
+            ],
+        },
+    )
+    _, model_object = await _remote.new_model_object("aModelObjectName", model_class)
+    # when calculating that step
+    jobs = await _async_conn.calculate_model_step(model_object["typedId"], "definition")
+    # then one job is dispatched to run it
+    assert len(jobs) == 1
+    assert jobs[0].endswith(".JST")
+
+
+@pytest.mark.asyncio
+async def test_calculate_model_step_without_calculation(
+    _remote: _IntegrationRemote, _async_conn: ConnectionAsync
+):
+    # given a model object whose step has no calculation
+    model_class = await _remote.new_model_class(
+        definition={
+            "evaluations": [],
+            "calculations": [],
+            "steps": [{"name": "definition", "label": "Definition", "tabs": []}],
+        },
+    )
+    _, model_object = await _remote.new_model_object("aModelObjectName", model_class)
+    # when calculating that step
+    jobs = await _async_conn.calculate_model_step(model_object["typedId"], "definition")
+    # then no job is dispatched
+    assert jobs == []
+
+
+@pytest.mark.asyncio
+async def test_calculate_model_step_unknown_step(
+    _model_object: dict[str, Any], _async_conn: ConnectionAsync
+):
+    # given a model object
+    # when calculating a step its class does not have
+    # then the backend refusal is raised
+    with pytest.raises(HTTPStatusError):
+        await _async_conn.calculate_model_step(_model_object["typedId"], "noSuchStep")
 
 
 @pytest.mark.asyncio

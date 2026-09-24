@@ -42,9 +42,11 @@ from pyfxlib.lowlevel.session import PfxSession
 from pyfxlib.schema import (
     AdvancedCriteria,
     BackendVersion,
+    CalculationResult,
     FieldRule,
     FilterOperator,
     JobStatus,
+    LogicParameters,
     LPGProduct,
     Notification,
     Operator,
@@ -491,6 +493,63 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
+    async def list_model_logic_parameters(
+        self,
+        model_typedid: str,
+        step_name: str,
+        logic_name: str,
+    ) -> LogicParameters:
+        """List the inputs a model evaluation logic expects, and the elements it returns.
+
+        Args:
+            model_typedid: typed id of the model object, e.g. "42.MO"
+            step_name: name of a step of the model class
+            logic_name: unique name of the logic
+        Returns:
+            The inputs the logic declares, and the outputs it returns.
+        """
+        pass
+
+    @abstractmethod
+    async def execute_model_logic(
+        self,
+        model_typedid: str,
+        step_name: str,
+        logic_name: str,
+        parameters: Optional[dict[str, Any]] = None,
+    ) -> list[CalculationResult]:
+        """Execute a model evaluation logic in the context of a model object.
+
+        Args:
+            model_typedid: typed id of the model object, e.g. "42.MO"
+            step_name: name of a step of the model class. Sets the model state the logic sees.
+            logic_name: unique name of the logic to execute
+            parameters: values of the inputs the logic expects, by input name (optional)
+        Returns:
+            The results of the logic elements displayed to the user, in logic order.
+        """
+        pass
+
+    @abstractmethod
+    async def calculate_model_step(
+        self,
+        model_typedid: str,
+        step_name: str,
+        to_step: Optional[str] = None,
+    ) -> list[str]:
+        """Start the calculation of a model object step, as a background task.
+
+        Args:
+            model_typedid: typed id of the model object, e.g. "42.MO"
+            step_name: name of the step to calculate
+            to_step: name of the last step to calculate, to calculate all the steps
+                from `step_name` to it (optional)
+        Returns:
+            The typed ids of the dispatched jobs, e.g. ["1234.JST"].
+        """
+        pass
+
+    @abstractmethod
     async def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """Fetches the schema of a queryAPI query result: column names and types.
 
@@ -560,6 +619,12 @@ class ConnectionRemote(ConnectionAsync):
 
     def __repr__(self) -> str:
         return f"ConnectionRemote({self.endpoint})"
+
+    def _model_logic_url(
+        self, command: str, model_typedid: str, step_name: str, logic_name: str
+    ) -> str:
+        """The URL of an optimization command on a logic of a model step."""
+        return f"{self.endpoint}/optimization.{command}/{model_typedid}/{step_name}/{logic_name}"
 
     async def _fc_spec(self, typedid: str) -> Optional[dict]:
         objectid = typedid.split(".")[0]
@@ -1011,6 +1076,49 @@ class ConnectionRemote(ConnectionAsync):
             json={"data": data},
         )
 
+    async def list_model_logic_parameters(
+        self,
+        model_typedid: str,
+        step_name: str,
+        logic_name: str,
+    ) -> LogicParameters:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(
+            self._model_logic_url("modelformulaparams", model_typedid, step_name, logic_name)
+        )
+        return LogicParameters.model_validate(response.json()["response"]["data"][0])
+
+    async def execute_model_logic(
+        self,
+        model_typedid: str,
+        step_name: str,
+        logic_name: str,
+        parameters: Optional[dict[str, Any]] = None,
+    ) -> list[CalculationResult]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(
+            self._model_logic_url("modelformulaexec", model_typedid, step_name, logic_name),
+            json={"data": parameters or {}},
+        )
+        return [
+            CalculationResult.model_validate(result)
+            for result in response.json()["response"]["data"]
+        ]
+
+    async def calculate_model_step(
+        self,
+        model_typedid: str,
+        step_name: str,
+        to_step: Optional[str] = None,
+    ) -> list[str]:
+        """See `ConnectionAsync` corresponding method."""
+        response = await self.session.post(
+            f"{self.endpoint}/optimization.modelcalcexec/{model_typedid}/{step_name}",
+            params={"toStep": to_step} if to_step else None,
+        )
+        jobs = response.json()["response"]["data"][0].get("jobs") or []
+        return [str(job["typedId"]) for job in jobs]
+
     async def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """See `ConnectionAsync` corresponding method."""
         response = await self.session.post(
@@ -1423,6 +1531,34 @@ class ConnectionLocal(ConnectionAsync):
             },
         )
 
+    async def list_model_logic_parameters(
+        self,
+        model_typedid: str,
+        step_name: str,
+        logic_name: str,
+    ) -> LogicParameters:
+        """See `ConnectionAsync` corresponding method."""
+        return LogicParameters()
+
+    async def execute_model_logic(
+        self,
+        model_typedid: str,
+        step_name: str,
+        logic_name: str,
+        parameters: Optional[dict[str, Any]] = None,
+    ) -> list[CalculationResult]:
+        """See `ConnectionAsync` corresponding method."""
+        return []
+
+    async def calculate_model_step(
+        self,
+        model_typedid: str,
+        step_name: str,
+        to_step: Optional[str] = None,
+    ) -> list[str]:
+        """See `ConnectionAsync` corresponding method."""
+        return []
+
     async def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """See `ConnectionAsync` corresponding method."""
         return QueryAnswerMeta.model_validate({"columns": []})
@@ -1668,6 +1804,36 @@ class ConnectionComposed(ConnectionAsync):
         await self._dispatch["job_updates"].update_status(
             jst_id, status_code, progress, msg, results
         )
+
+    async def list_model_logic_parameters(
+        self,
+        model_typedid: str,
+        step_name: str,
+        logic_name: str,
+    ) -> LogicParameters:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.list_model_logic_parameters(model_typedid, step_name, logic_name)
+
+    async def execute_model_logic(
+        self,
+        model_typedid: str,
+        step_name: str,
+        logic_name: str,
+        parameters: Optional[dict[str, Any]] = None,
+    ) -> list[CalculationResult]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.execute_model_logic(
+            model_typedid, step_name, logic_name, parameters
+        )
+
+    async def calculate_model_step(
+        self,
+        model_typedid: str,
+        step_name: str,
+        to_step: Optional[str] = None,
+    ) -> list[str]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.calculate_model_step(model_typedid, step_name, to_step)
 
     async def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """See `ConnectionAsync` corresponding method."""
@@ -1955,6 +2121,38 @@ class ConnectionSync:
     ) -> None:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.update_status(jst_id, status_code, progress, msg, results))
+
+    def list_model_logic_parameters(
+        self,
+        model_typedid: str,
+        step_name: str,
+        logic_name: str,
+    ) -> LogicParameters:
+        """See `ConnectionAsync` corresponding method."""
+        return self._run_sync(
+            self._conn.list_model_logic_parameters(model_typedid, step_name, logic_name)
+        )
+
+    def execute_model_logic(
+        self,
+        model_typedid: str,
+        step_name: str,
+        logic_name: str,
+        parameters: Optional[dict[str, Any]] = None,
+    ) -> list[CalculationResult]:
+        """See `ConnectionAsync` corresponding method."""
+        return self._run_sync(
+            self._conn.execute_model_logic(model_typedid, step_name, logic_name, parameters)
+        )
+
+    def calculate_model_step(
+        self,
+        model_typedid: str,
+        step_name: str,
+        to_step: Optional[str] = None,
+    ) -> list[str]:
+        """See `ConnectionAsync` corresponding method."""
+        return self._run_sync(self._conn.calculate_model_step(model_typedid, step_name, to_step))
 
     def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """See `ConnectionAsync` corresponding method."""
