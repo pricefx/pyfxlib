@@ -17,7 +17,14 @@ from typing import Any, Sequence
 import pandas as pd
 import pytest
 
-from pyfxlib.schema import LiteralType, QueryAnswer
+from pyfxlib.schema import (
+    LiteralType,
+    PADataFeed,
+    PADataSource,
+    Pipeline,
+    QueryAnswer,
+    Table,
+)
 
 # to_pandas only reads `meta` and `rows`, but `query` is required, so every fixture needs one.
 _PIPELINE = {"stages": [{"kind": "source", "table": {"kind": "products"}}]}
@@ -143,3 +150,21 @@ def test_to_pandas_handles_a_mix_of_column_types_in_one_answer() -> None:
     ]
     assert frame.iloc[0].tolist() == [2, 9.99, "SKU-1", True, pd.Timestamp("2026-09-22")]
     assert frame.iloc[1].isna().all()
+
+
+@pytest.mark.parametrize(
+    "table,kind",
+    [
+        # Jackson type ids are case-sensitive, so the casing must match the DTO exactly.
+        (PADataFeed(data_feed_unique_name="DF"), "dataFeed"),
+        # `datasource` is the deprecated id (PFUN-35498).
+        (PADataSource(data_source_unique_name="DS"), "dataSource"),
+    ],
+)
+def test_table_dumps_the_kind_the_dto_expects(table: Table, kind: str) -> None:
+    pipeline = Pipeline.model_validate({"stages": [{"kind": "source", "table": table}]})
+
+    dumped = pipeline.model_dump(by_alias=True)
+
+    assert dumped["stages"][0]["table"]["kind"] == kind
+    assert Pipeline.model_validate(dumped) == pipeline

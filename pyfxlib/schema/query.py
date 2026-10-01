@@ -542,7 +542,7 @@ class CompensationRecords(PfxCamelCaseModel):
 class PADataSource(PfxCamelCaseModel):
     """Data source table."""
 
-    kind: Literal["datasource"] = "datasource"
+    kind: Literal["dataSource"] = "dataSource"
     data_source_unique_name: str
 
 
@@ -558,7 +558,7 @@ class PADatamart(PfxCamelCaseModel):
 class PADataFeed(PfxCamelCaseModel):
     """Data feed table."""
 
-    kind: Literal["datafeed"] = "datafeed"
+    kind: Literal["dataFeed"] = "dataFeed"
     data_feed_unique_name: str
 
 
