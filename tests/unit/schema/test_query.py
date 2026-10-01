@@ -22,6 +22,7 @@ from pyfxlib.schema import (
     Aggregate,
     AggregateScalarFunction,
     Filter,
+    Frame,
     JoinTable,
     LiteralType,
     LiteralValue,
@@ -269,3 +270,39 @@ def test_aggregate_rejects_an_aggregate_nested_in_an_aggregate() -> None:
 
     with pytest.raises(ValidationError):
         Aggregate.model_validate({"columns": [{"expression": expression, "alias": "x"}]})
+
+
+_UNBOUNDED_PRECEDING = {"type": "unbounded", "direction": "PRECEDING"}
+_UNBOUNDED_FOLLOWING = {"type": "unbounded", "direction": "FOLLOWING"}
+_CURRENT_ROW = {"type": "currentRow"}
+
+
+def _frame(start: dict[str, Any], end: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "rows", "start": start, "end": end, "exclusion": "NONE"}
+
+
+@pytest.mark.parametrize(
+    "start,end",
+    [
+        (_UNBOUNDED_PRECEDING, _UNBOUNDED_FOLLOWING),
+        ({"type": "offset", "offset": 2, "direction": "PRECEDING"}, _CURRENT_ROW),
+        (_CURRENT_ROW, {"type": "offset", "offset": 1, "direction": "FOLLOWING"}),
+    ],
+)
+def test_frame_round_trips_valid_bounds(start: dict[str, Any], end: dict[str, Any]) -> None:
+    frame = Frame.model_validate(_frame(start, end))
+
+    assert frame.model_dump(by_alias=True, mode="json") == _frame(start, end)
+
+
+@pytest.mark.parametrize(
+    "start,end",
+    [
+        (_UNBOUNDED_FOLLOWING, _CURRENT_ROW),
+        (_CURRENT_ROW, _UNBOUNDED_PRECEDING),
+    ],
+)
+def test_frame_rejects_bounds_the_dto_rejects(start: dict[str, Any], end: dict[str, Any]) -> None:
+    """The DTO throws on a frame starting at the partition end or ending at its start."""
+    with pytest.raises(ValidationError):
+        Frame.model_validate(_frame(start, end))

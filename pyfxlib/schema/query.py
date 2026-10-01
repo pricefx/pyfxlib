@@ -744,11 +744,18 @@ class BoundDirection(StrEnum):
     FOLLOWING = "FOLLOWING"
 
 
-class UnboundedBound(PfxCamelCaseModel):
-    """Window frame bound running to the start or end of the partition."""
+class UnboundedPreceding(PfxCamelCaseModel):
+    """Window frame bound running from the start of the partition. Only valid as a start."""
 
     type: Literal["unbounded"] = "unbounded"
-    direction: BoundDirection
+    direction: Literal[BoundDirection.PRECEDING] = BoundDirection.PRECEDING
+
+
+class UnboundedFollowing(PfxCamelCaseModel):
+    """Window frame bound running to the end of the partition. Only valid as an end."""
+
+    type: Literal["unbounded"] = "unbounded"
+    direction: Literal[BoundDirection.FOLLOWING] = BoundDirection.FOLLOWING
 
 
 class OffsetBound(PfxCamelCaseModel):
@@ -765,7 +772,9 @@ class CurrentRowBound(PfxCamelCaseModel):
     type: Literal["currentRow"] = "currentRow"
 
 
-Bound: TypeAlias = UnboundedBound | OffsetBound | CurrentRowBound
+# The DTO rejects a frame starting at the end of the partition or ending at its start.
+StartBound: TypeAlias = UnboundedPreceding | OffsetBound | CurrentRowBound
+EndBound: TypeAlias = UnboundedFollowing | OffsetBound | CurrentRowBound
 
 
 class Frame(PfxCamelCaseModel):
@@ -776,8 +785,8 @@ class Frame(PfxCamelCaseModel):
     """
 
     type: FrameType
-    start: Bound
-    end: Bound
+    start: StartBound
+    end: EndBound
     exclusion: FrameExclusion
 
 
