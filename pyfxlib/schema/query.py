@@ -155,6 +155,14 @@ class WindowOperation(StrEnum):
 
 
 @unique
+class RankOverOperation(StrEnum):
+    """Ranking functions taking a sort order as their single argument, outside any window."""
+
+    PERCENT_RANK_OVER = "percentRankOver"
+    CUME_DIST_OVER = "cumeDistOver"
+
+
+@unique
 class FilterOperator(StrEnum):
     """Filter operators for search criteria."""
 
@@ -853,11 +861,20 @@ class PreviousStageFunction(_ScalarFunction):
     arguments: list["PreviousStageExpression"] = Field(default_factory=list)
 
 
+class PreviousStageRankOverFunction(PfxCamelCaseModel):
+    """Ranking function over a sort order, e.g. `percentRankOver(asc(a))`."""
+
+    kind: Literal["function"] = "function"
+    name: RankOverOperation
+    arguments: list["Order"] = Field(min_length=1, max_length=1)
+
+
 PreviousStageExpression: TypeAlias = (
     LiteralValue
     | PreviousStageColumnReference
     | PreviousStageWindowFunction
     | PreviousStageFunction
+    | PreviousStageRankOverFunction
 )
 
 

@@ -19,6 +19,7 @@ from pydantic import ValidationError
 import pytest
 
 from pyfxlib.schema import (
+    AddColumns,
     Aggregate,
     AggregateScalarFunction,
     Filter,
@@ -31,6 +32,7 @@ from pyfxlib.schema import (
     PADataSource,
     Pipeline,
     PreviousStageFunctionAgg,
+    PreviousStageRankOverFunction,
     QueryAnswer,
     ResultColumnType,
     Source,
@@ -369,3 +371,31 @@ def test_safe_div_is_accepted_over_columns_and_over_aggregates() -> None:
     )
 
     assert aggregate.model_dump(by_alias=True)["columns"][0]["expression"] == over_aggregates
+
+
+_ORDER = {"kind": "order", "expression": _column("a"), "direction": "ASC_NULLS_LAST"}
+
+
+@pytest.mark.parametrize("name", ["percentRankOver", "cumeDistOver"])
+def test_rank_over_takes_a_single_order(name: str) -> None:
+    expression = {"kind": "function", "name": name, "arguments": [_ORDER]}
+
+    columns = AddColumns.model_validate({"columns": [{"expression": expression, "alias": "r"}]})
+
+    assert isinstance(columns.columns[0].expression, PreviousStageRankOverFunction)
+    assert columns.model_dump(by_alias=True, mode="json")["columns"][0]["expression"] == expression
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [[_column("a")], [], [_ORDER, _ORDER]],
+    ids=["expression", "none", "two orders"],
+)
+@pytest.mark.parametrize("name", ["percentRankOver", "cumeDistOver"])
+def test_rank_over_rejects_anything_but_a_single_order(
+    name: str, arguments: list[dict[str, Any]]
+) -> None:
+    expression = {"kind": "function", "name": name, "arguments": arguments}
+
+    with pytest.raises(ValidationError):
+        AddColumns.model_validate({"columns": [{"expression": expression, "alias": "r"}]})
