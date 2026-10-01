@@ -70,6 +70,7 @@ from pyfxlib.schema.query import (
     Frame,
     FrameExclusion,
     FrameType,
+    HistoricalConditionRecords,
     InputColumnReference,
     JobStatusTrackers,
     Join,
@@ -142,6 +143,7 @@ from pyfxlib.schema.query import (
     Take,
     UnboundedFollowing,
     UnboundedPreceding,
+    Users,
     WindowOperation,
 )
 
@@ -201,6 +203,7 @@ __all__ = [
     "Frame",
     "FrameExclusion",
     "FrameType",
+    "HistoricalConditionRecords",
     "InputColumnReference",
     "JobStatusTrackers",
     "Join",
@@ -273,5 +276,6 @@ __all__ = [
     "Take",
     "UnboundedFollowing",
     "UnboundedPreceding",
+    "Users",
     "WindowOperation",
 ]

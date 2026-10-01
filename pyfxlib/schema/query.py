@@ -461,6 +461,13 @@ class ConditionRecords(PfxCamelCaseModel):
     condition_record_set_unique_name: str
 
 
+class HistoricalConditionRecords(PfxCamelCaseModel):
+    """Historical condition records table."""
+
+    kind: Literal["historicalConditionRecords"] = "historicalConditionRecords"
+    condition_record_set_unique_name: str
+
+
 class QuoteLineItems(PfxCamelCaseModel):
     """Quote line items table."""
 
@@ -600,6 +607,12 @@ class CustomForms(PfxCamelCaseModel):
     custom_form_type_unique_name: str
 
 
+class Users(PfxCamelCaseModel):
+    """Users table."""
+
+    kind: Literal["users"] = "users"
+
+
 Table: TypeAlias = (
     CompanyParameterTables
     | CompanyParametersRows
@@ -615,6 +628,7 @@ Table: TypeAlias = (
     | CustomerExtensionRows
     | SellerExtensionRows
     | ConditionRecords
+    | HistoricalConditionRecords
     | QuoteLineItems
     | RebateLineItems
     | ContractLineItems
@@ -635,6 +649,7 @@ Table: TypeAlias = (
     | PAModelTable
     | PARollup
     | CustomForms
+    | Users
 )
 # All Selectables
 

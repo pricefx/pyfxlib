@@ -23,6 +23,7 @@ from pyfxlib.schema import (
     AggregateScalarFunction,
     Filter,
     Frame,
+    HistoricalConditionRecords,
     JoinTable,
     LiteralType,
     LiteralValue,
@@ -34,6 +35,7 @@ from pyfxlib.schema import (
     ResultColumnType,
     Source,
     Table,
+    Users,
 )
 
 # to_pandas only reads `meta` and `rows`, but `query` is required, so every fixture needs one.
@@ -177,6 +179,11 @@ def test_to_pandas_handles_a_mix_of_column_types_in_one_answer() -> None:
         (PADataFeed(data_feed_unique_name="DF"), "dataFeed"),
         # `datasource` is the deprecated id (PFUN-35498).
         (PADataSource(data_source_unique_name="DS"), "dataSource"),
+        (
+            HistoricalConditionRecords(condition_record_set_unique_name="CRS"),
+            "historicalConditionRecords",
+        ),
+        (Users(), "users"),
     ],
 )
 def test_table_dumps_the_kind_the_dto_expects(table: Table, kind: str) -> None:
