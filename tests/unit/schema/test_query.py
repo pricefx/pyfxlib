@@ -32,6 +32,7 @@ from pyfxlib.schema import (
     PreviousStageFunctionAgg,
     QueryAnswer,
     ResultColumnType,
+    Source,
     Table,
 )
 
@@ -306,3 +307,44 @@ def test_frame_rejects_bounds_the_dto_rejects(start: dict[str, Any], end: dict[s
     """The DTO throws on a frame starting at the partition end or ending at its start."""
     with pytest.raises(ValidationError):
         Frame.model_validate(_frame(start, end))
+
+
+def _string(value: str) -> dict[str, Any]:
+    return {"kind": "literal", "type": "STRING", "value": value}
+
+
+@pytest.mark.parametrize("name", ["in", "notIn"])
+def test_in_accepts_an_expression_followed_by_literals(name: str) -> None:
+    criteria = _function(name, _column("a"), _string("x"), _string("y"))
+
+    assert (
+        Filter.model_validate({"criteria": criteria}).model_dump(by_alias=True)["criteria"]
+        == criteria
+    )
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        [_column("a"), _column("b")],
+        [_column("a"), _string("x"), _function("upper", _string("y"))],
+        [_column("a")],
+    ],
+    ids=["column value", "function value", "no value"],
+)
+@pytest.mark.parametrize("name", ["in", "notIn"])
+def test_in_rejects_values_other_than_literals(name: str, arguments: list[dict[str, Any]]) -> None:
+    """The DTO casts each value to a literal, so anything else fails server-side."""
+    with pytest.raises(ValidationError):
+        Filter.model_validate({"criteria": _function(name, *arguments)})
+
+
+def test_in_values_are_checked_in_source_criteria_too() -> None:
+    criteria = _function(
+        "in",
+        {"kind": "columnReference", "source": "table", "column": "a"},
+        {"kind": "columnReference", "source": "table", "column": "b"},
+    )
+
+    with pytest.raises(ValidationError):
+        Source.model_validate({"table": {"kind": "products"}, "criteria": criteria})

@@ -19,10 +19,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date, datetime
 from enum import StrEnum, unique
-from typing import Any, Literal, Optional, TypeAlias
+from typing import Any, Literal, Optional, Self, TypeAlias
 
 import pandas as pd
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
 from pyfxlib.schema.base import PfxCamelCaseModel
 
@@ -790,6 +790,28 @@ class Frame(PfxCamelCaseModel):
     exclusion: FrameExclusion
 
 
+class _ScalarFunction(PfxCamelCaseModel):
+    """Fields and checks shared by the scalar function of every expression family.
+
+    Each subclass narrows `arguments` to the expressions its family can address.
+    """
+
+    kind: Literal["function"] = "function"
+    name: Operation
+    arguments: Sequence[Any] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_in_values_are_literals(self) -> Self:
+        # The DTO casts every `in`/`notIn` value to a literal: Expression.in does not take
+        # expressions yet.
+        if self.name in (Operation.IN, Operation.NOT_IN) and (
+            len(self.arguments) < 2
+            or not all(isinstance(value, LiteralValue) for value in self.arguments[1:])
+        ):
+            raise ValueError(f"{self.name} takes an expression followed by literal values")
+        return self
+
+
 class PreviousStageWindowFunctionCall(PfxCamelCaseModel):
     """The function a window function applies over its frame."""
 
@@ -809,11 +831,9 @@ class PreviousStageWindowFunction(PfxCamelCaseModel):
     function: PreviousStageWindowFunctionCall
 
 
-class PreviousStageFunction(PfxCamelCaseModel):
+class PreviousStageFunction(_ScalarFunction):
     """Function class."""
 
-    kind: Literal["function"] = "function"
-    name: Operation
     arguments: list["PreviousStageExpression"] = Field(default_factory=list)
 
 
@@ -825,11 +845,9 @@ PreviousStageExpression: TypeAlias = (
 )
 
 
-class SourceFunction(PfxCamelCaseModel):
+class SourceFunction(_ScalarFunction):
     """Source Function class."""
 
-    kind: Literal["function"] = "function"
-    name: Operation
     arguments: list["SourceExpression"] = Field(default_factory=list)
 
 
@@ -877,15 +895,13 @@ class PreviousStageFunctionAgg(PfxCamelCaseModel):
     arguments: list[PreviousStageExpression] = Field(default_factory=list)
 
 
-class AggregateScalarFunction(PfxCamelCaseModel):
+class AggregateScalarFunction(_ScalarFunction):
     """Scalar function over aggregates, e.g. `div(sum(a), sum(b))`.
 
     Its arguments are aggregate expressions themselves, so aggregates can sit at any depth
     under scalar functions, but never directly under another aggregate.
     """
 
-    kind: Literal["function"] = "function"
-    name: Operation
     arguments: list["ExpressionAgg"] = Field(default_factory=list)
 
 
@@ -922,11 +938,9 @@ class JoinType(StrEnum):
     LEFT_OUTER = "LEFT_OUTER"
 
 
-class JoinTableFunction(PfxCamelCaseModel):
+class JoinTableFunction(_ScalarFunction):
     """Function class for joins against a table."""
 
-    kind: Literal["function"] = "function"
-    name: Operation
     arguments: list["JoinTableExpression"] = Field(default_factory=list)
 
 
@@ -951,11 +965,9 @@ class JoinTableSelectable(PfxCamelCaseModel):
     alias: str
 
 
-class JoinPipelineFunction(PfxCamelCaseModel):
+class JoinPipelineFunction(_ScalarFunction):
     """Function class for joins against a pipeline."""
 
-    kind: Literal["function"] = "function"
-    name: Operation
     arguments: list["JoinPipelineExpression"] = Field(default_factory=list)
 
 
