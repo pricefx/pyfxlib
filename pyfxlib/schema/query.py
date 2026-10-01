@@ -90,6 +90,7 @@ class Operation(StrEnum):
     MINUS = "minus"
     MULTIPLY = "multiply"
     DIV = "div"
+    SAFE_DIV = "safeDiv"
     MOD = "mod"
     CAST_AS_INTEGER = "castAsInteger"
     CAST_AS_BOOLEAN = "castAsBoolean"

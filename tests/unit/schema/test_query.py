@@ -355,3 +355,17 @@ def test_in_values_are_checked_in_source_criteria_too() -> None:
 
     with pytest.raises(ValidationError):
         Source.model_validate({"table": {"kind": "products"}, "criteria": criteria})
+
+
+def test_safe_div_is_accepted_over_columns_and_over_aggregates() -> None:
+    """The function takes a numerator, a denominator and an optional default value."""
+    zero = {"kind": "literal", "type": "INTEGER", "value": 0}
+    over_columns = _function("safeDiv", _column("a"), _column("b"), zero)
+    over_aggregates = _function("safeDiv", _function("sum", _column("a")), _function("countAll"))
+
+    Filter.model_validate({"criteria": _function("greaterThan", over_columns, zero)})
+    aggregate = Aggregate.model_validate(
+        {"columns": [{"expression": over_aggregates, "alias": "ratio"}]}
+    )
+
+    assert aggregate.model_dump(by_alias=True)["columns"][0]["expression"] == over_aggregates
