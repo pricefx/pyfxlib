@@ -15,6 +15,7 @@
 from typing import Any, Sequence
 
 import pandas as pd
+from pydantic import ValidationError
 import pytest
 
 from pyfxlib.schema import (
@@ -22,11 +23,13 @@ from pyfxlib.schema import (
     Filter,
     JoinTable,
     LiteralType,
+    LiteralValue,
     PADataFeed,
     PADataSource,
     Pipeline,
     PreviousStageFunctionAgg,
     QueryAnswer,
+    ResultColumnType,
     Table,
 )
 
@@ -35,7 +38,7 @@ _PIPELINE = {"stages": [{"kind": "source", "table": {"kind": "products"}}]}
 
 
 def _answer(
-    columns: Sequence[tuple[str, LiteralType]], rows: Sequence[Sequence[Any]]
+    columns: Sequence[tuple[str, ResultColumnType]], rows: Sequence[Sequence[Any]]
 ) -> QueryAnswer:
     return QueryAnswer.model_validate(
         {
@@ -48,19 +51,19 @@ def _answer(
 
 # Every result column type, the pandas dtype it maps to, and a sample value of that type.
 _COLUMN_TYPES = [
-    (LiteralType.INTEGER, "Int64", 42),
-    (LiteralType.REAL, "float64", 1.5),
-    (LiteralType.STRING, "string", "a"),
-    (LiteralType.BOOLEAN, "boolean", True),
-    (LiteralType.DATE_ONLY, "datetime64[ns]", "2026-09-22"),
-    (LiteralType.DATE_TIME, "datetime64[ns]", "2026-09-22T10:30:00"),
-    (LiteralType.OTHER, "object", {"key": 1}),
+    (ResultColumnType.INTEGER, "Int64", 42),
+    (ResultColumnType.REAL, "float64", 1.5),
+    (ResultColumnType.STRING, "string", "a"),
+    (ResultColumnType.BOOLEAN, "boolean", True),
+    (ResultColumnType.DATE_ONLY, "datetime64[ns]", "2026-09-22"),
+    (ResultColumnType.DATE_TIME, "datetime64[ns]", "2026-09-22T10:30:00"),
+    (ResultColumnType.OTHER, "object", {"key": 1}),
 ]
 
 
 @pytest.mark.parametrize("column_type,dtype,value", _COLUMN_TYPES)
 def test_to_pandas_maps_each_column_type_to_its_dtype(
-    column_type: LiteralType, dtype: str, value: Any
+    column_type: ResultColumnType, dtype: str, value: Any
 ) -> None:
     series = _answer([("c", column_type)], [[value]]).to_pandas()["c"]
 
@@ -69,7 +72,9 @@ def test_to_pandas_maps_each_column_type_to_its_dtype(
 
 # TODO: This is a current gap in query.py, will be fixed in next MR
 @pytest.mark.parametrize("column_type,dtype,value", _COLUMN_TYPES)
-def test_to_pandas_keeps_nulls_missing(column_type: LiteralType, dtype: str, value: Any) -> None:
+def test_to_pandas_keeps_nulls_missing(
+    column_type: ResultColumnType, dtype: str, value: Any
+) -> None:
     """A NULL must survive as NA.
 
     Builtin dtypes cannot represent one: `int` raises IntCastingNaNError, and `str` and
@@ -86,14 +91,14 @@ def test_to_pandas_keeps_nulls_missing(column_type: LiteralType, dtype: str, val
 # TODO: This is a current gap in query.py, will be fixed in next MR
 def test_to_pandas_keeps_a_null_string_missing_rather_than_the_text_none() -> None:
     """A str cast turns None into the four-character string 'None', which reads as data."""
-    series = _answer([("c", LiteralType.STRING)], [["a"], [None]]).to_pandas()["c"]
+    series = _answer([("c", ResultColumnType.STRING)], [["a"], [None]]).to_pandas()["c"]
 
     assert series.dropna().tolist() == ["a"]
 
 
 def test_to_pandas_keeps_a_null_boolean_missing_rather_than_false() -> None:
     """A bool cast makes a NULL indistinguishable from a genuine False."""
-    series = _answer([("c", LiteralType.BOOLEAN)], [[True], [None], [False]]).to_pandas()["c"]
+    series = _answer([("c", ResultColumnType.BOOLEAN)], [[True], [None], [False]]).to_pandas()["c"]
 
     assert series.isna().tolist() == [False, True, False]
     assert series.dropna().tolist() == [True, False]
@@ -101,7 +106,9 @@ def test_to_pandas_keeps_a_null_boolean_missing_rather_than_false() -> None:
 
 def test_to_pandas_leaves_structured_values_alone() -> None:
     """OTHER must not be stringified: a dict would become its repr."""
-    series = _answer([("c", LiteralType.OTHER)], [[{"key": 1}], [[1, 2]], [None]]).to_pandas()["c"]
+    series = _answer([("c", ResultColumnType.OTHER)], [[{"key": 1}], [[1, 2]], [None]]).to_pandas()[
+        "c"
+    ]
 
     assert series.iloc[0] == {"key": 1}
     assert series.iloc[1] == [1, 2]
@@ -109,7 +116,9 @@ def test_to_pandas_leaves_structured_values_alone() -> None:
 
 
 def test_to_pandas_takes_column_names_and_order_from_the_metadata() -> None:
-    answer = _answer([("z", LiteralType.INTEGER), ("a", LiteralType.STRING)], [[1, "x"], [2, "y"]])
+    answer = _answer(
+        [("z", ResultColumnType.INTEGER), ("a", ResultColumnType.STRING)], [[1, "x"], [2, "y"]]
+    )
 
     frame = answer.to_pandas()
 
@@ -120,7 +129,9 @@ def test_to_pandas_takes_column_names_and_order_from_the_metadata() -> None:
 
 def test_to_pandas_handles_an_empty_result_set() -> None:
     """No rows still yields the declared columns and dtypes, so callers can concatenate."""
-    frame = _answer([("a", LiteralType.INTEGER), ("b", LiteralType.STRING)], []).to_pandas()
+    frame = _answer(
+        [("a", ResultColumnType.INTEGER), ("b", ResultColumnType.STRING)], []
+    ).to_pandas()
 
     assert frame.shape == (0, 2)
     assert list(frame.columns) == ["a", "b"]
@@ -131,11 +142,11 @@ def test_to_pandas_handles_an_empty_result_set() -> None:
 def test_to_pandas_handles_a_mix_of_column_types_in_one_answer() -> None:
     answer = _answer(
         [
-            ("qty", LiteralType.INTEGER),
-            ("price", LiteralType.REAL),
-            ("sku", LiteralType.STRING),
-            ("active", LiteralType.BOOLEAN),
-            ("valid_from", LiteralType.DATE_ONLY),
+            ("qty", ResultColumnType.INTEGER),
+            ("price", ResultColumnType.REAL),
+            ("sku", ResultColumnType.STRING),
+            ("active", ResultColumnType.BOOLEAN),
+            ("valid_from", ResultColumnType.DATE_ONLY),
         ],
         [
             [2, 9.99, "SKU-1", True, "2026-09-22"],
@@ -214,3 +225,12 @@ def test_join_defaults_columns_to_empty() -> None:
     )
 
     assert join.columns == []
+
+
+def test_datetime_literal_dumps_the_literal_spelling_not_the_result_column_one() -> None:
+    """Literals say DATETIME while result columns say DATE_TIME: the two must not be mixed up."""
+    literal = LiteralValue(type=LiteralType.DATETIME, value="2026-09-22T10:30:00")
+
+    assert literal.model_dump(by_alias=True)["type"] == "DATETIME"
+    with pytest.raises(ValidationError):
+        LiteralValue.model_validate({"type": "DATE_TIME", "value": "2026-09-22T10:30:00"})

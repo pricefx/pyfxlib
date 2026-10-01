@@ -308,7 +308,23 @@ AdvancedCriteria.model_rebuild()
 
 @unique
 class LiteralType(StrEnum):
-    """Type of literal value in a query result column."""
+    """Type of a literal value in a query.
+
+    A subset of the result column types, and spelled differently: `DATETIME` here, but
+    `DATE_TIME` in `ResultColumnType`.
+    """
+
+    INTEGER = "INTEGER"
+    REAL = "REAL"
+    DATE_ONLY = "DATE_ONLY"
+    DATETIME = "DATETIME"
+    STRING = "STRING"
+    BOOLEAN = "BOOLEAN"
+
+
+@unique
+class ResultColumnType(StrEnum):
+    """Type of a column in the result of a query."""
 
     INTEGER = "INTEGER"
     REAL = "REAL"
@@ -319,37 +335,37 @@ class LiteralType(StrEnum):
     OTHER = "OTHER"
 
     def to_py_type(self) -> Any:
-        """Convert the LiteralType to a Python type."""
-        if self == LiteralType.DATE_ONLY:
+        """Convert the ResultColumnType to a Python type."""
+        if self == ResultColumnType.DATE_ONLY:
             return date
-        if self == LiteralType.DATE_TIME:
+        if self == ResultColumnType.DATE_TIME:
             return datetime
-        if self == LiteralType.INTEGER:
+        if self == ResultColumnType.INTEGER:
             return int
-        if self == LiteralType.REAL:
+        if self == ResultColumnType.REAL:
             return float
-        if self == LiteralType.BOOLEAN:
+        if self == ResultColumnType.BOOLEAN:
             return bool
         # Fall back to str parsing by default
         return str
 
     def to_pandas_type(self) -> Any:
-        """Convert the LiteralType to a Pandas type.
+        """Convert the ResultColumnType to a Pandas type.
 
         Same as to_py_type, except that date and datetime types are converted to datetime64[ns]
         and nullable dtypes are used, so that NULL values coming back from the query are kept
         as NA instead of raising (INTEGER) or being silently cast (STRING, BOOLEAN).
         """
-        if self in [LiteralType.DATE_ONLY, LiteralType.DATE_TIME]:
+        if self in [ResultColumnType.DATE_ONLY, ResultColumnType.DATE_TIME]:
             return "datetime64[ns]"
-        if self == LiteralType.INTEGER:
+        if self == ResultColumnType.INTEGER:
             return "Int64"
-        if self == LiteralType.REAL:
+        if self == ResultColumnType.REAL:
             # float64 already represents NULL as NaN, so it needs no nullable dtype
             return float
-        if self == LiteralType.BOOLEAN:
+        if self == ResultColumnType.BOOLEAN:
             return "boolean"
-        if self == LiteralType.STRING:
+        if self == ResultColumnType.STRING:
             return "string"
         # Leave anything else as-is, so that structured values are not stringified
         return "object"
@@ -1090,7 +1106,7 @@ class QueryAnswerMetaColumn(PfxCamelCaseModel):
     """Metadata for a column in the result of the query."""
 
     name: str
-    type: LiteralType
+    type: ResultColumnType
 
 
 class QueryAnswerMeta(PfxCamelCaseModel):
