@@ -18,10 +18,14 @@ import pandas as pd
 import pytest
 
 from pyfxlib.schema import (
+    Aggregate,
+    Filter,
+    JoinTable,
     LiteralType,
     PADataFeed,
     PADataSource,
     Pipeline,
+    PreviousStageFunctionAgg,
     QueryAnswer,
     Table,
 )
@@ -168,3 +172,45 @@ def test_table_dumps_the_kind_the_dto_expects(table: Table, kind: str) -> None:
 
     assert dumped["stages"][0]["table"]["kind"] == kind
     assert Pipeline.model_validate(dumped) == pipeline
+
+
+def test_aggregate_defaults_dimensions_and_function_arguments_to_empty() -> None:
+    """The DTO defaults both to an empty list, so a bare `countAll()` total needs neither."""
+    aggregate = Aggregate.model_validate(
+        {
+            "columns": [
+                {"expression": {"kind": "function", "name": "countAll"}, "alias": "n"},
+            ],
+        }
+    )
+
+    assert aggregate.dimensions == []
+    assert isinstance(aggregate.columns[0].expression, PreviousStageFunctionAgg)
+    assert aggregate.columns[0].expression.arguments == []
+
+
+def test_filter_accepts_a_function_without_arguments() -> None:
+    criteria = {
+        "kind": "function",
+        "name": "lessThan",
+        "arguments": [
+            {"kind": "columnReference", "source": "previousStage", "column": "x"},
+            {"kind": "function", "name": "random"},
+        ],
+    }
+
+    assert Filter.model_validate({"criteria": criteria}).model_dump(by_alias=True)["criteria"][
+        "arguments"
+    ][1] == {"kind": "function", "name": "random", "arguments": []}
+
+
+def test_join_defaults_columns_to_empty() -> None:
+    join = JoinTable.model_validate(
+        {
+            "table": {"kind": "customers"},
+            "type": "INNER",
+            "criteria": {"kind": "literal", "type": "BOOLEAN", "value": True},
+        }
+    )
+
+    assert join.columns == []

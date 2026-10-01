@@ -789,7 +789,7 @@ class PreviousStageFunction(PfxCamelCaseModel):
 
     kind: Literal["function"] = "function"
     name: Operation
-    arguments: list["PreviousStageExpression"]
+    arguments: list["PreviousStageExpression"] = Field(default_factory=list)
 
 
 PreviousStageExpression: TypeAlias = (
@@ -805,7 +805,7 @@ class SourceFunction(PfxCamelCaseModel):
 
     kind: Literal["function"] = "function"
     name: Operation
-    arguments: list["SourceExpression"]
+    arguments: list["SourceExpression"] = Field(default_factory=list)
 
 
 # Every expression addressable inside a source stage. The DTO has a single flat
@@ -849,7 +849,7 @@ class PreviousStageFunctionAgg(PfxCamelCaseModel):
 
     kind: Literal["function"] = "function"
     name: OperationAgg
-    arguments: list[PreviousStageExpression]
+    arguments: list[PreviousStageExpression] = Field(default_factory=list)
 
 
 ExpressionAgg: TypeAlias = (
@@ -890,7 +890,7 @@ class JoinTableFunction(PfxCamelCaseModel):
 
     kind: Literal["function"] = "function"
     name: Operation
-    arguments: list["JoinTableExpression"]
+    arguments: list["JoinTableExpression"] = Field(default_factory=list)
 
 
 JoinTableExpression: TypeAlias = (
@@ -919,7 +919,7 @@ class JoinPipelineFunction(PfxCamelCaseModel):
 
     kind: Literal["function"] = "function"
     name: Operation
-    arguments: list["JoinPipelineExpression"]
+    arguments: list["JoinPipelineExpression"] = Field(default_factory=list)
 
 
 JoinPipelineExpression: TypeAlias = (
@@ -943,7 +943,7 @@ class JoinTable(PfxCamelCaseModel):
     kind: Literal["join"] = "join"
     table: Table
     type: JoinType
-    columns: list[JoinTableSelectable]
+    columns: list[JoinTableSelectable] = Field(default_factory=list)
     criteria: JoinTableExpression
 
 
@@ -955,7 +955,7 @@ class JoinPipeline(PfxCamelCaseModel):
     kind: Literal["join"] = "join"
     pipeline: "Pipeline"
     type: JoinType
-    columns: list[JoinPipelineSelectable]
+    columns: list[JoinPipelineSelectable] = Field(default_factory=list)
     criteria: JoinPipelineExpression
 
 
@@ -1002,7 +1002,7 @@ class Aggregate(PfxCamelCaseModel):
 
     kind: Literal["aggregate"] = "aggregate"
     columns: list[PreviousStageSelectableAgg] = Field(min_length=1)
-    dimensions: list[PreviousStageExpression]
+    dimensions: list[PreviousStageExpression] = Field(default_factory=list)
 
 
 class Distinct(PfxCamelCaseModel):
