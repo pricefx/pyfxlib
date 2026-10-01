@@ -329,6 +329,9 @@ class LiteralType(StrEnum):
     DATETIME = "DATETIME"
     STRING = "STRING"
     BOOLEAN = "BOOLEAN"
+    # ISO-8601 strings, e.g. "PT1H30M" and "P1Y2M"
+    DURATION = "DURATION"
+    PERIOD = "PERIOD"
 
 
 @unique

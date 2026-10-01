@@ -399,3 +399,16 @@ def test_rank_over_rejects_anything_but_a_single_order(
 
     with pytest.raises(ValidationError):
         AddColumns.model_validate({"columns": [{"expression": expression, "alias": "r"}]})
+
+
+@pytest.mark.parametrize(
+    "type_,value", [(LiteralType.DURATION, "PT1H30M"), (LiteralType.PERIOD, "P1Y2M")]
+)
+def test_duration_and_period_literals_dump_as_iso_strings(type_: LiteralType, value: str) -> None:
+    literal = LiteralValue(type=type_, value=value)
+
+    assert literal.model_dump(by_alias=True, mode="json") == {
+        "kind": "literal",
+        "type": type_.value,
+        "value": value,
+    }
