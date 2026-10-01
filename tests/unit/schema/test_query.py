@@ -412,3 +412,93 @@ def test_duration_and_period_literals_dump_as_iso_strings(type_: LiteralType, va
         "type": type_.value,
         "value": value,
     }
+
+
+def test_pipeline_round_trips_through_every_reworked_construct() -> None:
+    """Source, join, nested aggregate, window over typed bounds and sort, in one query."""
+    table_column = {"kind": "columnReference", "source": "table", "column": "sku"}
+    pipeline = {
+        "kind": "pipeline",
+        "stages": [
+            {
+                "kind": "source",
+                "table": {"kind": "dataSource", "dataSourceUniqueName": "Transactions"},
+                "columns": [
+                    {
+                        "kind": "selectable",
+                        "expression": {
+                            "kind": "columnReference",
+                            "source": "table",
+                            "column": "sku",
+                        },
+                        "alias": "sku",
+                    },
+                    {
+                        "kind": "selectable",
+                        "expression": {
+                            "kind": "columnReference",
+                            "source": "table",
+                            "column": "qty",
+                        },
+                        "alias": "qty",
+                    },
+                ],
+                "criteria": _function("in", table_column, _string("A"), _string("B")),
+            },
+            {
+                "kind": "join",
+                "table": {"kind": "products"},
+                "type": "LEFT_OUTER",
+                "columns": [],
+                "criteria": _function(
+                    "equal",
+                    _column("sku"),
+                    {"kind": "columnReference", "source": "table", "column": "sku"},
+                ),
+            },
+            {
+                "kind": "aggregate",
+                "columns": [
+                    {
+                        "kind": "selectable",
+                        "expression": _function(
+                            "safeDiv", _function("sum", _column("qty")), _function("countAll")
+                        ),
+                        "alias": "avgQty",
+                    },
+                ],
+                "dimensions": [_column("sku")],
+            },
+            {
+                "kind": "addColumns",
+                "columns": [
+                    {
+                        "kind": "selectable",
+                        "expression": {
+                            "kind": "windowFunction",
+                            "frame": _frame(_UNBOUNDED_PRECEDING, _CURRENT_ROW),
+                            "partitions": [],
+                            "filter": None,
+                            "orders": [
+                                {
+                                    "kind": "order",
+                                    "expression": _column("avgQty"),
+                                    "direction": "DESC_NULLS_LAST",
+                                }
+                            ],
+                            "function": _function("rank"),
+                        },
+                        "alias": "rank",
+                    },
+                ],
+            },
+            {
+                "kind": "sort",
+                "orders": [
+                    {"kind": "order", "expression": _column("rank"), "direction": "ASC_NULLS_LAST"}
+                ],
+            },
+        ],
+    }
+
+    assert Pipeline.model_validate(pipeline).model_dump(by_alias=True, mode="json") == pipeline
