@@ -868,8 +868,20 @@ class PreviousStageFunctionAgg(PfxCamelCaseModel):
     arguments: list[PreviousStageExpression] = Field(default_factory=list)
 
 
+class AggregateScalarFunction(PfxCamelCaseModel):
+    """Scalar function over aggregates, e.g. `div(sum(a), sum(b))`.
+
+    Its arguments are aggregate expressions themselves, so aggregates can sit at any depth
+    under scalar functions, but never directly under another aggregate.
+    """
+
+    kind: Literal["function"] = "function"
+    name: Operation
+    arguments: list["ExpressionAgg"] = Field(default_factory=list)
+
+
 ExpressionAgg: TypeAlias = (
-    LiteralValue | PreviousStageColumnReference | PreviousStageFunctionAgg | PreviousStageFunction
+    LiteralValue | PreviousStageColumnReference | PreviousStageFunctionAgg | AggregateScalarFunction
 )
 
 

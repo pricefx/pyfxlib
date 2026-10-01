@@ -20,6 +20,7 @@ import pytest
 
 from pyfxlib.schema import (
     Aggregate,
+    AggregateScalarFunction,
     Filter,
     JoinTable,
     LiteralType,
@@ -234,3 +235,37 @@ def test_datetime_literal_dumps_the_literal_spelling_not_the_result_column_one()
     assert literal.model_dump(by_alias=True)["type"] == "DATETIME"
     with pytest.raises(ValidationError):
         LiteralValue.model_validate({"type": "DATE_TIME", "value": "2026-09-22T10:30:00"})
+
+
+def _column(name: str) -> dict[str, Any]:
+    return {"kind": "columnReference", "source": "previousStage", "column": name}
+
+
+def _function(name: str, *arguments: dict[str, Any]) -> dict[str, Any]:
+    return {"kind": "function", "name": name, "arguments": list(arguments)}
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        _function("div", _function("sum", _column("a")), _function("sum", _column("b"))),
+        _function(
+            "coalesce",
+            _function("max", _column("a")),
+            {"kind": "literal", "type": "INTEGER", "value": 0},
+        ),
+        _function("plus", _function("multiply", _function("avg", _column("a")), _column("b"))),
+    ],
+)
+def test_aggregate_accepts_scalar_functions_over_aggregates(expression: dict[str, Any]) -> None:
+    aggregate = Aggregate.model_validate({"columns": [{"expression": expression, "alias": "x"}]})
+
+    assert isinstance(aggregate.columns[0].expression, AggregateScalarFunction)
+    assert aggregate.model_dump(by_alias=True)["columns"][0]["expression"] == expression
+
+
+def test_aggregate_rejects_an_aggregate_nested_in_an_aggregate() -> None:
+    expression = _function("sum", _function("sum", _column("a")))
+
+    with pytest.raises(ValidationError):
+        Aggregate.model_validate({"columns": [{"expression": expression, "alias": "x"}]})
