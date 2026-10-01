@@ -1,5 +1,40 @@
 # Changelog
 
+## [2.0.0] - 2026-10-13
+
+Aligns the Query API schema with the backend `QueryApiDTO`.
+
+### Added
+- `HistoricalConditionRecords` and `Users` tables.
+- `safeDiv` in `Operation`.
+- `percentRankOver` and `cumeDistOver` (`RankOverOperation`, `PreviousStageRankOverFunction`),
+  whose single argument is an `Order`.
+- `LiteralValueType`, the type of a `LiteralValue`. It spells datetime `DATETIME` as the backend
+  expects, and adds the `DURATION` and `PERIOD` literal types (ISO-8601 strings).
+- `ResultColumnType`, the type of a `QueryAnswerMetaColumn`, as `LiteralType` was until now.
+- `AggregateScalarFunction`, so aggregate stages accept scalar functions over aggregates,
+  e.g. `div(sum(a), sum(b))`.
+
+### Changed
+- **Breaking:** `UnboundedBound` is split into `UnboundedPreceding` and `UnboundedFollowing`,
+  and `Bound` into `StartBound` and `EndBound`. A frame can no longer start at the end of the
+  partition or end at its start, which the backend rejects.
+- **Breaking:** `PADataFeed` now sends `dataFeed`: backends from 16.3.11 / 17.0.2 renamed
+  `datafeed` to `dataFeed` (PFUN-35498). For an older backend, set `kind="datafeed"` explicitly.
+  Both ids parse.
+- Function arguments, aggregate dimensions and join columns default to an empty list.
+- `in` and `notIn` only accept literal values after their first argument, as the backend does.
+
+### Deprecated
+- `LiteralType`, an alias of `ResultColumnType` that warns on use, will be removed in the next
+  major version. It typed both literal values and result columns, though the backend spells
+  datetime differently in each (`DATETIME` against `DATE_TIME`), so every datetime literal was
+  rejected. Use `ResultColumnType` for result columns and `LiteralValueType` for literal values.
+
+### Fixed
+- `PADataSource` now also parses `dataSource`, added by backends from 16.3.11 / 17.0.2
+  (PFUN-35498). It still sends the deprecated `datasource`, the only id every backend accepts.
+
 ## [1.4.0] - 2026-09-28
 
 ### Added
