@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.4.0] - 2026-09-28
+
+### Added
+- Model object logics and calculations on the connections (`ConnectionAsync`,
+`ConnectionSync` and their implementations):
+  - `list_model_logic_parameters`: the inputs a model evaluation logic expects and the
+  elements it returns, in the context of a model object;
+  - `execute_model_logic`: run a model evaluation logic in the context of a model object
+  and get the results of its elements;
+  - `calculate_model_step`: start the calculation of a model object step as a background
+  task, and get the typed ids of the dispatched jobs.
+- `LogicParameters`, `LogicInput`, `LogicOutput` and `CalculationResult` schema models, in
+the new `pyfxlib.schema.optimization` module and exported from `pyfxlib.schema`.
+- Test tooling: `new_model_class` accepts an optional model class `definition`, and
+`new_model_logic` creates a model evaluation or calculation logic.
+
 ## [1.3.0] - 2026-09-21
 
 ### Added

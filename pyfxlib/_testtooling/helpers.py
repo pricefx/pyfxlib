@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections.abc import Iterator
+from enum import StrEnum
 from io import TextIOBase
 import json
 from typing import Any, Optional
@@ -22,6 +23,13 @@ import pandas as pd
 
 from pyfxlib.lowlevel.connection import ConnectionAsync, ConnectionRemote
 from pyfxlib.lowlevel.session import PfxAuthUserPass, PfxSession
+
+
+class ModelLogicNature(StrEnum):
+    """The nature of a model logic."""
+
+    EVALUATION = "model_evaluation"
+    CALCULATION = "model_calculation"
 
 
 class _IntegrationRemote:
@@ -101,17 +109,52 @@ class _IntegrationRemote:
             ),
         )
 
-    async def new_model_class(self, unique_name: str = "aModelClass") -> dict[str, Any]:
+    async def new_model_class(
+        self,
+        unique_name: str = "aModelClass",
+        definition: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         return await self._conn.add_object(
             "MC",
             {
                 "uniqueName": unique_name,
-                "definition": {
-                    "evaluations": [],
-                    "calculations": [],
-                    "steps": [],
-                },
+                "definition": (
+                    definition
+                    if definition is not None
+                    else {
+                        "evaluations": [],
+                        "calculations": [],
+                        "steps": [],
+                    }
+                ),
                 "workflowFormulaName": None,
+            },
+        )
+
+    async def new_model_logic(
+        self,
+        unique_name: str,
+        elements: dict[str, str],
+        nature: ModelLogicNature = ModelLogicNature.EVALUATION,
+    ) -> dict[str, Any]:
+        """Create an active model logic, one displayed Groovy element per expression."""
+        return await self._conn.add_object(
+            "F",
+            {
+                "uniqueName": unique_name,
+                "label": unique_name,
+                "formulaNature": nature,
+                "status": "ACTIVE",
+                "validAfter": "2020-01-01",
+                "elements": [
+                    {
+                        "elementName": name,
+                        "formulaExpression": expression,
+                        "combinationType": "FUNCTION",
+                        "displayOptions": 16,
+                    }
+                    for name, expression in elements.items()
+                ],
             },
         )
 
