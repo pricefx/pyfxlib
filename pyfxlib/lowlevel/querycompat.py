@@ -125,6 +125,10 @@ class UsageCategory(StrEnum):
     """What part of the Query API a query uses."""
 
     TABLE = "table"
+    # A stage or expression kind.
+    KIND = "kind"
+    # A field of a table, stage or expression, named "<kind>.<field>".
+    FIELD = "field"
 
 
 @dataclass(frozen=True)
@@ -162,6 +166,8 @@ def _declare(
 
 
 _TABLE = UsageCategory.TABLE
+_KIND = UsageCategory.KIND
+_FIELD = UsageCategory.FIELD
 
 # Every change since 15.0.0, under its first X.Y.0 release, bounded by its backports.
 _REQUIREMENTS = _declare(
@@ -192,7 +198,21 @@ _REQUIREMENTS = _declare(
         VersionBounds({15: (15, 0, 3)}),
         "PFUN-30634",
     ),
+    (_KIND, ("windowFunction",), VersionBounds({15: (15, 0, 5)}), "PFUN-31214"),
     (_TABLE, ("actionItems",), VersionBounds({15: (15, 0, 6)}), "PFUN-31318"),
+    (
+        _KIND,
+        (
+            "inputColumnReference",
+            "outputColumnReference",
+            "calculationResultColumnReference",
+            "activeCalculationResultColumnReference",
+            "previousCalculationResultColumnReference",
+        ),
+        VersionBounds({15: (15, 0, 6)}),
+        "PFUN-31318",
+    ),
+    (_KIND, ("selectColumns",), VersionBounds({15: (15, 1, 0)}), "PFUN-30390"),
     # 16.0.0
     (
         _TABLE,
@@ -221,7 +241,15 @@ _REQUIREMENTS = _declare(
         "PFUN-33923",
     ),
     (_TABLE, ("claims",), VersionBounds({15: (15, 3, 17), 16: (16, 2, 2)}), "PFUN-34034"),
+    # 17.0.0
+    (
+        _FIELD,
+        ("companyParameterRows.targetDate",),
+        VersionBounds({15: (15, 3, 22), 16: (16, 3, 6), 17: (17, 0, 0)}),
+        "PFUN-34433",
+    ),
     # 17.1.0
+    (_FIELD, ("join.pipeline",), VersionBounds({16: (16, 3, 10), 17: (17, 0, 1)}), "PFUN-30794"),
     (
         _TABLE,
         ("historicalConditionRecords",),
@@ -261,11 +289,23 @@ def _tables(node: Any) -> Iterator[dict[str, Any]]:
             yield from _tables(item)
 
 
-def _usages(query: dict[str, Any]) -> Iterator[Usage]:
-    """Yield everything `query` uses that may need a minimum backend version."""
-    for table in _tables(query):
-        if isinstance(kind := table.get("kind"), str):
-            yield Usage(UsageCategory.TABLE, kind)
+def _usages(node: Any, *, is_table: bool = False) -> Iterator[Usage]:
+    """Yield everything a query node uses that may need a minimum backend version.
+
+    Each table, stage and expression yields its kind, and each of its fields set to a value:
+    a field left null is not used, as a model dumped without `exclude_none` sends it.
+    """
+    if isinstance(node, list):
+        for item in node:
+            yield from _usages(item)
+    elif isinstance(node, dict):
+        for key, value in node.items():
+            yield from _usages(value, is_table=key == "table" and isinstance(value, dict))
+        if isinstance(kind := node.get("kind"), str):
+            yield Usage(UsageCategory.TABLE if is_table else UsageCategory.KIND, kind)
+            for key, value in node.items():
+                if key != "kind" and value is not None:
+                    yield Usage(UsageCategory.FIELD, f"{kind}.{key}")
 
 
 @dataclass(frozen=True)

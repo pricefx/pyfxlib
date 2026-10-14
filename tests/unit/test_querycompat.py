@@ -165,7 +165,7 @@ async def test_a_kind_the_backend_knows_logs_nothing(
 async def test_tables_of_joined_pipelines_are_adapted_too() -> None:
     query = _query({"kind": "products"}, _feed("dataFeed"), _source("dataSource"))
 
-    adapted = await adapt_query_to_backend(query, _Backend("16.2.0"))
+    adapted = await adapt_query_to_backend(query, _Backend("16.3.10"))
 
     assert _kinds(adapted) == ["products", "datafeed", "datasource"]
 
@@ -175,7 +175,7 @@ async def test_the_caller_query_is_never_modified() -> None:
     query = _query(_feed("dataFeed"), _source("dataSource"))
     original = copy.deepcopy(query)
 
-    adapted = await adapt_query_to_backend(query, _Backend("16.2.0"))
+    adapted = await adapt_query_to_backend(query, _Backend("16.3.10"))
 
     assert query == original
     assert adapted != query
@@ -183,7 +183,7 @@ async def test_the_caller_query_is_never_modified() -> None:
 
 @pytest.mark.asyncio
 async def test_the_compatibility_is_asked_for_once_per_query() -> None:
-    backend = _Backend("16.2.0")
+    backend = _Backend("16.3.10")
 
     await adapt_query_to_backend(_query(_feed("dataFeed"), _source("datasource")), backend)
 
@@ -194,7 +194,19 @@ async def test_the_compatibility_is_asked_for_once_per_query() -> None:
 async def test_the_compatibility_is_not_asked_for_a_15_0_0_query() -> None:
     """Nothing renamed and nothing past the 15.0.0 baseline: no need to know the backend."""
     never: QueryCompatibilityProvider = _never_asked
-    query = _query({"kind": "products"}, {"kind": "datamart", "datamartUniqueName": "DM"})
+    query = {
+        "kind": "pipeline",
+        "stages": [
+            {"kind": "source", "table": {"kind": "products"}},
+            {
+                "kind": "join",
+                "type": "LEFT_OUTER",
+                "table": {"kind": "datamart", "datamartUniqueName": "DM"},
+                "criteria": {"kind": "literal", "type": "BOOLEAN", "value": True},
+            },
+            {"kind": "take", "count": 10},
+        ],
+    }
 
     assert await adapt_query_to_backend(query, never) == query
 
@@ -362,3 +374,178 @@ def test_every_schema_table_kind_is_baseline_renamed_or_required() -> None:
     required = {usage.name for usage in _REQUIREMENTS if usage.category is UsageCategory.TABLE}
 
     assert schema_kinds - _BASELINE_TABLES - renamed - required == set()
+
+
+def _products_with(*stages: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "kind": "pipeline",
+        "stages": [{"kind": "source", "table": _table("products")}, *stages],
+    }
+
+
+def _column(name: str) -> dict[str, Any]:
+    return {"kind": "columnReference", "source": "previousStage", "column": name}
+
+
+_WINDOW_RANK = {
+    "kind": "windowFunction",
+    "frame": {
+        "type": "rows",
+        "start": {"type": "unbounded", "direction": "PRECEDING"},
+        "end": {"type": "currentRow"},
+        "exclusion": "NONE",
+    },
+    "orders": [{"kind": "order", "expression": _column("sku"), "direction": "ASC_NULLS_LAST"}],
+    "function": {"kind": "function", "name": "rank", "arguments": []},
+}
+
+
+def _add_column(expression: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "kind": "addColumns",
+        "columns": [{"kind": "selectable", "expression": expression, "alias": "x"}],
+    }
+
+
+def _source_column(kind: str, **fields: str) -> dict[str, Any]:
+    return {
+        "kind": "pipeline",
+        "stages": [
+            {
+                "kind": "source",
+                "table": {"kind": "quoteLineItems", "quoteUniqueName": "Q"},
+                "columns": [
+                    {
+                        "kind": "selectable",
+                        "expression": {"kind": kind, "source": "table", **fields},
+                        "alias": "x",
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def _company_parameter_rows(target_date: str | None) -> dict[str, Any]:
+    table = {
+        "kind": "companyParameterRows",
+        "companyParameterUniqueName": "CP",
+        "targetDate": target_date,
+    }
+    return {"kind": "pipeline", "stages": [{"kind": "source", "table": table}]}
+
+
+_JOIN_PIPELINE = _products_with(
+    {
+        "kind": "join",
+        "type": "INNER",
+        "pipeline": {
+            "kind": "pipeline",
+            "stages": [{"kind": "source", "table": _table("products")}],
+        },
+        "criteria": {"kind": "literal", "type": "BOOLEAN", "value": True},
+    }
+)
+
+# Query using the kind or field, the usage it reports, releases having it, releases predating it.
+_KIND_AND_FIELD_HISTORY: list[tuple[dict[str, Any], Usage, list[str], list[str]]] = [
+    (
+        _products_with(_add_column(_WINDOW_RANK)),
+        Usage(UsageCategory.KIND, "windowFunction"),
+        ["15.0.5", "15.1.0"],
+        ["15.0.4"],
+    ),
+    *(
+        (
+            _source_column(kind, **fields),
+            Usage(UsageCategory.KIND, kind),
+            ["15.0.6", "15.1.0"],
+            ["15.0.5"],
+        )
+        for kind, fields in (
+            ("inputColumnReference", {"inputName": "I", "column": "c"}),
+            ("outputColumnReference", {"elementName": "E", "column": "c"}),
+            ("calculationResultColumnReference", {"elementName": "E"}),
+            ("activeCalculationResultColumnReference", {"elementName": "E"}),
+            ("previousCalculationResultColumnReference", {"elementName": "E"}),
+        )
+    ),
+    (
+        _products_with(
+            {
+                "kind": "selectColumns",
+                "columns": [{"kind": "selectable", "expression": _column("sku"), "alias": "s"}],
+            }
+        ),
+        Usage(UsageCategory.KIND, "selectColumns"),
+        ["15.1.0", "16.0.0"],
+        ["15.0.6"],
+    ),
+    (
+        _company_parameter_rows("2026-10-14"),
+        Usage(UsageCategory.FIELD, "companyParameterRows.targetDate"),
+        ["15.3.22", "16.3.6", "17.0.0"],
+        ["15.3.21", "16.3.5"],
+    ),
+    (
+        _JOIN_PIPELINE,
+        Usage(UsageCategory.FIELD, "join.pipeline"),
+        ["16.3.10", "17.0.1", "17.1.0"],
+        ["16.3.9", "17.0.0", "15.3.30"],
+    ),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query,version",
+    [
+        (query, version)
+        for query, _, supported, _ in _KIND_AND_FIELD_HISTORY
+        for version in supported
+    ],
+)
+async def test_a_kind_or_field_is_accepted_from_the_release_that_brought_it(
+    query: dict[str, Any], version: str
+) -> None:
+    assert await adapt_query_to_backend(query, _Backend(version)) == query
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query,usage,version",
+    [
+        (query, usage, version)
+        for query, usage, _, unsupported in _KIND_AND_FIELD_HISTORY
+        for version in unsupported
+    ],
+)
+async def test_a_kind_or_field_is_rejected_by_backends_predating_it(
+    query: dict[str, Any], usage: Usage, version: str
+) -> None:
+    with pytest.raises(UnsupportedQueryError) as raised:
+        await adapt_query_to_backend(query, _Backend(version))
+
+    assert usage in raised.value.unsupported
+
+
+@pytest.mark.asyncio
+async def test_a_null_field_is_not_a_use_of_it() -> None:
+    """A model dumped without `exclude_none` sends unset fields as null."""
+    query = _company_parameter_rows(None)
+
+    assert await adapt_query_to_backend(query, _never_asked) == query
+
+
+@pytest.mark.asyncio
+async def test_a_join_against_a_table_needs_no_recent_backend() -> None:
+    query = _products_with(
+        {
+            "kind": "join",
+            "type": "INNER",
+            "table": _table("products"),
+            "criteria": {"kind": "literal", "type": "BOOLEAN", "value": True},
+        }
+    )
+
+    assert await adapt_query_to_backend(query, _never_asked) == query
