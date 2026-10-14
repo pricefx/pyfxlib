@@ -14,6 +14,8 @@
 
 """Pricefx domain objects."""
 
+from typing import Any, TYPE_CHECKING
+
 from pyfxlib.schema.base import PfxCamelCaseModel, PfxPascalCaseModel
 from pyfxlib.schema.core import (
     BackendVersion,
@@ -38,6 +40,7 @@ from pyfxlib.schema.optimization import (
     LogicParameters,
 )
 from pyfxlib.schema.query import (
+    _resolve_deprecated_attribute,
     ActionItems,
     ActiveCalculationResultColumnReference,
     AddColumns,
@@ -83,8 +86,8 @@ from pyfxlib.schema.query import (
     JoinTableFunction,
     JoinTableSelectable,
     JoinType,
-    LiteralType,
     LiteralValue,
+    LiteralValueType,
     NUMERIC_FILTERS,
     OffsetBound,
     Operation,
@@ -218,8 +221,8 @@ __all__ = [
     "JoinTableFunction",
     "JoinTableSelectable",
     "JoinType",
-    "LiteralType",
     "LiteralValue",
+    "LiteralValueType",
     "NUMERIC_FILTERS",
     "OffsetBound",
     "Operation",
@@ -283,3 +286,13 @@ __all__ = [
     "Users",
     "WindowOperation",
 ]
+
+if TYPE_CHECKING:
+    # Deprecated: use ResultColumnType. Defined for type checkers only, so that at runtime the
+    # name goes through __getattr__ below and warns.
+    LiteralType = ResultColumnType
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve deprecated attributes, warning about each use."""
+    return _resolve_deprecated_attribute(__name__, name)

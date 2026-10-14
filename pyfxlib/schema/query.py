@@ -19,7 +19,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date, datetime
 from enum import StrEnum, unique
-from typing import Any, Literal, Optional, Self, TypeAlias
+from typing import Any, Literal, Optional, Self, TYPE_CHECKING, TypeAlias
+import warnings
 
 import pandas as pd
 from pydantic import ConfigDict, Field, model_validator
@@ -316,7 +317,7 @@ AdvancedCriteria.model_rebuild()
 
 
 @unique
-class LiteralType(StrEnum):
+class LiteralValueType(StrEnum):
     """Type of a literal value in a query.
 
     A subset of the result column types, and spelled differently: `DATETIME` here, but
@@ -381,6 +382,34 @@ class ResultColumnType(StrEnum):
             return "string"
         # Leave anything else as-is, so that structured values are not stringified
         return "object"
+
+
+if TYPE_CHECKING:
+    # Deprecated: use ResultColumnType. Defined for type checkers only, so that at runtime the
+    # name goes through __getattr__ below and warns.
+    LiteralType = ResultColumnType
+
+
+def _resolve_deprecated_attribute(module: str, name: str) -> Any:
+    """Resolve a deprecated attribute of `module`, warning the code that accessed it.
+
+    Shared by the module `__getattr__` of this module and of `pyfxlib.schema`, which re-exports
+    the same names: `stacklevel` skips this helper and the `__getattr__` calling it.
+    """
+    if name == "LiteralType":
+        warnings.warn(
+            "LiteralType is deprecated and will be removed in the next major version: use"
+            " ResultColumnType for result columns, and LiteralValueType for literal values.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return ResultColumnType
+    raise AttributeError(f"module {module!r} has no attribute {name!r}")
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve deprecated module attributes, warning about each use."""
+    return _resolve_deprecated_attribute(__name__, name)
 
 
 class CompanyParameterTables(PfxCamelCaseModel):
@@ -750,7 +779,7 @@ class LiteralValue(PfxCamelCaseModel):
     """Literal class."""
 
     kind: Literal["literal"] = "literal"
-    type: LiteralType
+    type: LiteralValueType
     value: Any
 
 

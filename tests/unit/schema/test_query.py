@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from types import ModuleType
 from typing import Any, Sequence
 
 import pandas as pd
 from pydantic import ValidationError
 import pytest
 
+import pyfxlib.schema
 from pyfxlib.schema import (
     AddColumns,
     Aggregate,
@@ -26,8 +28,8 @@ from pyfxlib.schema import (
     Frame,
     HistoricalConditionRecords,
     JoinTable,
-    LiteralType,
     LiteralValue,
+    LiteralValueType,
     PADataFeed,
     PADataSource,
     Pipeline,
@@ -39,6 +41,7 @@ from pyfxlib.schema import (
     Table,
     Users,
 )
+import pyfxlib.schema.query
 
 # to_pandas only reads `meta` and `rows`, but `query` is required, so every fixture needs one.
 _PIPELINE = {"stages": [{"kind": "source", "table": {"kind": "products"}}]}
@@ -265,7 +268,7 @@ def test_join_defaults_columns_to_empty() -> None:
 
 def test_datetime_literal_dumps_the_literal_spelling_not_the_result_column_one() -> None:
     """Literals say DATETIME while result columns say DATE_TIME: the two must not be mixed up."""
-    literal = LiteralValue(type=LiteralType.DATETIME, value="2026-09-22T10:30:00")
+    literal = LiteralValue(type=LiteralValueType.DATETIME, value="2026-09-22T10:30:00")
 
     assert literal.model_dump(by_alias=True)["type"] == "DATETIME"
     with pytest.raises(ValidationError):
@@ -426,9 +429,11 @@ def test_rank_over_rejects_anything_but_a_single_order(
 
 
 @pytest.mark.parametrize(
-    "type_,value", [(LiteralType.DURATION, "PT1H30M"), (LiteralType.PERIOD, "P1Y2M")]
+    "type_,value", [(LiteralValueType.DURATION, "PT1H30M"), (LiteralValueType.PERIOD, "P1Y2M")]
 )
-def test_duration_and_period_literals_dump_as_iso_strings(type_: LiteralType, value: str) -> None:
+def test_duration_and_period_literals_dump_as_iso_strings(
+    type_: LiteralValueType, value: str
+) -> None:
     literal = LiteralValue(type=type_, value=value)
 
     assert literal.model_dump(by_alias=True, mode="json") == {
@@ -526,3 +531,17 @@ def test_pipeline_round_trips_through_every_reworked_construct() -> None:
     }
 
     assert Pipeline.model_validate(pipeline).model_dump(by_alias=True, mode="json") == pipeline
+
+
+@pytest.mark.parametrize("module", [pyfxlib.schema, pyfxlib.schema.query])
+def test_literal_type_is_a_deprecated_alias_of_result_column_type(module: ModuleType) -> None:
+    """`LiteralType` used to type result columns, so existing code reading meta keeps working."""
+    with pytest.warns(DeprecationWarning, match="ResultColumnType"):
+        literal_type = module.LiteralType
+
+    assert literal_type is ResultColumnType
+
+
+def test_unknown_schema_attribute_still_raises() -> None:
+    with pytest.raises(AttributeError, match="NotAThing"):
+        pyfxlib.schema.NotAThing  # noqa: B018
