@@ -557,12 +557,15 @@ class ConnectionAsync(ABC):
         See: https://pricefx.atlassian.net/wiki/spaces/KB/pages/5753667585/Pipeline+Queries+QueryAPI
 
         A copy of the query is first adapted to the backend version, `query` itself is left
-        untouched: see `pyfxlib.lowlevel.querycompat`.
+        untouched, and checked against it: see `pyfxlib.lowlevel.querycompat`.
 
         Args:
             query: The queryAPI query definition.
         Returns:
             The query result metadata (column names and types) as returned by the backend.
+        Raises:
+            UnsupportedQueryError: if the query uses anything the backend does not support,
+                in which case nothing is sent.
         """
         pass
 
@@ -573,12 +576,15 @@ class ConnectionAsync(ABC):
         See: https://pricefx.atlassian.net/wiki/spaces/KB/pages/5753667585/Pipeline+Queries+QueryAPI
 
         A copy of the query is first adapted to the backend version, `query` itself is left
-        untouched: see `pyfxlib.lowlevel.querycompat`.
+        untouched, and checked against it: see `pyfxlib.lowlevel.querycompat`.
 
         Args:
             query: The queryAPI query definition.
         Returns:
             The query results as a list of rows, each row being a list of values.
+        Raises:
+            UnsupportedQueryError: if the query uses anything the backend does not support,
+                in which case nothing is sent.
         """
         pass
 

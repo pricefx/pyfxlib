@@ -33,8 +33,10 @@ means is sent as is.
 
 Each change declares the backend versions it is available from as `VersionBounds`.
 
-TODO: once pyfxlib requires 16.3.11 / 17.0.2, drop both renames, and the `datafeed` and
-`datasource` spellings from `PADataFeed` and `PADataSource`.
+TODO: as pyfxlib's minimum backend rises, drop the requirements every supported backend
+ meets. Once it requires 16.3.11 / 17.0.2, drop both renames too, and the `datafeed` and
+ `datasource` spellings from `PADataFeed` and `PADataSource`. When a requirement is dropped,
+ add it to _BASELINE_* sets of the appropriate test_every_schema_* tests.
 """
 
 from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
