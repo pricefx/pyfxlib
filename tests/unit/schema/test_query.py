@@ -219,7 +219,9 @@ def test_answer_parses_old_and_new_table_ids(table: dict[str, Any], model: type)
         }
     )
 
-    assert isinstance(answer.query.stages[0].table, model)
+    source = answer.query.stages[0]
+    assert isinstance(source, Source)
+    assert isinstance(source.table, model)
     assert answer.meta.tables is not None and isinstance(answer.meta.tables[0], model)
     assert answer.model_dump(by_alias=True)["query"]["stages"][0]["table"] == table
 
