@@ -25,9 +25,7 @@ means is sent as is.
 Each change declares the backend versions it is available from as `VersionBounds`.
 
 TODO: once pyfxlib requires 16.3.11 / 17.0.2, drop both renames, and the `datafeed` and
-`datasource` spellings from `PADataFeed` and `PADataSource`. Before that, `PADataSource` can
-move to sending `dataSource` by changing its default only: its rename already covers older
-backends.
+`datasource` spellings from `PADataFeed` and `PADataSource`.
 """
 
 from collections.abc import Awaitable, Callable, Iterator, Mapping

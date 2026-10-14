@@ -182,8 +182,7 @@ def test_to_pandas_handles_a_mix_of_column_types_in_one_answer() -> None:
     [
         # Jackson type ids are case-sensitive, so the casing must match the DTO exactly.
         (PADataFeed(data_feed_unique_name="DF"), "dataFeed"),
-        # The deprecated id (PFUN-35498), but the only one backends before 16.3.11 / 17.0.2 know.
-        (PADataSource(data_source_unique_name="DS"), "datasource"),
+        (PADataSource(data_source_unique_name="DS"), "dataSource"),
         (
             HistoricalConditionRecords(condition_record_set_unique_name="CRS"),
             "historicalConditionRecords",
