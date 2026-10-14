@@ -130,3 +130,32 @@ async def test_a_query_without_renamed_tables_does_not_fetch_the_version(
 
     assert session.version_fetches() == 0
     assert session.sent_queries() == [query]
+
+
+@pytest.mark.asyncio
+async def test_the_version_is_fetched_once_per_connection() -> None:
+    session = _FakeSession("16.2.0")
+    connection = ConnectionRemote(_ENDPOINT, session)
+
+    await connection.query_meta(_query(_DATA_FEED))
+    await connection.query_execute(_query(_DATA_FEED))
+    await connection.query_execute(_query(_DATA_FEED))
+
+    assert session.version_fetches() == 1
+    assert len(session.sent_queries()) == 3
+
+
+@pytest.mark.asyncio
+async def test_connections_to_different_backends_each_adapt_to_their_own() -> None:
+    old_session, new_session = _FakeSession("16.2.0"), _FakeSession("17.0.2")
+    old_backend = ConnectionRemote(_ENDPOINT, old_session)
+    new_backend = ConnectionRemote(_ENDPOINT, new_session)
+
+    for connection in (old_backend, new_backend, old_backend, new_backend):
+        await connection.query_execute(_query(_DATA_FEED))
+
+    old_kinds = [query["stages"][0]["table"]["kind"] for query in old_session.sent_queries()]
+    new_kinds = [query["stages"][0]["table"]["kind"] for query in new_session.sent_queries()]
+    assert old_kinds == ["datafeed", "datafeed"]
+    assert new_kinds == ["dataFeed", "dataFeed"]
+    assert (old_session.version_fetches(), new_session.version_fetches()) == (1, 1)

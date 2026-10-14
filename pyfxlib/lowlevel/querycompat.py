@@ -19,6 +19,10 @@ on both sides of the change. The connection hands every query through
 `adapt_query_to_backend` before sending it, which rewrites each id the backend does not know
 to the spelling it does, and logs every rewrite and every deprecated id sent, at debug level.
 
+What a backend accepts is captured once per connection as a `QueryCompatibility`, built from
+the backend version on the first query that needs it, and kept for the connection lifetime: a
+backend upgraded meanwhile is only seen by a new connection.
+
 Only queries sent through a connection are adapted: a `Pipeline` dumped and posted by other
 means is sent as is.
 
@@ -38,8 +42,6 @@ from typing import Any
 from pyfxlib.schema import BackendVersion
 
 LOGGER = logging.getLogger(__name__)
-
-BackendVersionProvider = Callable[[], Awaitable[BackendVersion]]
 
 
 @dataclass(frozen=True)
@@ -128,53 +130,67 @@ def _tables(node: Any) -> Iterator[dict[str, Any]]:
             yield from _tables(item)
 
 
-def _adapt_table(table: dict[str, Any], rename: TableKindRename, version: BackendVersion) -> None:
-    """Rewrite the kind of `table` to the spelling the backend knows, logging it."""
-    kind = table["kind"]
-    new_supported = rename.since.supports(version)
-    if kind == rename.new and not new_supported:
-        table["kind"] = rename.old
-        LOGGER.debug(
-            "Query table kind %r rewritten to %r: backend %s predates it (%s), which is"
-            " supported from %s.",
-            rename.new,
-            rename.old,
-            version,
-            rename.ticket,
-            rename.since,
-        )
-    elif kind == rename.old and new_supported:
-        if rename.old_accepted_after_rename:
+@dataclass(frozen=True)
+class QueryCompatibility:
+    """What the Query API of a backend accepts, as far as pyfxlib knows it."""
+
+    version: BackendVersion
+
+    @classmethod
+    def for_backend(cls, version: BackendVersion) -> "QueryCompatibility":
+        """The compatibility of a backend at `version`."""
+        return cls(version)
+
+    def adapt_table(self, table: dict[str, Any], rename: TableKindRename) -> None:
+        """Rewrite the kind of `table` to the spelling the backend knows, logging it."""
+        kind = table["kind"]
+        new_supported = rename.since.supports(self.version)
+        if kind == rename.new and not new_supported:
+            table["kind"] = rename.old
             LOGGER.debug(
-                "Query table kind %r is deprecated on backend %s (%s): set the table kind to %r"
-                " to stop this message.",
-                rename.old,
-                version,
-                rename.ticket,
+                "Query table kind %r rewritten to %r: backend %s predates it (%s), which is"
+                " supported from %s.",
                 rename.new,
-            )
-        else:
-            table["kind"] = rename.new
-            LOGGER.debug(
-                "Query table kind %r rewritten to %r: backend %s renamed it (%s).",
                 rename.old,
-                rename.new,
-                version,
+                self.version,
                 rename.ticket,
+                rename.since,
             )
+        elif kind == rename.old and new_supported:
+            if rename.old_accepted_after_rename:
+                LOGGER.debug(
+                    "Query table kind %r is deprecated on backend %s (%s): set the table kind"
+                    " to %r to stop this message.",
+                    rename.old,
+                    self.version,
+                    rename.ticket,
+                    rename.new,
+                )
+            else:
+                table["kind"] = rename.new
+                LOGGER.debug(
+                    "Query table kind %r rewritten to %r: backend %s renamed it (%s).",
+                    rename.old,
+                    rename.new,
+                    self.version,
+                    rename.ticket,
+                )
+
+
+QueryCompatibilityProvider = Callable[[], Awaitable[QueryCompatibility]]
 
 
 async def adapt_query_to_backend(
-    query: dict[str, Any], fetch_backend_version: BackendVersionProvider
+    query: dict[str, Any], compatibility: QueryCompatibilityProvider
 ) -> dict[str, Any]:
     """Return a copy of `query` adapted to the backend it is about to be sent to.
 
-    `query` itself is never modified. The backend version is fetched only when the query
-    uses an id that changed across versions, and at most once.
+    `query` itself is never modified. The backend compatibility is only asked for when the
+    query uses an id that changed across versions.
 
     Args:
         query: the Query API query, as sent on the wire.
-        fetch_backend_version: coroutine function returning the backend version.
+        compatibility: coroutine function returning the compatibility of the backend.
     """
     adapted = copy.deepcopy(query)
     renamed = [
@@ -183,7 +199,7 @@ async def adapt_query_to_backend(
         if isinstance(kind := table.get("kind"), str) and kind in _RENAMES_BY_KIND
     ]
     if renamed:
-        version = await fetch_backend_version()
+        backend = await compatibility()
         for table, rename in renamed:
-            _adapt_table(table, rename, version)
+            backend.adapt_table(table, rename)
     return adapted

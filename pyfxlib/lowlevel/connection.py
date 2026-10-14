@@ -38,7 +38,7 @@ import pandas as pd
 
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.constants import _DEFAULT_PAGE_SIZE, _DEFAULT_STREAM_CHUNK_SIZE
-from pyfxlib.lowlevel.querycompat import adapt_query_to_backend
+from pyfxlib.lowlevel.querycompat import adapt_query_to_backend, QueryCompatibility
 from pyfxlib.lowlevel.session import PfxSession
 from pyfxlib.schema import (
     AdvancedCriteria,
@@ -623,9 +623,22 @@ class ConnectionRemote(ConnectionAsync):
     def __init__(self, endpoint: str, pfxsession: PfxSession) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.session = pfxsession
+        # Built on the first query needing it, then kept: see `_get_query_compatibility`.
+        self._query_compatibility: Optional[QueryCompatibility] = None
 
     def __repr__(self) -> str:
         return f"ConnectionRemote({self.endpoint})"
+
+    async def _get_query_compatibility(self) -> QueryCompatibility:
+        """What the backend Query API accepts, fetched once and kept for this connection.
+
+        Per connection, so that connections to several backends each check against their
+        own. A backend upgraded meanwhile is only seen by a new connection.
+        """
+        if self._query_compatibility is None:
+            version = await self._fetch_backend_version()
+            self._query_compatibility = QueryCompatibility.for_backend(version)
+        return self._query_compatibility
 
     def _model_logic_url(
         self, command: str, model_typedid: str, step_name: str, logic_name: str
@@ -1128,7 +1141,7 @@ class ConnectionRemote(ConnectionAsync):
 
     async def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """See `ConnectionAsync` corresponding method."""
-        adapted = await adapt_query_to_backend(query, self._fetch_backend_version)
+        adapted = await adapt_query_to_backend(query, self._get_query_compatibility)
         response = await self.session.post(
             f"{self.endpoint}/queryapi.meta",
             json={"data": {"query": adapted}},
@@ -1137,7 +1150,7 @@ class ConnectionRemote(ConnectionAsync):
 
     async def query_execute(self, query: dict[str, Any]) -> list[list[Any]]:
         """See `ConnectionAsync` corresponding method."""
-        adapted = await adapt_query_to_backend(query, self._fetch_backend_version)
+        adapted = await adapt_query_to_backend(query, self._get_query_compatibility)
         response = await self.session.post(
             f"{self.endpoint}/queryapi.execute",
             json={"data": {"query": adapted}},

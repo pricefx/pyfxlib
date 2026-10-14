@@ -20,26 +20,27 @@ import pytest
 
 from pyfxlib.lowlevel.querycompat import (
     adapt_query_to_backend,
-    BackendVersionProvider,
+    QueryCompatibility,
+    QueryCompatibilityProvider,
     VersionBounds,
 )
 from pyfxlib.schema import BackendVersion
 
 
-class _VersionFetcher:
-    """Backend version provider counting how many times the version is fetched."""
+class _Backend:
+    """Compatibility provider of a backend at `version`, counting how many times it is asked."""
 
     def __init__(self, version: str) -> None:
-        self.version = BackendVersion.parse(version)
+        self.compatibility = QueryCompatibility.for_backend(BackendVersion.parse(version))
         self.calls = 0
 
-    async def __call__(self) -> BackendVersion:
+    async def __call__(self) -> QueryCompatibility:
         self.calls += 1
-        return self.version
+        return self.compatibility
 
 
-async def _never_fetched() -> BackendVersion:
-    raise AssertionError("the backend version must not be fetched")
+async def _never_asked() -> QueryCompatibility:
+    raise AssertionError("the backend compatibility must not be asked for")
 
 
 def _query(*tables: dict[str, Any]) -> dict[str, Any]:
@@ -86,7 +87,7 @@ _NEW_BACKENDS = ["16.3.11", "17.0.2", "18.0.0"]
 @pytest.mark.parametrize("version", _OLD_BACKENDS)
 @pytest.mark.parametrize("kind", ["dataFeed", "datafeed"])
 async def test_data_feed_is_sent_as_datafeed_to_old_backends(version: str, kind: str) -> None:
-    adapted = await adapt_query_to_backend(_query(_feed(kind)), _VersionFetcher(version))
+    adapted = await adapt_query_to_backend(_query(_feed(kind)), _Backend(version))
 
     assert _kinds(adapted) == ["datafeed"]
 
@@ -95,7 +96,7 @@ async def test_data_feed_is_sent_as_datafeed_to_old_backends(version: str, kind:
 @pytest.mark.parametrize("version", _NEW_BACKENDS)
 @pytest.mark.parametrize("kind", ["dataFeed", "datafeed"])
 async def test_data_feed_is_sent_as_data_feed_to_new_backends(version: str, kind: str) -> None:
-    adapted = await adapt_query_to_backend(_query(_feed(kind)), _VersionFetcher(version))
+    adapted = await adapt_query_to_backend(_query(_feed(kind)), _Backend(version))
 
     assert _kinds(adapted) == ["dataFeed"]
 
@@ -114,7 +115,7 @@ async def test_data_feed_is_sent_as_data_feed_to_new_backends(version: str, kind
 async def test_data_source_is_sent_as_a_kind_the_backend_knows(
     version: str, kind: str, expected: str
 ) -> None:
-    adapted = await adapt_query_to_backend(_query(_source(kind)), _VersionFetcher(version))
+    adapted = await adapt_query_to_backend(_query(_source(kind)), _Backend(version))
 
     assert _kinds(adapted) == [expected]
 
@@ -135,7 +136,7 @@ async def test_each_rewrite_and_deprecated_kind_logs_one_debug_message(
     table = _feed(kind) if kind.lower() == "datafeed" else _source(kind)
 
     with caplog.at_level(logging.DEBUG, logger="pyfxlib.lowlevel.querycompat"):
-        await adapt_query_to_backend(_query(table), _VersionFetcher(version))
+        await adapt_query_to_backend(_query(table), _Backend(version))
 
     assert [record.levelno for record in caplog.records] == [logging.DEBUG]
     assert message in caplog.records[0].getMessage()
@@ -150,7 +151,7 @@ async def test_a_kind_the_backend_knows_logs_nothing(
     version: str, table: dict[str, Any], caplog: pytest.LogCaptureFixture
 ) -> None:
     with caplog.at_level(logging.DEBUG, logger="pyfxlib.lowlevel.querycompat"):
-        await adapt_query_to_backend(_query(table), _VersionFetcher(version))
+        await adapt_query_to_backend(_query(table), _Backend(version))
 
     assert caplog.records == []
 
@@ -159,7 +160,7 @@ async def test_a_kind_the_backend_knows_logs_nothing(
 async def test_tables_of_joined_pipelines_are_adapted_too() -> None:
     query = _query({"kind": "products"}, _feed("dataFeed"), _source("dataSource"))
 
-    adapted = await adapt_query_to_backend(query, _VersionFetcher("16.2.0"))
+    adapted = await adapt_query_to_backend(query, _Backend("16.2.0"))
 
     assert _kinds(adapted) == ["products", "datafeed", "datasource"]
 
@@ -169,24 +170,24 @@ async def test_the_caller_query_is_never_modified() -> None:
     query = _query(_feed("dataFeed"), _source("dataSource"))
     original = copy.deepcopy(query)
 
-    adapted = await adapt_query_to_backend(query, _VersionFetcher("16.2.0"))
+    adapted = await adapt_query_to_backend(query, _Backend("16.2.0"))
 
     assert query == original
     assert adapted != query
 
 
 @pytest.mark.asyncio
-async def test_the_version_is_fetched_once_per_query() -> None:
-    fetcher = _VersionFetcher("16.2.0")
+async def test_the_compatibility_is_asked_for_once_per_query() -> None:
+    backend = _Backend("16.2.0")
 
-    await adapt_query_to_backend(_query(_feed("dataFeed"), _source("datasource")), fetcher)
+    await adapt_query_to_backend(_query(_feed("dataFeed"), _source("datasource")), backend)
 
-    assert fetcher.calls == 1
+    assert backend.calls == 1
 
 
 @pytest.mark.asyncio
-async def test_the_version_is_not_fetched_without_a_renamed_table() -> None:
-    never: BackendVersionProvider = _never_fetched
+async def test_the_compatibility_is_not_asked_for_without_a_renamed_table() -> None:
+    never: QueryCompatibilityProvider = _never_asked
     query = _query({"kind": "products"}, {"kind": "customers"})
 
     assert await adapt_query_to_backend(query, never) == query
