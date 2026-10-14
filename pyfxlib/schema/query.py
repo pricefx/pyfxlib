@@ -19,10 +19,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date, datetime
 from enum import StrEnum, unique
-from typing import Any, Literal, Optional, TypeAlias
+from typing import Any, Literal, Optional, Self, TYPE_CHECKING, TypeAlias
+import warnings
 
 import pandas as pd
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
 from pyfxlib.schema.base import PfxCamelCaseModel
 
@@ -90,6 +91,7 @@ class Operation(StrEnum):
     MINUS = "minus"
     MULTIPLY = "multiply"
     DIV = "div"
+    SAFE_DIV = "safeDiv"
     MOD = "mod"
     CAST_AS_INTEGER = "castAsInteger"
     CAST_AS_BOOLEAN = "castAsBoolean"
@@ -151,6 +153,14 @@ class WindowOperation(StrEnum):
     RANK = "rank"
     ROW_NUMBER = "rowNumber"
     SUM = "sum"
+
+
+@unique
+class RankOverOperation(StrEnum):
+    """Ranking functions taking a sort order as their single argument, outside any window."""
+
+    PERCENT_RANK_OVER = "percentRankOver"
+    CUME_DIST_OVER = "cumeDistOver"
 
 
 @unique
@@ -307,8 +317,27 @@ AdvancedCriteria.model_rebuild()
 
 
 @unique
-class LiteralType(StrEnum):
-    """Type of literal value in a query result column."""
+class LiteralValueType(StrEnum):
+    """Type of a literal value in a query.
+
+    A subset of the result column types, and spelled differently: `DATETIME` here, but
+    `DATE_TIME` in `ResultColumnType`.
+    """
+
+    INTEGER = "INTEGER"
+    REAL = "REAL"
+    DATE_ONLY = "DATE_ONLY"
+    DATETIME = "DATETIME"
+    STRING = "STRING"
+    BOOLEAN = "BOOLEAN"
+    # ISO-8601 strings, e.g. "PT1H30M" and "P1Y2M"
+    DURATION = "DURATION"
+    PERIOD = "PERIOD"
+
+
+@unique
+class ResultColumnType(StrEnum):
+    """Type of a column in the result of a query."""
 
     INTEGER = "INTEGER"
     REAL = "REAL"
@@ -319,40 +348,68 @@ class LiteralType(StrEnum):
     OTHER = "OTHER"
 
     def to_py_type(self) -> Any:
-        """Convert the LiteralType to a Python type."""
-        if self == LiteralType.DATE_ONLY:
+        """Convert the ResultColumnType to a Python type."""
+        if self == ResultColumnType.DATE_ONLY:
             return date
-        if self == LiteralType.DATE_TIME:
+        if self == ResultColumnType.DATE_TIME:
             return datetime
-        if self == LiteralType.INTEGER:
+        if self == ResultColumnType.INTEGER:
             return int
-        if self == LiteralType.REAL:
+        if self == ResultColumnType.REAL:
             return float
-        if self == LiteralType.BOOLEAN:
+        if self == ResultColumnType.BOOLEAN:
             return bool
         # Fall back to str parsing by default
         return str
 
     def to_pandas_type(self) -> Any:
-        """Convert the LiteralType to a Pandas type.
+        """Convert the ResultColumnType to a Pandas type.
 
         Same as to_py_type, except that date and datetime types are converted to datetime64[ns]
         and nullable dtypes are used, so that NULL values coming back from the query are kept
         as NA instead of raising (INTEGER) or being silently cast (STRING, BOOLEAN).
         """
-        if self in [LiteralType.DATE_ONLY, LiteralType.DATE_TIME]:
+        if self in [ResultColumnType.DATE_ONLY, ResultColumnType.DATE_TIME]:
             return "datetime64[ns]"
-        if self == LiteralType.INTEGER:
+        if self == ResultColumnType.INTEGER:
             return "Int64"
-        if self == LiteralType.REAL:
+        if self == ResultColumnType.REAL:
             # float64 already represents NULL as NaN, so it needs no nullable dtype
             return float
-        if self == LiteralType.BOOLEAN:
+        if self == ResultColumnType.BOOLEAN:
             return "boolean"
-        if self == LiteralType.STRING:
+        if self == ResultColumnType.STRING:
             return "string"
         # Leave anything else as-is, so that structured values are not stringified
         return "object"
+
+
+if TYPE_CHECKING:
+    # Deprecated: use ResultColumnType. Defined for type checkers only, so that at runtime the
+    # name goes through __getattr__ below and warns.
+    LiteralType = ResultColumnType
+
+
+def _resolve_deprecated_attribute(module: str, name: str) -> Any:
+    """Resolve a deprecated attribute of `module`, warning the code that accessed it.
+
+    Shared by the module `__getattr__` of this module and of `pyfxlib.schema`, which re-exports
+    the same names: `stacklevel` skips this helper and the `__getattr__` calling it.
+    """
+    if name == "LiteralType":
+        warnings.warn(
+            "LiteralType is deprecated and will be removed in the next major version: use"
+            " ResultColumnType for result columns, and LiteralValueType for literal values.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return ResultColumnType
+    raise AttributeError(f"module {module!r} has no attribute {name!r}")
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve deprecated module attributes, warning about each use."""
+    return _resolve_deprecated_attribute(__name__, name)
 
 
 class CompanyParameterTables(PfxCamelCaseModel):
@@ -442,6 +499,13 @@ class ConditionRecords(PfxCamelCaseModel):
     """Condition records table."""
 
     kind: Literal["conditionRecords"] = "conditionRecords"
+    condition_record_set_unique_name: str
+
+
+class HistoricalConditionRecords(PfxCamelCaseModel):
+    """Historical condition records table."""
+
+    kind: Literal["historicalConditionRecords"] = "historicalConditionRecords"
     condition_record_set_unique_name: str
 
 
@@ -540,9 +604,15 @@ class CompensationRecords(PfxCamelCaseModel):
 
 
 class PADataSource(PfxCamelCaseModel):
-    """Data source table."""
+    """Data source table.
 
-    kind: Literal["datasource"] = "datasource"
+    `datasource` is the id older backends know and newer ones still accept, deprecated
+    (PFUN-35498) in favour of `dataSource` from 16.3.11 / 17.0.2. Both are accepted, so that
+    answers from either generation of backend parse. The deprecated one is sent by default,
+    as the only id every backend accepts, until pyfxlib requires 16.3.11 / 17.0.2.
+    """
+
+    kind: Literal["dataSource", "datasource"] = "datasource"
     data_source_unique_name: str
 
 
@@ -556,9 +626,13 @@ class PADatamart(PfxCamelCaseModel):
 
 
 class PADataFeed(PfxCamelCaseModel):
-    """Data feed table."""
+    """Data feed table.
 
-    kind: Literal["datafeed"] = "datafeed"
+    Backends from 16.3.11 / 17.0.2 renamed `datafeed` to `dataFeed` (PFUN-35498). Both are
+    accepted, so that answers from either generation of backend parse.
+    """
+
+    kind: Literal["dataFeed", "datafeed"] = "dataFeed"
     data_feed_unique_name: str
 
 
@@ -584,6 +658,12 @@ class CustomForms(PfxCamelCaseModel):
     custom_form_type_unique_name: str
 
 
+class Users(PfxCamelCaseModel):
+    """Users table."""
+
+    kind: Literal["users"] = "users"
+
+
 Table: TypeAlias = (
     CompanyParameterTables
     | CompanyParametersRows
@@ -599,6 +679,7 @@ Table: TypeAlias = (
     | CustomerExtensionRows
     | SellerExtensionRows
     | ConditionRecords
+    | HistoricalConditionRecords
     | QuoteLineItems
     | RebateLineItems
     | ContractLineItems
@@ -619,6 +700,7 @@ Table: TypeAlias = (
     | PAModelTable
     | PARollup
     | CustomForms
+    | Users
 )
 # All Selectables
 
@@ -697,7 +779,7 @@ class LiteralValue(PfxCamelCaseModel):
     """Literal class."""
 
     kind: Literal["literal"] = "literal"
-    type: LiteralType
+    type: LiteralValueType
     value: Any
 
 
@@ -728,11 +810,18 @@ class BoundDirection(StrEnum):
     FOLLOWING = "FOLLOWING"
 
 
-class UnboundedBound(PfxCamelCaseModel):
-    """Window frame bound running to the start or end of the partition."""
+class UnboundedPreceding(PfxCamelCaseModel):
+    """Window frame bound running from the start of the partition. Only valid as a start."""
 
     type: Literal["unbounded"] = "unbounded"
-    direction: BoundDirection
+    direction: Literal[BoundDirection.PRECEDING] = BoundDirection.PRECEDING
+
+
+class UnboundedFollowing(PfxCamelCaseModel):
+    """Window frame bound running to the end of the partition. Only valid as an end."""
+
+    type: Literal["unbounded"] = "unbounded"
+    direction: Literal[BoundDirection.FOLLOWING] = BoundDirection.FOLLOWING
 
 
 class OffsetBound(PfxCamelCaseModel):
@@ -749,7 +838,9 @@ class CurrentRowBound(PfxCamelCaseModel):
     type: Literal["currentRow"] = "currentRow"
 
 
-Bound: TypeAlias = UnboundedBound | OffsetBound | CurrentRowBound
+# The DTO rejects a frame starting at the end of the partition or ending at its start.
+StartBound: TypeAlias = UnboundedPreceding | OffsetBound | CurrentRowBound
+EndBound: TypeAlias = UnboundedFollowing | OffsetBound | CurrentRowBound
 
 
 class Frame(PfxCamelCaseModel):
@@ -760,9 +851,31 @@ class Frame(PfxCamelCaseModel):
     """
 
     type: FrameType
-    start: Bound
-    end: Bound
+    start: StartBound
+    end: EndBound
     exclusion: FrameExclusion
+
+
+class _ScalarFunction(PfxCamelCaseModel):
+    """Fields and checks shared by the scalar function of every expression family.
+
+    Each subclass narrows `arguments` to the expressions its family can address.
+    """
+
+    kind: Literal["function"] = "function"
+    name: Operation
+    arguments: Sequence[Any] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_in_values_are_literals(self) -> Self:
+        # The DTO casts every `in`/`notIn` value to a literal: Expression.in does not take
+        # expressions yet.
+        if self.name in (Operation.IN, Operation.NOT_IN) and (
+            len(self.arguments) < 2
+            or not all(isinstance(value, LiteralValue) for value in self.arguments[1:])
+        ):
+            raise ValueError(f"{self.name} takes an expression followed by literal values")
+        return self
 
 
 class PreviousStageWindowFunctionCall(PfxCamelCaseModel):
@@ -784,12 +897,18 @@ class PreviousStageWindowFunction(PfxCamelCaseModel):
     function: PreviousStageWindowFunctionCall
 
 
-class PreviousStageFunction(PfxCamelCaseModel):
+class PreviousStageFunction(_ScalarFunction):
     """Function class."""
 
+    arguments: list["PreviousStageExpression"] = Field(default_factory=list)
+
+
+class PreviousStageRankOverFunction(PfxCamelCaseModel):
+    """Ranking function over a sort order, e.g. `percentRankOver(asc(a))`."""
+
     kind: Literal["function"] = "function"
-    name: Operation
-    arguments: list["PreviousStageExpression"]
+    name: RankOverOperation
+    arguments: list["Order"] = Field(min_length=1, max_length=1)
 
 
 PreviousStageExpression: TypeAlias = (
@@ -797,15 +916,14 @@ PreviousStageExpression: TypeAlias = (
     | PreviousStageColumnReference
     | PreviousStageWindowFunction
     | PreviousStageFunction
+    | PreviousStageRankOverFunction
 )
 
 
-class SourceFunction(PfxCamelCaseModel):
+class SourceFunction(_ScalarFunction):
     """Source Function class."""
 
-    kind: Literal["function"] = "function"
-    name: Operation
-    arguments: list["SourceExpression"]
+    arguments: list["SourceExpression"] = Field(default_factory=list)
 
 
 # Every expression addressable inside a source stage. The DTO has a single flat
@@ -849,11 +967,21 @@ class PreviousStageFunctionAgg(PfxCamelCaseModel):
 
     kind: Literal["function"] = "function"
     name: OperationAgg
-    arguments: list[PreviousStageExpression]
+    arguments: list[PreviousStageExpression] = Field(default_factory=list)
+
+
+class AggregateScalarFunction(_ScalarFunction):
+    """Scalar function over aggregates, e.g. `div(sum(a), sum(b))`.
+
+    Its arguments are aggregate expressions themselves, so aggregates can sit at any depth
+    under scalar functions, but never directly under another aggregate.
+    """
+
+    arguments: list["ExpressionAgg"] = Field(default_factory=list)
 
 
 ExpressionAgg: TypeAlias = (
-    LiteralValue | PreviousStageColumnReference | PreviousStageFunctionAgg | PreviousStageFunction
+    LiteralValue | PreviousStageColumnReference | PreviousStageFunctionAgg | AggregateScalarFunction
 )
 
 
@@ -885,12 +1013,10 @@ class JoinType(StrEnum):
     LEFT_OUTER = "LEFT_OUTER"
 
 
-class JoinTableFunction(PfxCamelCaseModel):
+class JoinTableFunction(_ScalarFunction):
     """Function class for joins against a table."""
 
-    kind: Literal["function"] = "function"
-    name: Operation
-    arguments: list["JoinTableExpression"]
+    arguments: list["JoinTableExpression"] = Field(default_factory=list)
 
 
 JoinTableExpression: TypeAlias = (
@@ -914,12 +1040,10 @@ class JoinTableSelectable(PfxCamelCaseModel):
     alias: str
 
 
-class JoinPipelineFunction(PfxCamelCaseModel):
+class JoinPipelineFunction(_ScalarFunction):
     """Function class for joins against a pipeline."""
 
-    kind: Literal["function"] = "function"
-    name: Operation
-    arguments: list["JoinPipelineExpression"]
+    arguments: list["JoinPipelineExpression"] = Field(default_factory=list)
 
 
 JoinPipelineExpression: TypeAlias = (
@@ -943,7 +1067,7 @@ class JoinTable(PfxCamelCaseModel):
     kind: Literal["join"] = "join"
     table: Table
     type: JoinType
-    columns: list[JoinTableSelectable]
+    columns: list[JoinTableSelectable] = Field(default_factory=list)
     criteria: JoinTableExpression
 
 
@@ -955,7 +1079,7 @@ class JoinPipeline(PfxCamelCaseModel):
     kind: Literal["join"] = "join"
     pipeline: "Pipeline"
     type: JoinType
-    columns: list[JoinPipelineSelectable]
+    columns: list[JoinPipelineSelectable] = Field(default_factory=list)
     criteria: JoinPipelineExpression
 
 
@@ -1002,7 +1126,7 @@ class Aggregate(PfxCamelCaseModel):
 
     kind: Literal["aggregate"] = "aggregate"
     columns: list[PreviousStageSelectableAgg] = Field(min_length=1)
-    dimensions: list[PreviousStageExpression]
+    dimensions: list[PreviousStageExpression] = Field(default_factory=list)
 
 
 class Distinct(PfxCamelCaseModel):
@@ -1090,7 +1214,7 @@ class QueryAnswerMetaColumn(PfxCamelCaseModel):
     """Metadata for a column in the result of the query."""
 
     name: str
-    type: LiteralType
+    type: ResultColumnType
 
 
 class QueryAnswerMeta(PfxCamelCaseModel):
