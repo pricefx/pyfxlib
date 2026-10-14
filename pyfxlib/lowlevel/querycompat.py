@@ -129,6 +129,9 @@ class UsageCategory(StrEnum):
     KIND = "kind"
     # A field of a table, stage or expression, named "<kind>.<field>".
     FIELD = "field"
+    # A scalar function: not the one a window function applies, which `windowFunction` covers.
+    FUNCTION = "function"
+    LITERAL_TYPE = "literal type"
 
 
 @dataclass(frozen=True)
@@ -168,6 +171,8 @@ def _declare(
 _TABLE = UsageCategory.TABLE
 _KIND = UsageCategory.KIND
 _FIELD = UsageCategory.FIELD
+_FUNCTION = UsageCategory.FUNCTION
+_LITERAL_TYPE = UsageCategory.LITERAL_TYPE
 
 # Every change since 15.0.0, under its first X.Y.0 release, bounded by its backports.
 _REQUIREMENTS = _declare(
@@ -213,6 +218,35 @@ _REQUIREMENTS = _declare(
         "PFUN-31318",
     ),
     (_KIND, ("selectColumns",), VersionBounds({15: (15, 1, 0)}), "PFUN-30390"),
+    (
+        _FUNCTION,
+        (
+            "acos",
+            "asin",
+            "atan",
+            "atan2",
+            "cos",
+            "sin",
+            "tan",
+            "cbrt",
+            "ceil",
+            "floor",
+            "degrees",
+            "radians",
+            "factorial",
+            "ln",
+            "log",
+            "pi",
+            "power",
+            "random",
+            "round",
+            "sign",
+            "trunc",
+            "width_bucket",
+        ),
+        VersionBounds({15: (15, 1, 0)}),
+        "PFUN-31317",
+    ),
     # 16.0.0
     (
         _TABLE,
@@ -241,12 +275,30 @@ _REQUIREMENTS = _declare(
         "PFUN-33923",
     ),
     (_TABLE, ("claims",), VersionBounds({15: (15, 3, 17), 16: (16, 2, 2)}), "PFUN-34034"),
+    (
+        _FUNCTION,
+        ("greatest", "least"),
+        VersionBounds({15: (15, 3, 17), 16: (16, 2, 3)}),
+        "PFUN-33886",
+    ),
     # 17.0.0
     (
         _FIELD,
         ("companyParameterRows.targetDate",),
         VersionBounds({15: (15, 3, 22), 16: (16, 3, 6), 17: (17, 0, 0)}),
         "PFUN-34433",
+    ),
+    (
+        _FUNCTION,
+        ("dateOnlyToday", "dateTimeNow"),
+        VersionBounds({16: (16, 3, 7), 17: (17, 0, 0)}),
+        "PFUN-33284",
+    ),
+    (
+        _LITERAL_TYPE,
+        ("DURATION", "PERIOD"),
+        VersionBounds({16: (16, 3, 7), 17: (17, 0, 0)}),
+        "PFUN-33284",
     ),
     # 17.1.0
     (_FIELD, ("join.pipeline",), VersionBounds({16: (16, 3, 10), 17: (17, 0, 1)}), "PFUN-30794"),
@@ -257,6 +309,15 @@ _REQUIREMENTS = _declare(
         "PFUN-34151",
     ),
     (_TABLE, ("users",), VersionBounds({16: (16, 3, 16), 17: (17, 0, 7)}), "PFUN-27391"),
+    # 17.2.0. PFUN-35990 shipped these in 16.3.16, 17.0.7 and 17.0.8 before reverting them in
+    # 16.3.17, 17.0.9 and 17.1.0: those few releases are rejected too, on the safe side, as
+    # VersionBounds has no upper bound and the reverted shape may differ.
+    (
+        _FUNCTION,
+        ("safeDiv", "percentRankOver", "cumeDistOver"),
+        VersionBounds({17: (17, 2, 0)}),
+        "PFUN-36206",
+    ),
 )
 
 
@@ -289,23 +350,38 @@ def _tables(node: Any) -> Iterator[dict[str, Any]]:
             yield from _tables(item)
 
 
-def _usages(node: Any, *, is_table: bool = False) -> Iterator[Usage]:
+def _usages(node: Any, *, is_table: bool = False, is_window_call: bool = False) -> Iterator[Usage]:
     """Yield everything a query node uses that may need a minimum backend version.
 
     Each table, stage and expression yields its kind, and each of its fields set to a value:
-    a field left null is not used, as a model dumped without `exclude_none` sends it.
+    a field left null is not used, as a model dumped without `exclude_none` sends it. Each
+    function yields its name, but the one a window function applies, and each literal its
+    type.
     """
     if isinstance(node, list):
         for item in node:
             yield from _usages(item)
     elif isinstance(node, dict):
+        kind = node.get("kind")
         for key, value in node.items():
-            yield from _usages(value, is_table=key == "table" and isinstance(value, dict))
-        if isinstance(kind := node.get("kind"), str):
+            yield from _usages(
+                value,
+                is_table=key == "table" and isinstance(value, dict),
+                is_window_call=kind == "windowFunction" and key == "function",
+            )
+        if isinstance(kind, str):
             yield Usage(UsageCategory.TABLE if is_table else UsageCategory.KIND, kind)
             for key, value in node.items():
                 if key != "kind" and value is not None:
                     yield Usage(UsageCategory.FIELD, f"{kind}.{key}")
+            if (
+                kind == "function"
+                and not is_window_call
+                and isinstance(name := node.get("name"), str)
+            ):
+                yield Usage(UsageCategory.FUNCTION, name)
+            if kind == "literal" and isinstance(type_ := node.get("type"), str):
+                yield Usage(UsageCategory.LITERAL_TYPE, type_)
 
 
 @dataclass(frozen=True)

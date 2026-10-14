@@ -29,7 +29,14 @@ from pyfxlib.lowlevel.querycompat import (
     UsageCategory,
     VersionBounds,
 )
-from pyfxlib.schema import BackendVersion, Table
+from pyfxlib.schema import (
+    BackendVersion,
+    LiteralValueType,
+    Operation,
+    OperationAgg,
+    RankOverOperation,
+    Table,
+)
 
 
 class _Backend:
@@ -549,3 +556,155 @@ async def test_a_join_against_a_table_needs_no_recent_backend() -> None:
     )
 
     assert await adapt_query_to_backend(query, _never_asked) == query
+
+
+_ORDER = {"kind": "order", "expression": _column("sku"), "direction": "ASC_NULLS_LAST"}
+
+
+def _function_query(name: str) -> dict[str, Any]:
+    arguments = [_ORDER] if name in ("percentRankOver", "cumeDistOver") else []
+    return _products_with(_add_column({"kind": "function", "name": name, "arguments": arguments}))
+
+
+_MATH_FUNCTIONS = (
+    "acos",
+    "asin",
+    "atan",
+    "atan2",
+    "cos",
+    "sin",
+    "tan",
+    "cbrt",
+    "ceil",
+    "floor",
+    "degrees",
+    "radians",
+    "factorial",
+    "ln",
+    "log",
+    "pi",
+    "power",
+    "random",
+    "round",
+    "sign",
+    "trunc",
+    "width_bucket",
+)
+
+# Function, releases having it, releases predating it.
+_FUNCTION_HISTORY: list[tuple[str, list[str], list[str]]] = [
+    *((name, ["15.1.0", "16.0.0"], ["15.0.6"]) for name in _MATH_FUNCTIONS),
+    *(
+        (name, ["15.3.17", "16.2.3", "16.3.0"], ["15.3.16", "16.2.2"])
+        for name in ("greatest", "least")
+    ),
+    *(
+        (name, ["16.3.7", "17.0.0"], ["16.3.6", "15.3.30"])
+        for name in ("dateOnlyToday", "dateTimeNow")
+    ),
+    # PFUN-35990 had them in 16.3.16, 17.0.7 and 17.0.8 before reverting them: rejected too.
+    *(
+        (name, ["17.2.0", "18.0.0"], ["16.3.16", "16.3.22", "17.0.7", "17.0.8", "17.1.4"])
+        for name in ("safeDiv", "percentRankOver", "cumeDistOver")
+    ),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "name,version",
+    [(name, version) for name, supported, _ in _FUNCTION_HISTORY for version in supported],
+)
+async def test_a_function_is_accepted_from_the_release_that_brought_it(
+    name: str, version: str
+) -> None:
+    query = _function_query(name)
+
+    assert await adapt_query_to_backend(query, _Backend(version)) == query
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "name,version",
+    [(name, version) for name, _, unsupported in _FUNCTION_HISTORY for version in unsupported],
+)
+async def test_a_function_is_rejected_by_backends_predating_it(name: str, version: str) -> None:
+    with pytest.raises(UnsupportedQueryError) as raised:
+        await adapt_query_to_backend(_function_query(name), _Backend(version))
+
+    assert list(raised.value.unsupported) == [Usage(UsageCategory.FUNCTION, name)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("type_,value", [("DURATION", "PT1H"), ("PERIOD", "P1M")])
+@pytest.mark.parametrize(
+    "version,supported", [("16.3.7", True), ("17.0.0", True), ("16.3.6", False), ("15.3.30", False)]
+)
+async def test_duration_and_period_literals_need_relative_dates(
+    type_: str, value: str, version: str, supported: bool
+) -> None:
+    query = _products_with(_add_column({"kind": "literal", "type": type_, "value": value}))
+
+    if supported:
+        assert await adapt_query_to_backend(query, _Backend(version)) == query
+    else:
+        with pytest.raises(UnsupportedQueryError, match=f"literal type '{type_}'"):
+            await adapt_query_to_backend(query, _Backend(version))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["rank", "percentRank", "cumeDist", "sum"])
+async def test_the_function_a_window_applies_is_not_checked_as_a_scalar_one(name: str) -> None:
+    """Window functions date from 15.0.5, whatever scalar function shares their name."""
+    window = {**_WINDOW_RANK, "function": {"kind": "function", "name": name, "arguments": []}}
+    query = _products_with(_add_column(window))
+
+    assert await adapt_query_to_backend(query, _Backend("15.0.5")) == query
+
+
+@pytest.mark.asyncio
+async def test_scalar_functions_in_window_arguments_are_checked() -> None:
+    power = {"kind": "function", "name": "power", "arguments": [_column("price"), _column("qty")]}
+    window = {**_WINDOW_RANK, "function": {"kind": "function", "name": "sum", "arguments": [power]}}
+
+    with pytest.raises(UnsupportedQueryError) as raised:
+        await adapt_query_to_backend(_products_with(_add_column(window)), _Backend("15.0.6"))
+
+    assert list(raised.value.unsupported) == [Usage(UsageCategory.FUNCTION, "power")]
+
+
+# What the endpoint shipped with in 15.0.0, which needs no requirement.
+_BASELINE_FUNCTIONS = {
+    *("and", "or", "not"),
+    *("sum", "avg", "min", "max", "countAll", "countNonNull", "countDistinctNonNull"),
+    *("caseWhen", "coalesce", "nullIf"),
+    *("equal", "notEqual", "equalNullAware", "notEqualNullAware"),
+    *("lessThan", "lessOrEqual", "greaterThan", "greaterOrEqual"),
+    *("like", "ilike", "notLike", "notIlike"),
+    *("in", "notIn", "isNull", "isNotNull", "isTrue", "isFalse"),
+    *("concat", "substring", "upper", "lower", "trim", "length", "locate"),
+    *("plus", "minus", "multiply", "div", "mod", "abs", "exp"),
+    *("castAsInteger", "castAsReal", "castAsString", "castAsBoolean"),
+    *("castAsDateOnly", "castAsDateTime"),
+}
+_BASELINE_LITERAL_TYPES = {"INTEGER", "REAL", "DATE_ONLY", "DATETIME", "STRING", "BOOLEAN"}
+
+
+def _required(category: UsageCategory) -> set[str]:
+    return {usage.name for usage in _REQUIREMENTS if usage.category is category}
+
+
+def test_the_baseline_has_the_51_functions_of_15_0_0() -> None:
+    assert len(_BASELINE_FUNCTIONS) == 51
+    assert not _BASELINE_FUNCTIONS & _required(UsageCategory.FUNCTION)
+
+
+def test_every_schema_function_and_literal_type_is_baseline_or_required() -> None:
+    """A function or literal type added to the schema without a requirement fails here."""
+    functions = {
+        member.value for enum in (Operation, OperationAgg, RankOverOperation) for member in enum
+    }
+    literal_types = {member.value for member in LiteralValueType}
+
+    assert functions - _BASELINE_FUNCTIONS - _required(UsageCategory.FUNCTION) == set()
+    assert literal_types - _BASELINE_LITERAL_TYPES - _required(UsageCategory.LITERAL_TYPE) == set()
