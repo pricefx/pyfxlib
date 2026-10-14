@@ -21,6 +21,7 @@ import pytest
 
 from pyfxlib.lowlevel.connection import ConnectionRemote
 from pyfxlib.lowlevel.constants import _DEFAULT_STREAM_CHUNK_SIZE
+from pyfxlib.lowlevel.querycompat import UnsupportedQueryError
 from pyfxlib.lowlevel.session import PfxSession
 
 _ENDPOINT = "https://pfx.test/pricefx/partition"
@@ -159,3 +160,15 @@ async def test_connections_to_different_backends_each_adapt_to_their_own() -> No
     assert old_kinds == ["datafeed", "datafeed"]
     assert new_kinds == ["dataFeed", "dataFeed"]
     assert (old_session.version_fetches(), new_session.version_fetches()) == (1, 1)
+
+
+@pytest.mark.asyncio
+@_QUERY_METHODS
+async def test_an_unsupported_query_is_rejected_before_being_sent(method: QueryMethod) -> None:
+    session = _FakeSession("16.3.15")
+    connection = ConnectionRemote(_ENDPOINT, session)
+
+    with pytest.raises(UnsupportedQueryError, match="table 'users'"):
+        await method(connection, _query({"kind": "users"}))
+
+    assert session.sent_queries() == []

@@ -14,17 +14,22 @@
 
 import copy
 import logging
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 
 from pyfxlib.lowlevel.querycompat import (
+    _REQUIREMENTS,
+    _TABLE_KIND_RENAMES,
     adapt_query_to_backend,
     QueryCompatibility,
     QueryCompatibilityProvider,
+    UnsupportedQueryError,
+    Usage,
+    UsageCategory,
     VersionBounds,
 )
-from pyfxlib.schema import BackendVersion
+from pyfxlib.schema import BackendVersion, Table
 
 
 class _Backend:
@@ -186,9 +191,10 @@ async def test_the_compatibility_is_asked_for_once_per_query() -> None:
 
 
 @pytest.mark.asyncio
-async def test_the_compatibility_is_not_asked_for_without_a_renamed_table() -> None:
+async def test_the_compatibility_is_not_asked_for_a_15_0_0_query() -> None:
+    """Nothing renamed and nothing past the 15.0.0 baseline: no need to know the backend."""
     never: QueryCompatibilityProvider = _never_asked
-    query = _query({"kind": "products"}, {"kind": "customers"})
+    query = _query({"kind": "products"}, {"kind": "datamart", "datamartUniqueName": "DM"})
 
     assert await adapt_query_to_backend(query, never) == query
 
@@ -235,3 +241,124 @@ def test_version_bounds_do_not_follow_changes_to_the_mapping_they_were_built_fro
     by_major[16] = (16, 0, 0)
 
     assert not bounds.supports(BackendVersion.parse("16.2.0"))
+
+
+# The QueryApiDTO version history, written out independently of `_REQUIREMENTS`: for each
+# table, releases that have it, and releases just before it on each backport line.
+_TABLE_HISTORY: list[tuple[str, list[str], list[str]]] = [
+    *(
+        (table, ["15.0.3", "15.1.0", "16.0.0"], ["15.0.2"])
+        for table in (
+            "customers",
+            "sellers",
+            "customerExtensionRows",
+            "sellerExtensionRows",
+            "conditionRecords",
+            "quoteLineItems",
+            "rebateLineItems",
+            "contractLineItems",
+            "compensationLineItems",
+            "calculationGrids",
+            "calculationGridLineItems",
+            "priceLists",
+            "priceListLineItems",
+            "priceGrids",
+            "priceGridLineItems",
+            "rebateRecords",
+            "compensationRecords",
+            "modelTable",
+            "rollup",
+        )
+    ),
+    ("actionItems", ["15.0.6", "15.1.0"], ["15.0.5"]),
+    ("productCompetitions", ["15.3.8", "16.0.0"], ["15.3.7"]),
+    *(
+        (table, ["15.3.15", "16.1.1", "16.2.0"], ["15.3.14", "16.1.0"])
+        for table in (
+            "productBillOfMaterials",
+            "companyParameterTables",
+            "claimLineItems",
+            "customForms",
+            "jobStatusTrackers",
+        )
+    ),
+    ("productReferences", ["15.3.16", "16.2.1", "16.3.0"], ["15.3.15", "16.2.0"]),
+    ("claims", ["15.3.17", "16.2.2", "16.3.0"], ["15.3.16", "16.2.1"]),
+    (
+        "historicalConditionRecords",
+        ["16.3.12", "17.0.3", "17.1.0"],
+        ["16.3.11", "17.0.2", "15.3.30"],
+    ),
+    ("users", ["16.3.16", "17.0.7", "17.1.0"], ["16.3.15", "17.0.6", "15.3.30"]),
+]
+
+
+def _table(kind: str) -> dict[str, Any]:
+    return {"kind": kind}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kind,version",
+    [(kind, version) for kind, supported, _ in _TABLE_HISTORY for version in supported],
+)
+async def test_a_table_is_accepted_from_the_release_that_brought_it(
+    kind: str, version: str
+) -> None:
+    query = _query(_table(kind))
+
+    assert await adapt_query_to_backend(query, _Backend(version)) == query
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kind,version",
+    [(kind, version) for kind, _, unsupported in _TABLE_HISTORY for version in unsupported],
+)
+async def test_a_table_is_rejected_by_backends_predating_it(kind: str, version: str) -> None:
+    with pytest.raises(UnsupportedQueryError, match=f"table '{kind}'") as raised:
+        await adapt_query_to_backend(_query(_table(kind)), _Backend(version))
+
+    assert raised.value.version == BackendVersion.parse(version)
+    assert list(raised.value.unsupported) == [Usage(UsageCategory.TABLE, kind)]
+
+
+@pytest.mark.asyncio
+async def test_every_unsupported_table_is_reported_at_once_joined_pipelines_included() -> None:
+    query = _query(_table("products"), _table("users"), _table("historicalConditionRecords"))
+
+    with pytest.raises(UnsupportedQueryError) as raised:
+        await adapt_query_to_backend(query, _Backend("16.3.11"))
+
+    assert set(raised.value.unsupported) == {
+        Usage(UsageCategory.TABLE, "users"),
+        Usage(UsageCategory.TABLE, "historicalConditionRecords"),
+    }
+    message = str(raised.value)
+    assert "backend 16.3.11" in message
+    assert "table 'users', supported from 16.3.16 or 17.0.7 (PFUN-27391)" in message
+    assert "table 'historicalConditionRecords', supported from 16.3.12 or 17.0.3" in message
+
+
+def test_renamed_table_kinds_carry_no_requirement() -> None:
+    """Rewriting them must not change what the query is checked against."""
+    renamed = {kind for rename in _TABLE_KIND_RENAMES for kind in (rename.old, rename.new)}
+
+    assert not {Usage(UsageCategory.TABLE, kind) for kind in renamed} & set(_REQUIREMENTS)
+
+
+# What the endpoint shipped with in 15.0.0, which needs no requirement.
+_BASELINE_TABLES = {"products", "productExtensionRows", "companyParameterRows", "datamart"}
+
+
+def test_every_schema_table_kind_is_baseline_renamed_or_required() -> None:
+    """A table added to the schema without a requirement fails here."""
+    schema_kinds = {
+        kind
+        for model in get_args(Table)
+        for kind in get_args(model.model_fields["kind"].annotation)
+    }
+    renamed = {kind for rename in _TABLE_KIND_RENAMES for kind in (rename.old, rename.new)}
+    required = {usage.name for usage in _REQUIREMENTS if usage.category is UsageCategory.TABLE}
+
+    assert schema_kinds - _BASELINE_TABLES - renamed - required == set()

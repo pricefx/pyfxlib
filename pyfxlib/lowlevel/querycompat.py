@@ -19,6 +19,11 @@ on both sides of the change. The connection hands every query through
 `adapt_query_to_backend` before sending it, which rewrites each id the backend does not know
 to the spelling it does, and logs every rewrite and every deprecated id sent, at debug level.
 
+Anything else the backend does not know, with no older spelling to fall back on, is rejected
+before sending, with an `UnsupportedQueryError` listing every such use. The requirements are
+declared from 15.0.0, the first release of the endpoint and pyfxlib's minimum backend: the
+15.0.0 baseline itself has no entry.
+
 What a backend accepts is captured once per connection as a `QueryCompatibility`, built from
 the backend version on the first query that needs it, and kept for the connection lifetime: a
 backend upgraded meanwhile is only seen by a new connection.
@@ -32,9 +37,10 @@ TODO: once pyfxlib requires 16.3.11 / 17.0.2, drop both renames, and the `datafe
 `datasource` spellings from `PADataFeed` and `PADataSource`.
 """
 
-from collections.abc import Awaitable, Callable, Iterator, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
 import copy
 from dataclasses import dataclass
+from enum import StrEnum, unique
 import logging
 from types import MappingProxyType
 from typing import Any
@@ -114,6 +120,131 @@ _RENAMES_BY_KIND: dict[str, TableKindRename] = {
 }
 
 
+@unique
+class UsageCategory(StrEnum):
+    """What part of the Query API a query uses."""
+
+    TABLE = "table"
+
+
+@dataclass(frozen=True)
+class Usage:
+    """One thing a query uses, which may need a minimum backend version."""
+
+    category: UsageCategory
+    name: str
+
+    def __str__(self) -> str:
+        """E.g. "table 'users'"."""
+        return f"{self.category} {self.name!r}"
+
+
+@dataclass(frozen=True)
+class Requirement:
+    """The backend versions a usage is available from, and the change that brought it."""
+
+    since: VersionBounds
+    ticket: str
+
+
+def _declare(
+    *groups: tuple[UsageCategory, tuple[str, ...], VersionBounds, str],
+) -> Mapping[Usage, Requirement]:
+    """Requirements of each (category, names, since, ticket) group, each usage declared once."""
+    requirements: dict[Usage, Requirement] = {}
+    for category, names, since, ticket in groups:
+        for name in names:
+            usage = Usage(category, name)
+            if usage in requirements:
+                raise ValueError(f"Requirement of {usage} declared twice")
+            requirements[usage] = Requirement(since, ticket)
+    return MappingProxyType(requirements)
+
+
+_TABLE = UsageCategory.TABLE
+
+# Every change since 15.0.0, under its first X.Y.0 release, bounded by its backports.
+_REQUIREMENTS = _declare(
+    # 15.1.0
+    (
+        _TABLE,
+        (
+            "customers",
+            "sellers",
+            "customerExtensionRows",
+            "sellerExtensionRows",
+            "conditionRecords",
+            "quoteLineItems",
+            "rebateLineItems",
+            "contractLineItems",
+            "compensationLineItems",
+            "calculationGrids",
+            "calculationGridLineItems",
+            "priceLists",
+            "priceListLineItems",
+            "priceGrids",
+            "priceGridLineItems",
+            "rebateRecords",
+            "compensationRecords",
+            "modelTable",
+            "rollup",
+        ),
+        VersionBounds({15: (15, 0, 3)}),
+        "PFUN-30634",
+    ),
+    (_TABLE, ("actionItems",), VersionBounds({15: (15, 0, 6)}), "PFUN-31318"),
+    # 16.0.0
+    (
+        _TABLE,
+        ("productCompetitions",),
+        VersionBounds({15: (15, 3, 8), 16: (16, 0, 0)}),
+        "PFUN-33178",
+    ),
+    # 16.2.0
+    (
+        _TABLE,
+        (
+            "productBillOfMaterials",
+            "companyParameterTables",
+            "claimLineItems",
+            "customForms",
+            "jobStatusTrackers",
+        ),
+        VersionBounds({15: (15, 3, 15), 16: (16, 1, 1)}),
+        "PFUN-30357",
+    ),
+    # 16.3.0
+    (
+        _TABLE,
+        ("productReferences",),
+        VersionBounds({15: (15, 3, 16), 16: (16, 2, 1)}),
+        "PFUN-33923",
+    ),
+    (_TABLE, ("claims",), VersionBounds({15: (15, 3, 17), 16: (16, 2, 2)}), "PFUN-34034"),
+    # 17.1.0
+    (
+        _TABLE,
+        ("historicalConditionRecords",),
+        VersionBounds({16: (16, 3, 12), 17: (17, 0, 3)}),
+        "PFUN-34151",
+    ),
+    (_TABLE, ("users",), VersionBounds({16: (16, 3, 16), 17: (17, 0, 7)}), "PFUN-27391"),
+)
+
+
+class UnsupportedQueryError(RuntimeError):
+    """A query uses what the backend it is sent to does not support."""
+
+    def __init__(self, version: BackendVersion, unsupported: Mapping[Usage, Requirement]) -> None:
+        self.version = version
+        self.unsupported = dict(unsupported)
+        uses = "; ".join(
+            f"{usage}, supported from {requirement.since} ({requirement.ticket})"
+            for usage, requirement in self.unsupported.items()
+        )
+        super().__init__(f"Query not supported by backend {version}: it uses {uses}")
+
+
 def _tables(node: Any) -> Iterator[dict[str, Any]]:
     """Yield every table of a query, at any depth, joined pipelines included.
 
@@ -130,16 +261,38 @@ def _tables(node: Any) -> Iterator[dict[str, Any]]:
             yield from _tables(item)
 
 
+def _usages(query: dict[str, Any]) -> Iterator[Usage]:
+    """Yield everything `query` uses that may need a minimum backend version."""
+    for table in _tables(query):
+        if isinstance(kind := table.get("kind"), str):
+            yield Usage(UsageCategory.TABLE, kind)
+
+
 @dataclass(frozen=True)
 class QueryCompatibility:
     """What the Query API of a backend accepts, as far as pyfxlib knows it."""
 
     version: BackendVersion
+    # Only the requirements this backend does not meet: everything else it supports.
+    unsupported: Mapping[Usage, Requirement]
 
     @classmethod
     def for_backend(cls, version: BackendVersion) -> "QueryCompatibility":
         """The compatibility of a backend at `version`."""
-        return cls(version)
+        unsupported = {
+            usage: requirement
+            for usage, requirement in _REQUIREMENTS.items()
+            if not requirement.since.supports(version)
+        }
+        return cls(version, MappingProxyType(unsupported))
+
+    def check(self, usages: Iterable[Usage]) -> None:
+        """Raise `UnsupportedQueryError` listing every usage the backend does not support."""
+        unsupported = {
+            usage: self.unsupported[usage] for usage in usages if usage in self.unsupported
+        }
+        if unsupported:
+            raise UnsupportedQueryError(self.version, unsupported)
 
     def adapt_table(self, table: dict[str, Any], rename: TableKindRename) -> None:
         """Rewrite the kind of `table` to the spelling the backend knows, logging it."""
@@ -186,11 +339,13 @@ async def adapt_query_to_backend(
     """Return a copy of `query` adapted to the backend it is about to be sent to.
 
     `query` itself is never modified. The backend compatibility is only asked for when the
-    query uses an id that changed across versions.
+    query uses an id that changed across versions, or something that needs a minimum version.
 
     Args:
         query: the Query API query, as sent on the wire.
         compatibility: coroutine function returning the compatibility of the backend.
+    Raises:
+        UnsupportedQueryError: if the query uses anything the backend does not support.
     """
     adapted = copy.deepcopy(query)
     renamed = [
@@ -198,8 +353,11 @@ async def adapt_query_to_backend(
         for table in _tables(adapted)
         if isinstance(kind := table.get("kind"), str) and kind in _RENAMES_BY_KIND
     ]
-    if renamed:
+    # Renamed kinds carry no requirement, so renaming them leaves this unchanged.
+    gated = {usage for usage in _usages(adapted) if usage in _REQUIREMENTS}
+    if renamed or gated:
         backend = await compatibility()
+        backend.check(gated)
         for table, rename in renamed:
             backend.adapt_table(table, rename)
     return adapted
