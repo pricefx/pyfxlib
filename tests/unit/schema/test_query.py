@@ -179,8 +179,8 @@ def test_to_pandas_handles_a_mix_of_column_types_in_one_answer() -> None:
     [
         # Jackson type ids are case-sensitive, so the casing must match the DTO exactly.
         (PADataFeed(data_feed_unique_name="DF"), "dataFeed"),
-        # `datasource` is the deprecated id (PFUN-35498).
-        (PADataSource(data_source_unique_name="DS"), "dataSource"),
+        # The deprecated id (PFUN-35498), but the only one backends before 16.3.11 / 17.0.2 know.
+        (PADataSource(data_source_unique_name="DS"), "datasource"),
         (
             HistoricalConditionRecords(condition_record_set_unique_name="CRS"),
             "historicalConditionRecords",
@@ -195,6 +195,30 @@ def test_table_dumps_the_kind_the_dto_expects(table: Table, kind: str) -> None:
 
     assert dumped["stages"][0]["table"]["kind"] == kind
     assert Pipeline.model_validate(dumped) == pipeline
+
+
+@pytest.mark.parametrize(
+    "table,model",
+    [
+        ({"kind": "datafeed", "dataFeedUniqueName": "DF"}, PADataFeed),
+        ({"kind": "dataFeed", "dataFeedUniqueName": "DF"}, PADataFeed),
+        ({"kind": "datasource", "dataSourceUniqueName": "DS"}, PADataSource),
+        ({"kind": "dataSource", "dataSourceUniqueName": "DS"}, PADataSource),
+    ],
+)
+def test_answer_parses_old_and_new_table_ids(table: dict[str, Any], model: type) -> None:
+    """Backends before 16.3.11 / 17.0.2 echo the old datafeed/datasource ids in their answers."""
+    answer = QueryAnswer.model_validate(
+        {
+            "query": {"stages": [{"kind": "source", "table": table}]},
+            "meta": {"columns": [], "tables": [table]},
+            "rows": [],
+        }
+    )
+
+    assert isinstance(answer.query.stages[0].table, model)
+    assert answer.meta.tables is not None and isinstance(answer.meta.tables[0], model)
+    assert answer.model_dump(by_alias=True)["query"]["stages"][0]["table"] == table
 
 
 def test_aggregate_defaults_dimensions_and_function_arguments_to_empty() -> None:

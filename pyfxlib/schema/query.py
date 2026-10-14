@@ -575,9 +575,15 @@ class CompensationRecords(PfxCamelCaseModel):
 
 
 class PADataSource(PfxCamelCaseModel):
-    """Data source table."""
+    """Data source table.
 
-    kind: Literal["dataSource"] = "dataSource"
+    `datasource` is the id older backends know and newer ones still accept, deprecated
+    (PFUN-35498) in favour of `dataSource` from 16.3.11 / 17.0.2. Both are accepted, so that
+    answers from either generation of backend parse. The deprecated one is sent by default,
+    as the only id every backend accepts, until pyfxlib requires 16.3.11 / 17.0.2.
+    """
+
+    kind: Literal["dataSource", "datasource"] = "datasource"
     data_source_unique_name: str
 
 
@@ -591,9 +597,13 @@ class PADatamart(PfxCamelCaseModel):
 
 
 class PADataFeed(PfxCamelCaseModel):
-    """Data feed table."""
+    """Data feed table.
 
-    kind: Literal["dataFeed"] = "dataFeed"
+    Backends from 16.3.11 / 17.0.2 renamed `datafeed` to `dataFeed` (PFUN-35498). Both are
+    accepted, so that answers from either generation of backend parse.
+    """
+
+    kind: Literal["dataFeed", "datafeed"] = "dataFeed"
     data_feed_unique_name: str
 
 
