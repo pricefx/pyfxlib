@@ -38,6 +38,7 @@ import pandas as pd
 
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.constants import _DEFAULT_PAGE_SIZE, _DEFAULT_STREAM_CHUNK_SIZE
+from pyfxlib.lowlevel.querycompat import adapt_query_to_backend
 from pyfxlib.lowlevel.session import PfxSession
 from pyfxlib.schema import (
     AdvancedCriteria,
@@ -555,6 +556,9 @@ class ConnectionAsync(ABC):
 
         See: https://pricefx.atlassian.net/wiki/spaces/KB/pages/5753667585/Pipeline+Queries+QueryAPI
 
+        A copy of the query is first adapted to the backend version, `query` itself is left
+        untouched: see `pyfxlib.lowlevel.querycompat`.
+
         Args:
             query: The queryAPI query definition.
         Returns:
@@ -567,6 +571,9 @@ class ConnectionAsync(ABC):
         """Executes a queryAPI and returns the result rows.
 
         See: https://pricefx.atlassian.net/wiki/spaces/KB/pages/5753667585/Pipeline+Queries+QueryAPI
+
+        A copy of the query is first adapted to the backend version, `query` itself is left
+        untouched: see `pyfxlib.lowlevel.querycompat`.
 
         Args:
             query: The queryAPI query definition.
@@ -1121,17 +1128,19 @@ class ConnectionRemote(ConnectionAsync):
 
     async def query_meta(self, query: dict[str, Any]) -> QueryAnswerMeta:
         """See `ConnectionAsync` corresponding method."""
+        adapted = await adapt_query_to_backend(query, self._fetch_backend_version)
         response = await self.session.post(
             f"{self.endpoint}/queryapi.meta",
-            json={"data": {"query": query}},
+            json={"data": {"query": adapted}},
         )
         return QueryAnswerMeta.model_validate(response.json()["response"]["data"][0])
 
     async def query_execute(self, query: dict[str, Any]) -> list[list[Any]]:
         """See `ConnectionAsync` corresponding method."""
+        adapted = await adapt_query_to_backend(query, self._fetch_backend_version)
         response = await self.session.post(
             f"{self.endpoint}/queryapi.execute",
-            json={"data": {"query": query}},
+            json={"data": {"query": adapted}},
         )
         return response.json()["response"]["data"]
 
