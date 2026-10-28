@@ -28,8 +28,8 @@ What a backend accepts is a `QueryCompatibility`, built from the backend version
 connection keeps: fetched on the first call needing it, and kept for the connection lifetime. A
 backend upgraded meanwhile is only seen by a new connection.
 
-Only queries sent through a connection are adapted: a `Pipeline` dumped and posted by other
-means is sent as is.
+Only queries sent through a connection are adapted, and so are the tables and table kinds its
+`queryapi.meta` methods send: a `Pipeline` dumped and posted by other means is sent as is.
 
 Each change declares the backend versions it is available from as `VersionBounds`.
 
@@ -456,3 +456,21 @@ async def adapt_query_to_backend(
         for table, rename in renamed:
             backend.adapt_table(table, rename)
     return adapted
+
+
+async def adapt_table_to_backend(
+    table: dict[str, Any], compatibility: QueryCompatibilityProvider
+) -> dict[str, Any]:
+    """Return a copy of `table` adapted to the backend it is about to be sent to.
+
+    The table is adapted and checked as it would be in a query, for the `queryapi.meta`
+    endpoints that take a table on its own. `table` itself is never modified.
+
+    Args:
+        table: the Query API table, as sent on the wire.
+        compatibility: coroutine function returning the compatibility of the backend.
+    Raises:
+        UnsupportedQueryError: if the table uses anything the backend does not support.
+    """
+    adapted = await adapt_query_to_backend({"table": table}, compatibility)
+    return adapted["table"]

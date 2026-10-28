@@ -35,6 +35,8 @@ from pyfxlib.schema import (
 )
 
 _ENDPOINT = "https://pfx.test/pricefx/partition"
+_TABLE_ENTRY = {"table": {"kind": "datafeed", "dataFeedUniqueName": "DF"}, "description": "Feed"}
+_COLUMN_ENTRY = {"name": "sku", "type": "STRING"}
 
 
 class _FakeSession(PfxSession):
@@ -50,12 +52,23 @@ class _FakeSession(PfxSession):
             data: list[Any] = [{"extendedData": {"Release": self.release}}]
         elif url.endswith("/queryapi.meta"):
             data = [{"columns": []}]
+        elif url.endswith("/queryapi.meta/tables"):
+            data = [{"tables": [_TABLE_ENTRY]}, {"tables": [_TABLE_ENTRY]}]
+        elif url.endswith("/queryapi.meta/table"):
+            data = [{"columns": [_COLUMN_ENTRY]}, {"columns": [_COLUMN_ENTRY]}]
         else:
             data = []
         return Response(200, json={"response": {"data": data}})
 
     def sent_queries(self) -> list[Any]:
-        return [body["data"]["query"] for url, body in self.posted if url.startswith("/queryapi.")]
+        return [
+            body["data"]["query"]
+            for url, body in self.posted
+            if url in ("/queryapi.meta", "/queryapi.execute")
+        ]
+
+    def sent_data(self, url: str) -> list[Any]:
+        return [body["data"] for posted_url, body in self.posted if posted_url == url]
 
     def version_fetches(self) -> int:
         return sum(url == "/login/extended" for url, _ in self.posted)
@@ -298,3 +311,45 @@ def test_the_notification_gate_is_not_met_by_every_handled_backend() -> None:
         f"Every backend from {oldest} supports notifications: drop `_NOTIFICATIONS_SINCE` and"
         " its check from `ConnectionRemote.send_notification`."
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("release,kind", [("17.0.1", "datafeed"), ("17.0.2", "dataFeed")])
+async def test_tables_are_listed_with_the_kind_the_backend_knows(release: str, kind: str) -> None:
+    session = _FakeSession(release)
+    connection = ConnectionRemote(_ENDPOINT, session)
+
+    entries = await connection.query_meta_tables("dataFeed")
+
+    assert session.sent_data("/queryapi.meta/tables") == [{"kind": kind}]
+    assert entries == [_TABLE_ENTRY, _TABLE_ENTRY]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("release,kind", [("17.0.1", "datafeed"), ("17.0.2", "dataFeed")])
+async def test_table_columns_are_listed_with_the_kind_the_backend_knows(
+    release: str, kind: str
+) -> None:
+    session = _FakeSession(release)
+    connection = ConnectionRemote(_ENDPOINT, session)
+    table = dict(_DATA_FEED)
+
+    columns = await connection.query_meta_table(table)
+
+    assert session.sent_data("/queryapi.meta/table") == [{"table": {**_DATA_FEED, "kind": kind}}]
+    assert columns == [_COLUMN_ENTRY, _COLUMN_ENTRY]
+    assert table == _DATA_FEED
+
+
+@pytest.mark.asyncio
+async def test_a_table_kind_the_backend_lacks_is_rejected_before_being_sent() -> None:
+    session = _FakeSession("17.0.6")
+    connection = ConnectionRemote(_ENDPOINT, session)
+
+    with pytest.raises(UnsupportedQueryError, match="table 'users'"):
+        await connection.query_meta_tables("users")
+    with pytest.raises(UnsupportedQueryError, match="table 'users'"):
+        await connection.query_meta_table({"kind": "users"})
+
+    assert session.sent_data("/queryapi.meta/tables") == []
+    assert session.sent_data("/queryapi.meta/table") == []

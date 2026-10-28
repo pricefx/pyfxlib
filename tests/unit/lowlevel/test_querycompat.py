@@ -26,6 +26,7 @@ from pyfxlib.lowlevel.querycompat import (
     _REQUIREMENTS,
     _TABLE_KIND_RENAMES,
     adapt_query_to_backend,
+    adapt_table_to_backend,
     QueryCompatibility,
     QueryCompatibilityProvider,
     UnsupportedQueryError,
@@ -357,6 +358,43 @@ async def test_every_unsupported_table_is_reported_at_once_joined_pipelines_incl
     assert "backend 16.3.11" in message
     assert "table 'users', supported from 16.3.16 or 17.0.7 (PFUN-27391)" in message
     assert "table 'historicalConditionRecords', supported from 16.3.12 or 17.0.3" in message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version,kind", [("17.0.1", "datafeed"), ("17.0.2", "dataFeed")])
+async def test_a_table_on_its_own_is_sent_as_a_kind_the_backend_knows(
+    version: str, kind: str
+) -> None:
+    table = _feed("dataFeed")
+
+    adapted = await adapt_table_to_backend(table, _Backend(version))
+
+    assert adapted == _feed(kind)
+    assert table == _feed("dataFeed")
+
+
+@pytest.mark.asyncio
+async def test_a_table_on_its_own_is_rejected_by_backends_predating_it() -> None:
+    with pytest.raises(UnsupportedQueryError) as raised:
+        await adapt_table_to_backend(_table("users"), _Backend("17.0.6"))
+
+    assert list(raised.value.unsupported) == [Usage(UsageCategory.TABLE, "users")]
+
+
+@pytest.mark.asyncio
+async def test_a_table_field_on_its_own_is_rejected_by_backends_predating_it() -> None:
+    table = {
+        "kind": "companyParameterRows",
+        "companyParameterUniqueName": "CP",
+        "targetDate": "2026-01-31",
+    }
+
+    with pytest.raises(UnsupportedQueryError) as raised:
+        await adapt_table_to_backend(table, _Backend("16.3.5"))
+
+    assert list(raised.value.unsupported) == [
+        Usage(UsageCategory.FIELD, "companyParameterRows.targetDate")
+    ]
 
 
 def test_renamed_table_kinds_carry_no_requirement() -> None:
