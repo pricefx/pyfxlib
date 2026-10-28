@@ -65,6 +65,8 @@ replaces loses its code. Then:
      from `_FIELD_TYPE_MIN_BACKEND_VERSION`, and the whole gate once it is empty.
    - `test_the_notification_gate_is_not_met_by_every_handled_backend`: drop
      `_NOTIFICATIONS_SINCE` and its check from `send_notification`.
+   - `test_the_query_meta_tables_gate_is_not_met_by_every_handled_backend`: drop
+     `_QUERY_META_TABLES_SINCE` and its check from `query_meta_tables` and `query_meta_table`.
 3. Search the code for version-specific code no test covers, which every deprecated backend
    no longer needs, and drop it: e.g. the `core < 15.0.0` payload of `import_files`.
 
