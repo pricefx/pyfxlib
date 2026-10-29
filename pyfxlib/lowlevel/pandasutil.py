@@ -35,7 +35,7 @@ from pandas.api.types import (
     is_string_dtype,
 )
 
-from pyfxlib.schema import BackendVersion
+from pyfxlib.schema import BackendVersion, VersionBounds
 
 LOGGER = logging.getLogger(__name__)
 
@@ -293,31 +293,22 @@ class FieldSpecs:
 
 # ---------------------------------------------------------------------------------------
 # TEMPORARY LOB version gating. This whole block (the map below plus _backend_supports_
-# field_type, _format_version_requirement, check_backend_supports_field_types, and the call
-# in DataSources.push) exists only because LOB push needs the core AvroData gate fix, which
-# lands per major (16.3.13 / 17.0.4). It is scaffolding, not a general mechanism.
+# field_type, check_backend_supports_field_types, and the call in DataSources.push) exists
+# only because LOB push needs the core AvroData gate fix, which lands per major (16.3.13 /
+# 17.0.4). It is scaffolding, not a general mechanism.
 #
-# TODO: remove this entire block once we no longer support backends under 18 (every
-#       supported backend then carries the fix). Deleting the map, the three helpers and
-#       the push call site restores the plain, ungated push path.
+# TODO: remove this entire block once every backend pyfxlib keeps the code for carries the
+#       fix, which test_no_field_type_gate_is_met_by_every_handled_backend reports. Deleting
+#       the map, the two helpers and the push call site restores the plain, ungated push path.
 # ---------------------------------------------------------------------------------------
 #
-# Minimum Pricefx core version that supports a given field type on the push path, declared
-# as one lower bound per major version: {major: (major, minor, patch)}. This is the version
-# requirement carried by the field type itself; push checks it against the live backend
-# version before sending the data.
-#
-# It is deliberately NOT a single scalar floor: the backend support for a type is
-# backported per major, so version numbers are not monotonic across majors with respect to
-# "has the fix". For example 17.0.3 is numerically higher than 16.3.13 yet predates the
-# 17.0 backport. Within a single major versions ARE monotonic, so one lower bound per major
-# is enough. A backend on a major newer than every listed major is assumed to support the
-# type (cut from a develop that already had the fix). Types absent from this map have no
+# Backend versions supporting a given field type on the push path: push checks them against
+# the live backend version before sending the data. Types absent from this map have no
 # version requirement.
-_FIELD_TYPE_MIN_BACKEND_VERSION: dict[str, dict[int, tuple[int, int, int]]] = {
+_FIELD_TYPE_MIN_BACKEND_VERSION: dict[str, VersionBounds] = {
     # LOB push requires the core AvroData gate fix (accept a STRING avro payload for a
     # LOB field), backported to 16.3.13 on the 16.x major and 17.0.4 on the 17.x major.
-    "LOB": {16: (16, 3, 13), 17: (17, 0, 4)},
+    "LOB": VersionBounds("16.3.13", "17.0.4"),
 }
 
 
@@ -327,24 +318,7 @@ def _backend_supports_field_type(field_type: str, backend_version: BackendVersio
     Field types without a declared requirement are always supported.
     """
     bounds = _FIELD_TYPE_MIN_BACKEND_VERSION.get(field_type)
-    if not bounds:
-        return True
-    major = backend_version.major
-    version = (major, backend_version.minor or 0, backend_version.patch or 0)
-    if major in bounds:
-        # Same major as a declared bound: versions are monotonic within a major.
-        return version >= bounds[major]
-    # No bound for this major: supported only if the major is newer than every declared
-    # major (assumed to carry the fix); older majors are unsupported.
-    return major > max(bounds)
-
-
-def _format_version_requirement(field_type: str) -> str:
-    """Human-readable "X.Y.Z or A.B.C" requirement string for a gated field type."""
-    return " or ".join(
-        f"{major}.{minor}.{patch}"
-        for major, minor, patch in sorted(_FIELD_TYPE_MIN_BACKEND_VERSION[field_type].values())
-    )
+    return bounds is None or bounds.supports(backend_version)
 
 
 def check_backend_supports_field_types(
@@ -373,7 +347,7 @@ def check_backend_supports_field_types(
             raise RuntimeError(
                 f"Field {field.get('name', '?')!r} of type {field_type} requires a newer"
                 f" Pricefx core: {field_type} is supported from"
-                f" {_format_version_requirement(field_type)} up."
+                f" {_FIELD_TYPE_MIN_BACKEND_VERSION[field_type]} up."
                 f" Current backend version: {backend_version}"
             )
 

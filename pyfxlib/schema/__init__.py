@@ -20,11 +20,14 @@ from pyfxlib.schema.base import PfxCamelCaseModel, PfxPascalCaseModel
 from pyfxlib.schema.core import (
     BackendVersion,
     JobStatus,
+    MIN_DEPRECATED_BACKEND_VERSION,
+    MIN_SUPPORTED_BACKEND_VERSION,
     Notification,
     NotificationActionType,
     NotificationStatus,
     NotificationTopic,
     UserInfo,
+    VersionBounds,
 )
 from pyfxlib.schema.lpg import (
     LPG,
@@ -159,11 +162,14 @@ __all__ = [
     # Core domain objects
     "BackendVersion",
     "JobStatus",
+    "MIN_DEPRECATED_BACKEND_VERSION",
+    "MIN_SUPPORTED_BACKEND_VERSION",
     "Notification",
     "NotificationActionType",
     "NotificationStatus",
     "NotificationTopic",
     "UserInfo",
+    "VersionBounds",
     # LPG domain objects
     "LPG",
     "LPGProduct",

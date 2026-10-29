@@ -21,8 +21,8 @@ to the spelling it does, and logs every rewrite and every deprecated id sent, at
 
 Anything else the backend does not know, with no older spelling to fall back on, is rejected
 before sending, with an `UnsupportedQueryError` listing every such use. The requirements are
-declared from 15.0.0, the first release of the endpoint and pyfxlib's minimum backend: the
-15.0.0 baseline itself has no entry.
+declared from 15.0.0, the first release of the endpoint: the 15.0.0 baseline itself has no
+entry. Older backends pyfxlib still keeps the code for, deprecated, have no endpoint.
 
 What a backend accepts is captured once per connection as a `QueryCompatibility`, built from
 the backend version on the first query that needs it, and kept for the connection lifetime: a
@@ -33,10 +33,10 @@ means is sent as is.
 
 Each change declares the backend versions it is available from as `VersionBounds`.
 
-TODO: as pyfxlib's minimum backend rises, drop the requirements every supported backend
- meets. Once it requires 16.3.11 / 17.0.2, drop both renames too, and the `datafeed` and
- `datasource` spellings from `PADataFeed` and `PADataSource`. When a requirement is dropped,
- add it to _BASELINE_* sets of the appropriate test_every_schema_* tests.
+Once `MIN_DEPRECATED_BACKEND_VERSION` rises past 15.0.0, unit tests fail on every requirement
+and rename that all the backends pyfxlib keeps the code for meet, to drop: see CONTRIBUTING.md.
+Dropping both renames also drops the `datafeed` and `datasource` spellings from `PADataFeed`
+and `PADataSource`.
 """
 
 from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
@@ -47,45 +47,13 @@ import logging
 from types import MappingProxyType
 from typing import Any
 
-from pyfxlib.schema import BackendVersion
+from pyfxlib.schema import BackendVersion, VersionBounds
 
 LOGGER = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class VersionBounds:
-    """Backend versions a change is available from: one lower bound per major.
-
-    Changes are backported per major, so versions are not monotonic across majors (17.0.1 is
-    numerically higher than 16.3.11 yet may predate a change backported to both), but they are
-    within one. A backend on a major newer than every bound is assumed to have the change, as
-    cut from a develop that had it, and one on an older major not to.
-    """
-
-    by_major: Mapping[int, tuple[int, int, int]]
-
-    def __post_init__(self) -> None:
-        if not self.by_major or any(bound[0] != major for major, bound in self.by_major.items()):
-            raise ValueError(
-                f"Expected one lower bound per major, keyed by it, got {dict(self.by_major)}"
-            )
-        # Read-only, as the dataclass is frozen, and lowest major first.
-        object.__setattr__(self, "by_major", MappingProxyType(dict(sorted(self.by_major.items()))))
-
-    def supports(self, version: BackendVersion) -> bool:
-        """Whether a backend at `version` has the change."""
-        bound = self.by_major.get(version.major)
-        if bound is None:
-            return version.major > max(self.by_major)
-        return (version.major, version.minor or 0, version.patch or 0) >= bound
-
-    def __str__(self) -> str:
-        """The bounds as "X.Y.Z or A.B.C"."""
-        return " or ".join(".".join(map(str, bound)) for bound in self.by_major.values())
-
-
 # The data feed and data source kinds changed together.
-_PFUN_35498 = VersionBounds({16: (16, 3, 11), 17: (17, 0, 2)})
+_PFUN_35498 = VersionBounds("16.3.11", "17.0.2")
 
 
 @dataclass(frozen=True)
@@ -196,11 +164,11 @@ _REQUIREMENTS = _declare(
             "modelTable",
             "rollup",
         ),
-        VersionBounds({15: (15, 0, 3)}),
+        VersionBounds("15.0.3"),
         "PFUN-30634",
     ),
-    (UsageCategory.KIND, ("windowFunction",), VersionBounds({15: (15, 0, 5)}), "PFUN-31214"),
-    (UsageCategory.TABLE, ("actionItems",), VersionBounds({15: (15, 0, 6)}), "PFUN-31318"),
+    (UsageCategory.KIND, ("windowFunction",), VersionBounds("15.0.5"), "PFUN-31214"),
+    (UsageCategory.TABLE, ("actionItems",), VersionBounds("15.0.6"), "PFUN-31318"),
     (
         UsageCategory.KIND,
         (
@@ -210,10 +178,10 @@ _REQUIREMENTS = _declare(
             "activeCalculationResultColumnReference",
             "previousCalculationResultColumnReference",
         ),
-        VersionBounds({15: (15, 0, 6)}),
+        VersionBounds("15.0.6"),
         "PFUN-31318",
     ),
-    (UsageCategory.KIND, ("selectColumns",), VersionBounds({15: (15, 1, 0)}), "PFUN-30390"),
+    (UsageCategory.KIND, ("selectColumns",), VersionBounds("15.1.0"), "PFUN-30390"),
     (
         UsageCategory.FUNCTION,
         (
@@ -240,14 +208,14 @@ _REQUIREMENTS = _declare(
             "trunc",
             "width_bucket",
         ),
-        VersionBounds({15: (15, 1, 0)}),
+        VersionBounds("15.1.0"),
         "PFUN-31317",
     ),
     # 16.0.0
     (
         UsageCategory.TABLE,
         ("productCompetitions",),
-        VersionBounds({15: (15, 3, 8), 16: (16, 0, 0)}),
+        VersionBounds("15.3.8", "16.0.0"),
         "PFUN-33178",
     ),
     # 16.2.0
@@ -260,64 +228,64 @@ _REQUIREMENTS = _declare(
             "customForms",
             "jobStatusTrackers",
         ),
-        VersionBounds({15: (15, 3, 15), 16: (16, 1, 1)}),
+        VersionBounds("15.3.15", "16.1.1"),
         "PFUN-30357",
     ),
     # 16.3.0
     (
         UsageCategory.TABLE,
         ("productReferences",),
-        VersionBounds({15: (15, 3, 16), 16: (16, 2, 1)}),
+        VersionBounds("15.3.16", "16.2.1"),
         "PFUN-33923",
     ),
     (
         UsageCategory.TABLE,
         ("claims",),
-        VersionBounds({15: (15, 3, 17), 16: (16, 2, 2)}),
+        VersionBounds("15.3.17", "16.2.2"),
         "PFUN-34034",
     ),
     (
         UsageCategory.FUNCTION,
         ("greatest", "least"),
-        VersionBounds({15: (15, 3, 17), 16: (16, 2, 3)}),
+        VersionBounds("15.3.17", "16.2.3"),
         "PFUN-33886",
     ),
     # 17.0.0
     (
         UsageCategory.FIELD,
         ("companyParameterRows.targetDate",),
-        VersionBounds({15: (15, 3, 22), 16: (16, 3, 6), 17: (17, 0, 0)}),
+        VersionBounds("15.3.22", "16.3.6", "17.0.0"),
         "PFUN-34433",
     ),
     (
         UsageCategory.FUNCTION,
         ("dateOnlyToday", "dateTimeNow"),
-        VersionBounds({16: (16, 3, 7), 17: (17, 0, 0)}),
+        VersionBounds("16.3.7", "17.0.0"),
         "PFUN-33284",
     ),
     (
         UsageCategory.LITERAL_TYPE,
         ("DURATION", "PERIOD"),
-        VersionBounds({16: (16, 3, 7), 17: (17, 0, 0)}),
+        VersionBounds("16.3.7", "17.0.0"),
         "PFUN-33284",
     ),
     # 17.1.0
     (
         UsageCategory.FIELD,
         ("join.pipeline",),
-        VersionBounds({16: (16, 3, 10), 17: (17, 0, 1)}),
+        VersionBounds("16.3.10", "17.0.1"),
         "PFUN-30794",
     ),
     (
         UsageCategory.TABLE,
         ("historicalConditionRecords",),
-        VersionBounds({16: (16, 3, 12), 17: (17, 0, 3)}),
+        VersionBounds("16.3.12", "17.0.3"),
         "PFUN-34151",
     ),
     (
         UsageCategory.TABLE,
         ("users",),
-        VersionBounds({16: (16, 3, 16), 17: (17, 0, 7)}),
+        VersionBounds("16.3.16", "17.0.7"),
         "PFUN-27391",
     ),
     # 17.2.0. PFUN-35990 shipped these in 16.3.16, 17.0.7 and 17.0.8 before reverting them in
@@ -326,7 +294,7 @@ _REQUIREMENTS = _declare(
     (
         UsageCategory.FUNCTION,
         ("safeDiv", "percentRankOver", "cumeDistOver"),
-        VersionBounds({17: (17, 2, 0)}),
+        VersionBounds("17.2.0"),
         "PFUN-36206",
     ),
 )

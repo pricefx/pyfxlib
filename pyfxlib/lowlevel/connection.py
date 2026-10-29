@@ -49,16 +49,22 @@ from pyfxlib.schema import (
     JobStatus,
     LogicParameters,
     LPGProduct,
+    MIN_DEPRECATED_BACKEND_VERSION,
+    MIN_SUPPORTED_BACKEND_VERSION,
     Notification,
     Operator,
     QueryAnswerMeta,
     UserInfo,
+    VersionBounds,
 )
 
 T = TypeVar("T")
 
 
 LOGGER = logging.getLogger(__name__)
+
+# Backend versions with notifications.
+_NOTIFICATIONS_SINCE = VersionBounds("15.2.0")
 
 
 class ConnectionAsync(ABC):
@@ -130,7 +136,7 @@ class ConnectionAsync(ABC):
         for details on allowed values in the request body.
 
         Returns the backend response as a dictionary.
-        Notifications are not supported by the BE versions < 15.2 (raises an error)
+        Notifications are not supported by the BE versions < 15.2.0 (raises an error)
         """
         pass
 
@@ -631,6 +637,8 @@ class ConnectionRemote(ConnectionAsync):
         self.session = pfxsession
         # Built on the first query needing it, then kept: see `_get_query_compatibility`.
         self._query_compatibility: Optional[QueryCompatibility] = None
+        # Whether a backend older than `MIN_SUPPORTED_BACKEND_VERSION` was already warned about.
+        self._warned_unsupported_backend = False
 
     def __repr__(self) -> str:
         return f"ConnectionRemote({self.endpoint})"
@@ -692,17 +700,40 @@ class ConnectionRemote(ConnectionAsync):
         """
         response = await self.login_extended()
         release = str(response["response"]["data"][0]["extendedData"]["Release"])
-        return BackendVersion.parse(release)
+        version = BackendVersion.parse(release)
+        if not self._warned_unsupported_backend:
+            self._warn_if_unsupported(version)
+        return version
+
+    def _warn_if_unsupported(self, version: BackendVersion) -> None:
+        """Warn, once per connection, about a backend pyfxlib does not support."""
+        if version >= MIN_SUPPORTED_BACKEND_VERSION:
+            return
+        self._warned_unsupported_backend = True
+        if version >= MIN_DEPRECATED_BACKEND_VERSION:
+            LOGGER.warning(
+                "Backend %s at %s is deprecated: pyfxlib no longer supports backends older than"
+                " %s, and will drop the code for it in a future release.",
+                version,
+                self.endpoint,
+                MIN_SUPPORTED_BACKEND_VERSION,
+            )
+        else:
+            LOGGER.warning(
+                "Backend %s at %s is not supported: pyfxlib supports backends from %s, and some"
+                " calls may fail.",
+                version,
+                self.endpoint,
+                MIN_SUPPORTED_BACKEND_VERSION,
+            )
 
     async def send_notification(self, notification: Notification) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         backend_version = await self._fetch_backend_version()
-        if (backend_version.major < 15) or (
-            backend_version.major == 15 and (backend_version.minor or 0) < 2
-        ):
+        if not _NOTIFICATIONS_SINCE.supports(backend_version):
             raise RuntimeError(
-                "Notifications are not supported by backend versions below 15.2. "
-                f"Current backend version: {backend_version}"
+                f"Notifications are not supported by backend versions below {_NOTIFICATIONS_SINCE}."
+                f" Current backend version: {backend_version}"
             )
         response = await self.session.post(
             f"{self.endpoint}/notification.send",

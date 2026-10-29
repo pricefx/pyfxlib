@@ -14,15 +14,25 @@
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 import copy
+import logging
 from typing import Any
 
 from httpx import Response
 import pytest
 
-from pyfxlib.lowlevel.connection import ConnectionRemote
+from tests.unit.backend_versions import supported_by_every_backend_from
+
+from pyfxlib.lowlevel.connection import _NOTIFICATIONS_SINCE, ConnectionRemote
 from pyfxlib.lowlevel.constants import _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.querycompat import UnsupportedQueryError
 from pyfxlib.lowlevel.session import PfxSession
+from pyfxlib.schema import (
+    MIN_DEPRECATED_BACKEND_VERSION,
+    MIN_SUPPORTED_BACKEND_VERSION,
+    Notification,
+    NotificationStatus,
+    NotificationTopic,
+)
 
 _ENDPOINT = "https://pfx.test/pricefx/partition"
 
@@ -172,3 +182,105 @@ async def test_an_unsupported_query_is_rejected_before_being_sent(method: QueryM
         await method(connection, _query({"kind": "users"}))
 
     assert session.sent_queries() == []
+
+
+_SUPPORTED = MIN_SUPPORTED_BACKEND_VERSION.major
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("release", [f"{_SUPPORTED - 1}.4.9", f"{_SUPPORTED - 1}.0.0"])
+async def test_a_deprecated_backend_is_warned_about_once_per_connection(
+    release: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    connection = ConnectionRemote(_ENDPOINT, _FakeSession(release))
+
+    with caplog.at_level(logging.WARNING, logger="pyfxlib.lowlevel.connection"):
+        await connection.backend_version()
+        await connection.backend_version()
+
+    assert caplog.messages == [
+        f"Backend {release} at {_ENDPOINT} is deprecated: pyfxlib no longer supports backends"
+        f" older than {MIN_SUPPORTED_BACKEND_VERSION}, and will drop the code for it in a"
+        " future release."
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("release", [f"{_SUPPORTED - 2}.4.9", f"{_SUPPORTED - 2}.0.0"])
+async def test_an_older_backend_is_warned_about_once_per_connection(
+    release: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    connection = ConnectionRemote(_ENDPOINT, _FakeSession(release))
+
+    with caplog.at_level(logging.WARNING, logger="pyfxlib.lowlevel.connection"):
+        await connection.backend_version()
+        await connection.backend_version()
+
+    assert caplog.messages == [
+        f"Backend {release} at {_ENDPOINT} is not supported: pyfxlib supports backends from"
+        f" {MIN_SUPPORTED_BACKEND_VERSION}, and some calls may fail."
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "release",
+    [
+        f"{_SUPPORTED}.0.0",
+        f"{_SUPPORTED}.0.0-SNAPSHOT",
+        f"{_SUPPORTED}.3.2",
+        f"{_SUPPORTED + 2}.0.2",
+        f"{_SUPPORTED + 3}.0.0",
+    ],
+)
+async def test_a_supported_backend_is_not_warned_about(
+    release: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    connection = ConnectionRemote(_ENDPOINT, _FakeSession(release))
+
+    with caplog.at_level(logging.WARNING, logger="pyfxlib.lowlevel.connection"):
+        await connection.backend_version()
+
+    assert caplog.messages == []
+
+
+_NOTIFICATION = Notification(
+    title="Title",
+    message="Message",
+    source="notificationBanner",
+    status=NotificationStatus.INFO,
+    topic=NotificationTopic.SYSTEM_NOTIFICATION,
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("release", ["15.2.0", "15.3.1", "16.0.0", "17.0.2"])
+async def test_a_notification_is_sent_to_a_backend_supporting_it(release: str) -> None:
+    session = _FakeSession(release)
+
+    await ConnectionRemote(_ENDPOINT, session).send_notification(_NOTIFICATION)
+
+    assert [url for url, _ in session.posted] == ["/login/extended", "/notification.send"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("release", ["15.1.9", "15.0.0", "14.3.0"])
+async def test_a_notification_is_rejected_by_older_backends_before_being_sent(
+    release: str,
+) -> None:
+    session = _FakeSession(release)
+
+    with pytest.raises(RuntimeError, match=f"below 15.2.0. Current backend version: {release}"):
+        await ConnectionRemote(_ENDPOINT, session).send_notification(_NOTIFICATION)
+
+    assert [url for url, _ in session.posted] == ["/login/extended"]
+
+
+def test_the_notification_gate_is_not_met_by_every_handled_backend() -> None:
+    """Fails once the oldest handled backend rises past the gate: see CONTRIBUTING.md."""
+    oldest = MIN_DEPRECATED_BACKEND_VERSION
+
+    assert not supported_by_every_backend_from(oldest, _NOTIFICATIONS_SINCE), (
+        f"Every backend from {oldest} supports notifications: drop `_NOTIFICATIONS_SINCE` and"
+        " its check from `ConnectionRemote.send_notification`."
+    )

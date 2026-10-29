@@ -20,13 +20,16 @@ import fastavro
 import pandas as pd
 import pytest
 
+from tests.unit.backend_versions import supported_by_every_backend_from
+
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.pandasutil import (
+    _FIELD_TYPE_MIN_BACKEND_VERSION,
     check_backend_supports_field_types,
     FieldSpecs,
     to_field_collection_spec,
 )
-from pyfxlib.schema import BackendVersion
+from pyfxlib.schema import BackendVersion, MIN_DEPRECATED_BACKEND_VERSION
 
 UNSUPPORTED_DATA = [
     [[1, 2]],
@@ -343,3 +346,19 @@ def test_non_gated_field_types_never_query_the_backend_version():
 
     fields_spec = [{"name": "a", "type": "TEXT"}, {"name": "b", "type": "NUMBER"}]
     check_backend_supports_field_types(fields_spec, _must_not_be_called)
+
+
+def test_no_field_type_gate_is_met_by_every_handled_backend() -> None:
+    # fails once the oldest backend pyfxlib keeps the code for rises past a gate: see
+    # CONTRIBUTING.md
+    oldest = MIN_DEPRECATED_BACKEND_VERSION
+    met = [
+        field_type
+        for field_type, bounds in _FIELD_TYPE_MIN_BACKEND_VERSION.items()
+        if supported_by_every_backend_from(oldest, bounds)
+    ]
+
+    assert met == [], (
+        f"Every backend from {oldest} supports pushing these: drop their gate from"
+        " `pandasutil._FIELD_TYPE_MIN_BACKEND_VERSION`."
+    )

@@ -39,8 +39,13 @@ from pyfxlib._testtooling.helpers import (
     ModelLogicNature,
 )
 from pyfxlib.lowlevel.avro import AvroStream
-from pyfxlib.lowlevel.connection import ConnectionAsync, ConnectionSync
+from pyfxlib.lowlevel.connection import (
+    _NOTIFICATIONS_SINCE,
+    ConnectionAsync,
+    ConnectionSync,
+)
 from pyfxlib.schema.core import (
+    BackendVersion,
     JobStatus,
     Notification,
     NotificationActionType,
@@ -686,11 +691,9 @@ async def test_login_extended_should_return_backend_release(_async_conn: Connect
 
 @pytest.mark.asyncio
 async def test_send_notification_should_succeed(_async_conn: ConnectionAsync):
-    version = await _async_conn.backend_version()
-    if (version["major"] or 0) < 15 or (
-        (version["major"] or 0) == 15 and (version["minor"] or 0) < 2
-    ):
-        pytest.skip("Notifications not supported by backend version < 15.2")
+    version = BackendVersion.model_validate(await _async_conn.backend_version())
+    if not _NOTIFICATIONS_SINCE.supports(version):
+        pytest.skip(f"Notifications not supported by backend version < {_NOTIFICATIONS_SINCE}")
     notif = Notification(
         title="My Title",
         message="Description of banner",
