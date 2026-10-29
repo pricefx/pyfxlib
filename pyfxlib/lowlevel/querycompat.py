@@ -168,17 +168,11 @@ def _declare(
     return MappingProxyType(requirements)
 
 
-_TABLE = UsageCategory.TABLE
-_KIND = UsageCategory.KIND
-_FIELD = UsageCategory.FIELD
-_FUNCTION = UsageCategory.FUNCTION
-_LITERAL_TYPE = UsageCategory.LITERAL_TYPE
-
 # Every change since 15.0.0, under its first X.Y.0 release, bounded by its backports.
 _REQUIREMENTS = _declare(
     # 15.1.0
     (
-        _TABLE,
+        UsageCategory.TABLE,
         (
             "customers",
             "sellers",
@@ -203,10 +197,10 @@ _REQUIREMENTS = _declare(
         VersionBounds({15: (15, 0, 3)}),
         "PFUN-30634",
     ),
-    (_KIND, ("windowFunction",), VersionBounds({15: (15, 0, 5)}), "PFUN-31214"),
-    (_TABLE, ("actionItems",), VersionBounds({15: (15, 0, 6)}), "PFUN-31318"),
+    (UsageCategory.KIND, ("windowFunction",), VersionBounds({15: (15, 0, 5)}), "PFUN-31214"),
+    (UsageCategory.TABLE, ("actionItems",), VersionBounds({15: (15, 0, 6)}), "PFUN-31318"),
     (
-        _KIND,
+        UsageCategory.KIND,
         (
             "inputColumnReference",
             "outputColumnReference",
@@ -217,9 +211,9 @@ _REQUIREMENTS = _declare(
         VersionBounds({15: (15, 0, 6)}),
         "PFUN-31318",
     ),
-    (_KIND, ("selectColumns",), VersionBounds({15: (15, 1, 0)}), "PFUN-30390"),
+    (UsageCategory.KIND, ("selectColumns",), VersionBounds({15: (15, 1, 0)}), "PFUN-30390"),
     (
-        _FUNCTION,
+        UsageCategory.FUNCTION,
         (
             "acos",
             "asin",
@@ -249,14 +243,14 @@ _REQUIREMENTS = _declare(
     ),
     # 16.0.0
     (
-        _TABLE,
+        UsageCategory.TABLE,
         ("productCompetitions",),
         VersionBounds({15: (15, 3, 8), 16: (16, 0, 0)}),
         "PFUN-33178",
     ),
     # 16.2.0
     (
-        _TABLE,
+        UsageCategory.TABLE,
         (
             "productBillOfMaterials",
             "companyParameterTables",
@@ -269,51 +263,66 @@ _REQUIREMENTS = _declare(
     ),
     # 16.3.0
     (
-        _TABLE,
+        UsageCategory.TABLE,
         ("productReferences",),
         VersionBounds({15: (15, 3, 16), 16: (16, 2, 1)}),
         "PFUN-33923",
     ),
-    (_TABLE, ("claims",), VersionBounds({15: (15, 3, 17), 16: (16, 2, 2)}), "PFUN-34034"),
     (
-        _FUNCTION,
+        UsageCategory.TABLE,
+        ("claims",),
+        VersionBounds({15: (15, 3, 17), 16: (16, 2, 2)}),
+        "PFUN-34034",
+    ),
+    (
+        UsageCategory.FUNCTION,
         ("greatest", "least"),
         VersionBounds({15: (15, 3, 17), 16: (16, 2, 3)}),
         "PFUN-33886",
     ),
     # 17.0.0
     (
-        _FIELD,
+        UsageCategory.FIELD,
         ("companyParameterRows.targetDate",),
         VersionBounds({15: (15, 3, 22), 16: (16, 3, 6), 17: (17, 0, 0)}),
         "PFUN-34433",
     ),
     (
-        _FUNCTION,
+        UsageCategory.FUNCTION,
         ("dateOnlyToday", "dateTimeNow"),
         VersionBounds({16: (16, 3, 7), 17: (17, 0, 0)}),
         "PFUN-33284",
     ),
     (
-        _LITERAL_TYPE,
+        UsageCategory.LITERAL_TYPE,
         ("DURATION", "PERIOD"),
         VersionBounds({16: (16, 3, 7), 17: (17, 0, 0)}),
         "PFUN-33284",
     ),
     # 17.1.0
-    (_FIELD, ("join.pipeline",), VersionBounds({16: (16, 3, 10), 17: (17, 0, 1)}), "PFUN-30794"),
     (
-        _TABLE,
+        UsageCategory.FIELD,
+        ("join.pipeline",),
+        VersionBounds({16: (16, 3, 10), 17: (17, 0, 1)}),
+        "PFUN-30794",
+    ),
+    (
+        UsageCategory.TABLE,
         ("historicalConditionRecords",),
         VersionBounds({16: (16, 3, 12), 17: (17, 0, 3)}),
         "PFUN-34151",
     ),
-    (_TABLE, ("users",), VersionBounds({16: (16, 3, 16), 17: (17, 0, 7)}), "PFUN-27391"),
+    (
+        UsageCategory.TABLE,
+        ("users",),
+        VersionBounds({16: (16, 3, 16), 17: (17, 0, 7)}),
+        "PFUN-27391",
+    ),
     # 17.2.0. PFUN-35990 shipped these in 16.3.16, 17.0.7 and 17.0.8 before reverting them in
     # 16.3.17, 17.0.9 and 17.1.0: those few releases are rejected too, on the safe side, as
     # VersionBounds has no upper bound and the reverted shape may differ.
     (
-        _FUNCTION,
+        UsageCategory.FUNCTION,
         ("safeDiv", "percentRankOver", "cumeDistOver"),
         VersionBounds({17: (17, 2, 0)}),
         "PFUN-36206",
