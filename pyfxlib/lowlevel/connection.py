@@ -69,16 +69,12 @@ LOGGER = logging.getLogger(__name__)
 
 # Backend versions with notifications.
 _NOTIFICATIONS_SINCE = VersionBounds("15.2.0")
+_QUERY_META_TABLES_SINCE = VersionBounds("16.3.16", "17.0.7")
 
 
 def _meta_entries(response: Response, key: str) -> list[dict[str, Any]]:
     """The entries under `key` in every block of a `queryapi.meta` answer."""
-    return [
-        entry
-        for block in response.json()["response"]["data"]
-        if isinstance(block, dict)
-        for entry in block.get(key, [])
-    ]
+    return response.json()["response"]["data"][0][key]
 
 
 class ConnectionAsync(ABC):
@@ -622,6 +618,8 @@ class ConnectionAsync(ABC):
         Returns:
             The table entries as returned by the backend, each with the `table` to query.
         Raises:
+            RuntimeError: if the backend predates `queryapi.meta/tables`, in which case nothing
+                is sent.
             UnsupportedQueryError: if the backend does not support the kind, in which case
                 nothing is sent.
         """
@@ -639,6 +637,8 @@ class ConnectionAsync(ABC):
         Returns:
             The column entries as returned by the backend.
         Raises:
+            RuntimeError: if the backend predates `queryapi.meta/table`, in which case nothing
+                is sent.
             UnsupportedQueryError: if the table uses anything the backend does not support,
                 in which case nothing is sent.
         """
@@ -1238,8 +1238,18 @@ class ConnectionRemote(ConnectionAsync):
         )
         return response.json()["response"]["data"]
 
+    async def _check_query_meta_tables_supported(self, endpoint: str) -> None:
+        """Raise if the backend predates the `queryapi.meta` table endpoints."""
+        version = (await self._get_query_compatibility()).version
+        if not _QUERY_META_TABLES_SINCE.supports(version):
+            raise RuntimeError(
+                f"{endpoint} is not supported by backend versions below"
+                f" {_QUERY_META_TABLES_SINCE}. Current backend version: {version}"
+            )
+
     async def query_meta_tables(self, kind: str) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
+        await self._check_query_meta_tables_supported("queryapi.meta/tables")
         adapted = await adapt_table_to_backend({"kind": kind}, self._get_query_compatibility)
         response = await self.session.post(
             f"{self.endpoint}/queryapi.meta/tables",
@@ -1249,6 +1259,7 @@ class ConnectionRemote(ConnectionAsync):
 
     async def query_meta_table(self, table: dict[str, Any]) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
+        await self._check_query_meta_tables_supported("queryapi.meta/table")
         adapted = await adapt_table_to_backend(table, self._get_query_compatibility)
         response = await self.session.post(
             f"{self.endpoint}/queryapi.meta/table",

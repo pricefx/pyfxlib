@@ -22,7 +22,11 @@ import pytest
 
 from tests.unit.backend_versions import supported_by_every_backend_from
 
-from pyfxlib.lowlevel.connection import _NOTIFICATIONS_SINCE, ConnectionRemote
+from pyfxlib.lowlevel.connection import (
+    _NOTIFICATIONS_SINCE,
+    _QUERY_META_TABLES_SINCE,
+    ConnectionRemote,
+)
 from pyfxlib.lowlevel.constants import _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.querycompat import UnsupportedQueryError
 from pyfxlib.lowlevel.session import PfxSession
@@ -313,43 +317,60 @@ def test_the_notification_gate_is_not_met_by_every_handled_backend() -> None:
     )
 
 
+def test_the_query_meta_tables_gate_is_not_met_by_every_handled_backend() -> None:
+    """Fails once the oldest handled backend rises past the gate: see CONTRIBUTING.md."""
+    oldest = MIN_DEPRECATED_BACKEND_VERSION
+
+    assert not supported_by_every_backend_from(oldest, _QUERY_META_TABLES_SINCE), (
+        f"Every backend from {oldest} supports the queryapi.meta table endpoints: drop"
+        " `_QUERY_META_TABLES_SINCE` and its check from `ConnectionRemote.query_meta_tables`"
+        " and `ConnectionRemote.query_meta_table`."
+    )
+
+
+# Every backend with the queryapi.meta table endpoints knows `dataFeed`: the kind is sent as
+# is. Its adaptation to older backends is tested on `adapt_table_to_backend`.
+_META_TABLES_RELEASES = pytest.mark.parametrize("release", ["16.3.16", "17.0.7"])
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("release,kind", [("17.0.1", "datafeed"), ("17.0.2", "dataFeed")])
-async def test_tables_are_listed_with_the_kind_the_backend_knows(release: str, kind: str) -> None:
+@_META_TABLES_RELEASES
+async def test_tables_are_listed(release: str) -> None:
     session = _FakeSession(release)
     connection = ConnectionRemote(_ENDPOINT, session)
 
     entries = await connection.query_meta_tables("dataFeed")
 
-    assert session.sent_data("/queryapi.meta/tables") == [{"kind": kind}]
+    assert session.sent_data("/queryapi.meta/tables") == [{"kind": "dataFeed"}]
     assert entries == [_TABLE_ENTRY, _TABLE_ENTRY]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("release,kind", [("17.0.1", "datafeed"), ("17.0.2", "dataFeed")])
-async def test_table_columns_are_listed_with_the_kind_the_backend_knows(
-    release: str, kind: str
-) -> None:
+@_META_TABLES_RELEASES
+async def test_table_columns_are_listed(release: str) -> None:
     session = _FakeSession(release)
     connection = ConnectionRemote(_ENDPOINT, session)
     table = dict(_DATA_FEED)
 
     columns = await connection.query_meta_table(table)
 
-    assert session.sent_data("/queryapi.meta/table") == [{"table": {**_DATA_FEED, "kind": kind}}]
+    assert session.sent_data("/queryapi.meta/table") == [{"table": _DATA_FEED}]
     assert columns == [_COLUMN_ENTRY, _COLUMN_ENTRY]
     assert table == _DATA_FEED
 
 
 @pytest.mark.asyncio
-async def test_a_table_kind_the_backend_lacks_is_rejected_before_being_sent() -> None:
-    session = _FakeSession("17.0.6")
+@pytest.mark.parametrize("release", ["16.3.15", "17.0.6"])
+async def test_a_backend_without_the_meta_table_endpoints_is_rejected_before_sending(
+    release: str,
+) -> None:
+    session = _FakeSession(release)
     connection = ConnectionRemote(_ENDPOINT, session)
 
-    with pytest.raises(UnsupportedQueryError, match="table 'users'"):
-        await connection.query_meta_tables("users")
-    with pytest.raises(UnsupportedQueryError, match="table 'users'"):
-        await connection.query_meta_table({"kind": "users"})
+    with pytest.raises(RuntimeError, match="queryapi.meta/tables is not supported"):
+        await connection.query_meta_tables("dataFeed")
+    with pytest.raises(RuntimeError, match="queryapi.meta/table is not supported"):
+        await connection.query_meta_table(dict(_DATA_FEED))
 
     assert session.sent_data("/queryapi.meta/tables") == []
     assert session.sent_data("/queryapi.meta/table") == []
