@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Iterator
 import copy
 import logging
 from typing import Any, get_args
 
+from pydantic import BaseModel
 import pytest
 
 from pyfxlib.lowlevel.querycompat import (
@@ -37,6 +39,7 @@ from pyfxlib.schema import (
     RankOverOperation,
     Table,
 )
+import pyfxlib.schema.query as query_schema
 
 
 class _Backend:
@@ -380,7 +383,97 @@ def test_every_schema_table_kind_is_baseline_renamed_or_required() -> None:
     renamed = {kind for rename in _TABLE_KIND_RENAMES for kind in (rename.old, rename.new)}
     required = {usage.name for usage in _REQUIREMENTS if usage.category is UsageCategory.TABLE}
 
-    assert schema_kinds - _BASELINE_TABLES - renamed - required == set()
+    missing = schema_kinds - _BASELINE_TABLES - renamed - required
+    assert missing == set(), (
+        f"{missing} added to the schema without a requirement: declare in"
+        " `querycompat._REQUIREMENTS` the backend versions supporting it, or add it to the"
+        " minimum version baseline here if the endpoint always had it."
+    )
+
+
+def _schema_kinds() -> Iterator[tuple[str, type[BaseModel]]]:
+    """Yield every table, stage and expression kind of the schema, with its model."""
+    for model in vars(query_schema).values():
+        if (
+            isinstance(model, type)
+            and issubclass(model, BaseModel)
+            and "kind" in model.model_fields
+        ):
+            for kind in get_args(model.model_fields["kind"].annotation):
+                yield kind, model
+
+
+# What the endpoint shipped with in 15.0.0, which needs no requirement.
+_BASELINE_KINDS = {
+    *("pipeline", "source", "join", "filter", "aggregate", "distinct", "sort", "take"),
+    *("addColumns", "removeColumns", "retainColumns"),
+    *("columnReference", "selectable", "function", "literal", "order"),
+}
+
+
+def test_every_schema_stage_and_expression_kind_is_baseline_or_required() -> None:
+    """A stage or expression added to the schema without a requirement fails here."""
+    tables = {
+        kind
+        for model in get_args(Table)
+        for kind in get_args(model.model_fields["kind"].annotation)
+    }
+    schema_kinds = {kind for kind, _ in _schema_kinds()} - tables
+
+    missing = schema_kinds - _BASELINE_KINDS - _required(UsageCategory.KIND)
+    assert missing == set(), (
+        f"{missing} added to the schema without a requirement: declare in"
+        " `querycompat._REQUIREMENTS` the backend versions supporting it, or add it to the"
+        " minimum version baseline here if the endpoint always had it."
+    )
+
+
+# What the endpoint shipped with in 15.0.0, which needs no requirement, as "<kind>.<field>".
+_BASELINE_FIELDS = {
+    "pipeline.stages",
+    *("source.table", "source.columns", "source.criteria"),
+    *("join.type", "join.table", "join.columns", "join.criteria"),
+    "filter.criteria",
+    *("aggregate.columns", "aggregate.dimensions"),
+    "sort.orders",
+    "take.count",
+    "addColumns.columns",
+    "removeColumns.columns",
+    "retainColumns.columns",
+    *("columnReference.source", "columnReference.column"),
+    *("selectable.expression", "selectable.alias"),
+    *("function.name", "function.arguments"),
+    *("literal.type", "literal.value"),
+    *("order.expression", "order.direction"),
+    "productExtensionRows.productExtensionName",
+    "companyParameterRows.companyParameterUniqueName",
+    *("datamart.datamartUniqueName", "datamart.currency", "datamart.uom"),
+    *("datafeed.dataFeedUniqueName", "dataFeed.dataFeedUniqueName"),
+    *("datasource.dataSourceUniqueName", "dataSource.dataSourceUniqueName"),
+}
+
+
+def test_every_schema_field_is_baseline_or_required() -> None:
+    """A field added to the schema without a requirement fails here.
+
+    Fields of a table or kind with a requirement come with it, so need none of their own: a
+    field added to one after it shipped is not caught.
+    """
+    gated = _required(UsageCategory.TABLE) | _required(UsageCategory.KIND)
+    fields = {
+        f"{kind}.{field.serialization_alias or field.alias or name}"
+        for kind, model in _schema_kinds()
+        if kind not in gated
+        for name, field in model.model_fields.items()
+        if name != "kind"
+    }
+
+    missing = fields - _BASELINE_FIELDS - _required(UsageCategory.FIELD)
+    assert missing == set(), (
+        f"{missing} added to the schema without a requirement: declare in"
+        " `querycompat._REQUIREMENTS` the backend versions supporting it, or add it to the"
+        " minimum version baseline here if the endpoint always had it."
+    )
 
 
 def _products_with(*stages: dict[str, Any]) -> dict[str, Any]:
@@ -706,5 +799,17 @@ def test_every_schema_function_and_literal_type_is_baseline_or_required() -> Non
     }
     literal_types = {member.value for member in LiteralValueType}
 
-    assert functions - _BASELINE_FUNCTIONS - _required(UsageCategory.FUNCTION) == set()
-    assert literal_types - _BASELINE_LITERAL_TYPES - _required(UsageCategory.LITERAL_TYPE) == set()
+    missing_functions = functions - _BASELINE_FUNCTIONS - _required(UsageCategory.FUNCTION)
+    assert missing_functions == set(), (
+        f"{missing_functions} added to the schema without a requirement: declare in"
+        " `querycompat._REQUIREMENTS` the backend versions supporting it, or add it to the"
+        " minimum version baseline here if the endpoint always had it."
+    )
+    missing_literal_type = (
+        literal_types - _BASELINE_LITERAL_TYPES - _required(UsageCategory.LITERAL_TYPE)
+    )
+    assert missing_literal_type == set(), (
+        f"{missing_literal_type} added to the schema without a requirement: declare in"
+        " `querycompat._REQUIREMENTS` the backend versions supporting it, or add it to the"
+        " minimum version baseline here if the endpoint always had it."
+    )
