@@ -20,17 +20,27 @@ Aligns the Query API schema with the backend `QueryApiDTO`.
   kind the backend knows, and each rewrite is logged at debug level. So is sending the deprecated
   `datasource` to a backend that knows `dataSource`.
 - Queries sent through a connection are also checked against every Query API change since
-  15.0.0, pyfxlib's minimum backend: tables, stages, expressions, fields, functions and literal
-  types, each bounded by the releases it was backported to. A query using anything the backend
-  does not support raises `UnsupportedQueryError` (exported from `pyfxlib.lowlevel`) before
-  being sent, listing every such use with the versions supporting it and its ticket. `safeDiv`,
-  `percentRankOver` and `cumeDistOver` are accepted from 17.2.0 only: the few earlier releases
-  that briefly had them (16.3.16, 17.0.7, 17.0.8, PFUN-35990) are rejected as well.
+  15.0.0, the first release of the endpoint: tables, stages, expressions, fields, functions and
+  literal types, each bounded by the releases it was backported to. A query using anything the
+  backend does not support raises `UnsupportedQueryError` (exported from `pyfxlib.lowlevel`)
+  before being sent, listing every such use with the versions supporting it and its ticket.
+  `safeDiv`, `percentRankOver` and `cumeDistOver` are accepted from 17.2.0 only: the few earlier
+  releases that briefly had them (16.3.16, 17.0.7, 17.0.8, PFUN-35990) are rejected as well.
+- `MIN_SUPPORTED_BACKEND_VERSION` (exported from `pyfxlib.schema`), the oldest backend pyfxlib
+  supports: 15.0.0, as pyfxlib supports the current major and the two before it. The major
+  before them is deprecated, from `MIN_DEPRECATED_BACKEND_VERSION` (14.0.0): pyfxlib keeps
+  working with it as it did, without supporting it. A connection logs a warning, once, the first
+  time it fetches the version of a deprecated or older backend.
+- `BackendVersion` instances are ordered (`<`, `<=`, `>`, `>=`), by major, minor then patch.
+- `VersionBounds` (exported from `pyfxlib.schema`), the backend versions a change is available
+  from, as one lower bound per major: e.g. `VersionBounds("16.3.11", "17.0.2")`.
 - What a backend supports is fetched once per connection, on the first query that needs it, and
   kept for the connection lifetime: a backend upgraded meanwhile is only seen by a new
   connection. Connections to several backends each keep their own.
 
 ### Changed
+- `BackendVersion` equality treats a missing minor or patch as 0: `BackendVersion(major=15)`
+  now equals `BackendVersion(major=15, minor=0, patch=0)`, as their string forms already did.
 - **Breaking:** `UnboundedBound` is split into `UnboundedPreceding` and `UnboundedFollowing`,
   and `Bound` into `StartBound` and `EndBound`. A frame can no longer start at the end of the
   partition or end at its start, which the backend rejects.

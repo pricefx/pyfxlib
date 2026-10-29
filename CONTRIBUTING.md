@@ -21,6 +21,53 @@ This will install all the requirements inside a dedicated virtualenv. To get a s
 
 The `./devkit/check-all.sh` offers a convenient method to run all tests at once. See the `./devkit/README.md` for details.
 
+## Supported backend versions
+
+pyfxlib follows the Pricefx major versions, so that projects depending on pyfxlib keep working
+with the backends they run on. With N the current major:
+- **N to N-2 are supported**, from `MIN_SUPPORTED_BACKEND_VERSION` in `pyfxlib/schema/core.py`.
+- **N-3 is deprecated**, from `MIN_DEPRECATED_BACKEND_VERSION`, derived from it: its code is
+  kept, so that it keeps working as it did, but it is no longer supported nor tested.
+- **Anything older is not supported**, and has no code left.
+
+A connection logs a warning, once, when it fetches the version of a deprecated or older backend.
+
+A change the backend got after `MIN_DEPRECATED_BACKEND_VERSION` must be gated, so that older
+backends fail with a clear error before the request is sent, rather than with an obscure
+backend one. Such a change is declared with the backend versions it is available from, as
+`VersionBounds` (one lower bound per major, as it is often backported to several majors):
+- in the Query API, in `_REQUIREMENTS` or `_TABLE_KIND_RENAMES` of
+  `pyfxlib/lowlevel/querycompat.py`. Unit tests fail when a table, stage, expression, field,
+  function or literal type is added to the schema with no requirement nor in their baseline;
+- for pushed field types, in `_FIELD_TYPE_MIN_BACKEND_VERSION` of
+  `pyfxlib/lowlevel/pandasutil.py`;
+- elsewhere, as a constant the method checks, e.g. `_NOTIFICATIONS_SINCE` for
+  `send_notification`, with a test failing once every backend pyfxlib keeps the code for has
+  the change.
+
+### When a new major version is released
+
+Raise `MIN_SUPPORTED_BACKEND_VERSION` to the first release of the major two below the new one
+(e.g. 16.0.0 once 18 is released): the major below that becomes deprecated, and the one it
+replaces loses its code. Then:
+
+1. Update the versions in `README.md`, and add the change to the `CHANGELOG.md`.
+2. Run the unit tests. They fail on every gate all the backends pyfxlib keeps the code for now
+   meet, listing them:
+   - `test_no_requirement_is_met_by_every_handled_backend`: drop each listed requirement from
+     `_REQUIREMENTS`, and add it to the baseline of the matching
+     `test_every_schema_*_is_baseline_*` test in `tests/unit/test_querycompat.py`, as the oldest
+     deprecated backend now has it. Update the tests of those requirements accordingly.
+   - `test_no_table_kind_rename_is_known_by_every_handled_backend`: drop each listed rename
+     from `_TABLE_KIND_RENAMES`, and the old spelling from the schema (e.g. `datafeed` from
+     `PADataFeed`). This is a breaking change for queries posted without a connection.
+   - `test_no_field_type_gate_is_met_by_every_handled_backend`: drop each listed field type
+     from `_FIELD_TYPE_MIN_BACKEND_VERSION`, and the whole gate once it is empty.
+   - `test_the_notification_gate_is_not_met_by_every_handled_backend`: drop
+     `_NOTIFICATIONS_SINCE` and its check from `send_notification`.
+3. Search the code for version-specific code no test covers, which every deprecated backend
+   no longer needs, and drop it: e.g. the `core < 15.0.0` payload of `import_files`.
+
 ## Use pyfxlib in another project
 
 Simply install the package from Pypi:
