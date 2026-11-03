@@ -1,5 +1,6 @@
 stages:
   - test
+  - sonar
   - package
   - deploy
 
@@ -17,6 +18,12 @@ variables:
         IMAGE_TAG: "${CI_COMMIT_REF_SLUG}"
 
 # === Tests ===
+
+.coverage-report:
+  artifacts:
+    paths:
+      - coverage-${CI_JOB_NAME}.xml
+    expire_in: 1 week
 
 linting-typing:
   stage: test
@@ -39,17 +46,19 @@ unit-tests:
   stage: test
   extends:
     - .mr-develop-release-only
+    - .coverage-report
   image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
   script:
     - pip install poetry==${POETRY_VERSION}
     - poetry install
-    - poetry run pytest tests/unit
+    - poetry run pytest tests/unit --cov=pyfxlib --cov=scripts --cov-report=xml:coverage-${CI_JOB_NAME}.xml
   interruptible: true
 
 .it-tests:
   stage: test
   extends:
     - .mr-develop-release-only
+    - .coverage-report
   image: python:3.12.12@sha256:cb770de9f47e77715f13434d96f7ebaae7ad3a1f4fd9c8b338549bf99c9980ab
   services:
     - name: cregistry.pricefx.eu/engineering/remote-integrationtest:latest
@@ -66,7 +75,7 @@ unit-tests:
     - poetry install
     # even though HEALTHCHECK_TCP_PORT is setup, compose seems to listen on the port before the service is really ready, so we need to wait here
     - timeout 300 bash -c "until curl --output /dev/null --silent $PFX_BASE_URL; do sleep 1; done"
-    - poetry run pytest tests/integration -m "${MARKER_SELECTOR}"
+    - poetry run pytest tests/integration -m "${MARKER_SELECTOR}" --cov=pyfxlib --cov=scripts --cov-report=xml:coverage-${CI_JOB_NAME}.xml
   interruptible: true
 
 integration-tests:
@@ -80,6 +89,31 @@ integration-tests-extended:
     - .it-tests
   variables:
     MARKER_SELECTOR: "extended"
+
+# === Sonar ===
+
+sonarqube:
+  stage: sonar
+  needs: # their coverage reports
+    - integration-tests
+    - integration-tests-extended
+    - unit-tests
+  image:
+    name: sonarsource/sonar-scanner-cli:12.2.0.4256_8.1.0@sha256:a3f4215076706c95a17a68c19322ee916e40a3acd081a8c1a1e839e0194afa57
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: "0" # full history so Sonar can compute blame / new code
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script:
+    - sonar-scanner -Dsonar.host.url=https://sonar.pricefx.eu -Dsonar.token=${SONAR_TOKEN}
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "develop"
+  allow_failure: true
+  interruptible: true
 
 # === Package ===
 
