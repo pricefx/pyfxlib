@@ -1,5 +1,6 @@
 stages:
   - test
+  - sonar
   - package
   - deploy
 
@@ -80,6 +81,28 @@ integration-tests-extended:
     - .it-tests
   variables:
     MARKER_SELECTOR: "extended"
+
+# === Sonar ===
+
+sonarqube:
+  stage: sonar
+  image:
+    name: sonarsource/sonar-scanner-cli:12.2.0.4256_8.1.0@sha256:a3f4215076706c95a17a68c19322ee916e40a3acd081a8c1a1e839e0194afa57
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: "0" # full history so Sonar can compute blame / new code
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script:
+    - sonar-scanner -Dsonar.host.url=https://sonar.pricefx.eu -Dsonar.token=${SONAR_TOKEN}
+  rules:
+    # TODO: switch to "develop" once this branch is merged
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "add-sonarqube-reporting"
+  allow_failure: true
+  interruptible: true
 
 # === Package ===
 
