@@ -433,8 +433,7 @@ class SimplePfxSession(PfxSession):
             await self._auth.after_response(self._session, response)
             return response
         except HTTPStatusError as err:
-            if (body := _error_response_body(err)) is not None:
-                LOGGER.error("Error response body: %s", body)
+            _log_error_response_body(err)
             raise err
 
     async def post(self, url: str, **kwargs: Any) -> Response:
@@ -451,8 +450,7 @@ class SimplePfxSession(PfxSession):
             await self._auth.after_response(self._session, response)
             return response
         except HTTPStatusError as err:
-            if (body := _error_response_body(err)) is not None:
-                LOGGER.error("Error response body: %s", body)
+            _log_error_response_body(err)
             raise err
 
     async def post_simple(self, url: str, **kwargs: Any) -> Response:
@@ -495,6 +493,11 @@ def _error_response_body(err: HTTPStatusError) -> Optional[str]:
     if err.response is not None and err.response.text is not None:
         return err.response.text
     return None
+
+
+def _log_error_response_body(err: HTTPStatusError) -> None:
+    if (body := _error_response_body(err)) is not None:
+        LOGGER.error("Error response body: %s", body)
 
 
 def _check_for_pfx_error(response: Response) -> None:
@@ -618,8 +621,7 @@ class PfxAuthUserPass(PfxAuthMethod):
                 self._refresh_token(session, response)
                 del self._credential
             except HTTPStatusError as err:
-                if (body := _error_response_body(err)) is not None:
-                    LOGGER.error("Error response body: %s", body)
+                _log_error_response_body(err)
                 raise err
         else:
             session.headers.update({"Cookie": f"X-PriceFx-jwt={self.pfxtoken}"})
