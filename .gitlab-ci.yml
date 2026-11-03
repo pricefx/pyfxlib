@@ -99,8 +99,7 @@ sonarqube:
   script:
     - sonar-scanner -Dsonar.host.url=https://sonar.pricefx.eu -Dsonar.token=${SONAR_TOKEN}
   rules:
-    # TODO: switch to "develop" once this branch is merged
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "add-sonarqube-reporting"
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "develop"
   allow_failure: true
   interruptible: true
 
