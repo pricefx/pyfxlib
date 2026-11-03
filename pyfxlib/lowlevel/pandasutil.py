@@ -92,18 +92,7 @@ def to_field_collection_spec(
                        its desired label (optional, default: None).
     """
     assert on_unsupported_type in ["coerce", "drop", "error"]
-    # get key(s) from index
-    if dataframe.index.nlevels == 1:
-        index_name = dataframe.index.names[0]
-        if index_name is None:
-            index_name = "index"  # default col value for index with no name
-        keys = [index_name]
-    else:
-        keys = []
-        for level, index_name in enumerate(dataframe.index.names):
-            if index_name is None:
-                index_name = f"level_{level}"  # default col value for index with no name
-            keys.append(index_name)
+    keys = _index_keys(dataframe)
 
     # make index part of the columns
     if inplace:
@@ -118,6 +107,38 @@ def to_field_collection_spec(
             f"column_labels contains at least one unknown column name: {unknows_col_labels}"
         )
 
+    fields_spec, unsupported_types_errors = _fields_spec(
+        dataframe, keys, labels, dimensions, on_unsupported_type
+    )
+
+    if len(unsupported_types_errors) > 0:
+        raise ValueError("unsupported types for columns: " + ", ".join(unsupported_types_errors))
+
+    return (fields_spec, dataframe.loc[:, [spec["name"] for spec in fields_spec]])
+
+
+def _index_keys(dataframe: pd.DataFrame) -> list[str]:
+    # get key(s) from index
+    if dataframe.index.nlevels == 1:
+        index_name = dataframe.index.names[0]
+        if index_name is None:
+            index_name = "index"  # default col value for index with no name
+        return [index_name]
+    keys = []
+    for level, index_name in enumerate(dataframe.index.names):
+        if index_name is None:
+            index_name = f"level_{level}"  # default col value for index with no name
+        keys.append(index_name)
+    return keys
+
+
+def _fields_spec(
+    dataframe: pd.DataFrame,
+    keys: list[str],
+    labels: dict[str, str],
+    dimensions: Optional[list[str]],
+    on_unsupported_type: str,
+) -> tuple[list[dict[str, Any]], list[str]]:
     # create field spec and convert/drop_columns
     fields_spec = []
     unsupported_types_errors = []
@@ -136,17 +157,13 @@ def to_field_collection_spec(
         fields_spec.append(
             {
                 "name": col,
-                "label": col if col not in labels else labels[col],
+                "label": labels.get(col, col),
                 "type": pfx_type,
                 "key": col in keys,
                 "dimension": dimensions is not None and col in dimensions,
             }
         )
-
-    if len(unsupported_types_errors) > 0:
-        raise ValueError("unsupported types for columns: " + ", ".join(unsupported_types_errors))
-
-    return (fields_spec, dataframe.loc[:, [spec["name"] for spec in fields_spec]])
+    return fields_spec, unsupported_types_errors
 
 
 class FieldSpecs:
@@ -467,28 +484,9 @@ def _update_fields_spec(
     current_fields_spec = {col_spec["name"]: col_spec for col_spec in current_fields_spec_list}
 
     if not keep_index:
-        index_cols = [
-            col_name for col_name, col_spec in current_fields_spec.items() if col_spec["key"]
-        ]
-        manual_key_cols = [
-            col_name
-            for col_name in updated_fields_spec
-            if (
-                updated_fields_spec[col_name]["key"]
-                and (col_name in conv_dataframe.columns)
-                and (col_name not in index_cols)
-            )
-        ]
-
-        if manual_key_cols == []:
-            raise ValueError("keep_index is set to false, and no valid column is set as a key")
-
-        for col_name in index_cols:
-            current_fields_spec.pop(col_name, None)
-        if inplace:
-            conv_dataframe.drop(columns=index_cols, inplace=True)
-        else:
-            conv_dataframe = conv_dataframe.drop(columns=index_cols)
+        conv_dataframe = _drop_index_columns(
+            conv_dataframe, current_fields_spec, updated_fields_spec, inplace
+        )
 
     for col_name in updated_fields_spec:
         if col_name not in conv_dataframe:
@@ -518,6 +516,35 @@ def _update_fields_spec(
         conv_dataframe = conv_dataframe.rename(columns=rename_cols)
 
     return list(current_fields_spec.values()), conv_dataframe
+
+
+def _drop_index_columns(
+    conv_dataframe: pd.DataFrame,
+    current_fields_spec: dict[str, dict[str, Any]],
+    updated_fields_spec: dict[str, dict[str, Any]],
+    inplace: bool,
+) -> pd.DataFrame:
+    # removes the index columns from the dataframe and from current_fields_spec
+    index_cols = [col_name for col_name, col_spec in current_fields_spec.items() if col_spec["key"]]
+    manual_key_cols = [
+        col_name
+        for col_name in updated_fields_spec
+        if (
+            updated_fields_spec[col_name]["key"]
+            and (col_name in conv_dataframe.columns)
+            and (col_name not in index_cols)
+        )
+    ]
+
+    if manual_key_cols == []:
+        raise ValueError("keep_index is set to false, and no valid column is set as a key")
+
+    for col_name in index_cols:
+        current_fields_spec.pop(col_name, None)
+    if inplace:
+        conv_dataframe.drop(columns=index_cols, inplace=True)
+        return conv_dataframe
+    return conv_dataframe.drop(columns=index_cols)
 
 
 class _ColumnType(NamedTuple):
