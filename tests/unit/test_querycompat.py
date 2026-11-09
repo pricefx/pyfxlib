@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Set
 import copy
 import logging
 from typing import Any, get_args
@@ -369,25 +369,45 @@ def test_renamed_table_kinds_carry_no_requirement() -> None:
     assert not {Usage(UsageCategory.TABLE, kind) for kind in renamed} & set(_REQUIREMENTS)
 
 
+def _required(category: UsageCategory) -> set[str]:
+    return {usage.name for usage in _REQUIREMENTS if usage.category is category}
+
+
+def _assert_baseline_or_required(
+    schema: Set[str],
+    baseline: Set[str],
+    category: UsageCategory,
+    *,
+    exempt: Set[str] = frozenset(),
+) -> None:
+    """Fail on any name of the schema neither in the baseline, exempt, nor required."""
+    __tracebackhide__ = True
+    missing = schema - baseline - exempt - _required(category)
+    assert not missing, (
+        f"{missing} added to the schema without a requirement: declare in"
+        " `querycompat._REQUIREMENTS` the backend versions supporting it, or add it to the"
+        " minimum version baseline here if the endpoint always had it."
+    )
+
+
+def _table_kinds() -> set[str]:
+    return {
+        kind
+        for model in get_args(Table)
+        for kind in get_args(model.model_fields["kind"].annotation)
+    }
+
+
 # What the endpoint shipped with in 15.0.0, which needs no requirement.
 _BASELINE_TABLES = {"products", "productExtensionRows", "companyParameterRows", "datamart"}
 
 
 def test_every_schema_table_kind_is_baseline_renamed_or_required() -> None:
     """A table added to the schema without a requirement fails here."""
-    schema_kinds = {
-        kind
-        for model in get_args(Table)
-        for kind in get_args(model.model_fields["kind"].annotation)
-    }
     renamed = {kind for rename in _TABLE_KIND_RENAMES for kind in (rename.old, rename.new)}
-    required = {usage.name for usage in _REQUIREMENTS if usage.category is UsageCategory.TABLE}
 
-    missing = schema_kinds - _BASELINE_TABLES - renamed - required
-    assert missing == set(), (
-        f"{missing} added to the schema without a requirement: declare in"
-        " `querycompat._REQUIREMENTS` the backend versions supporting it, or add it to the"
-        " minimum version baseline here if the endpoint always had it."
+    _assert_baseline_or_required(
+        _table_kinds(), _BASELINE_TABLES, UsageCategory.TABLE, exempt=renamed
     )
 
 
@@ -413,19 +433,9 @@ _BASELINE_KINDS = {
 
 def test_every_schema_stage_and_expression_kind_is_baseline_or_required() -> None:
     """A stage or expression added to the schema without a requirement fails here."""
-    tables = {
-        kind
-        for model in get_args(Table)
-        for kind in get_args(model.model_fields["kind"].annotation)
-    }
-    schema_kinds = {kind for kind, _ in _schema_kinds()} - tables
+    schema_kinds = {kind for kind, _ in _schema_kinds()} - _table_kinds()
 
-    missing = schema_kinds - _BASELINE_KINDS - _required(UsageCategory.KIND)
-    assert missing == set(), (
-        f"{missing} added to the schema without a requirement: declare in"
-        " `querycompat._REQUIREMENTS` the backend versions supporting it, or add it to the"
-        " minimum version baseline here if the endpoint always had it."
-    )
+    _assert_baseline_or_required(schema_kinds, _BASELINE_KINDS, UsageCategory.KIND)
 
 
 # What the endpoint shipped with in 15.0.0, which needs no requirement, as "<kind>.<field>".
@@ -468,12 +478,7 @@ def test_every_schema_field_is_baseline_or_required() -> None:
         if name != "kind"
     }
 
-    missing = fields - _BASELINE_FIELDS - _required(UsageCategory.FIELD)
-    assert missing == set(), (
-        f"{missing} added to the schema without a requirement: declare in"
-        " `querycompat._REQUIREMENTS` the backend versions supporting it, or add it to the"
-        " minimum version baseline here if the endpoint always had it."
-    )
+    _assert_baseline_or_required(fields, _BASELINE_FIELDS, UsageCategory.FIELD)
 
 
 def _products_with(*stages: dict[str, Any]) -> dict[str, Any]:
@@ -783,33 +788,22 @@ _BASELINE_FUNCTIONS = {
 _BASELINE_LITERAL_TYPES = {"INTEGER", "REAL", "DATE_ONLY", "DATETIME", "STRING", "BOOLEAN"}
 
 
-def _required(category: UsageCategory) -> set[str]:
-    return {usage.name for usage in _REQUIREMENTS if usage.category is category}
-
-
 def test_the_baseline_has_the_51_functions_of_15_0_0() -> None:
     assert len(_BASELINE_FUNCTIONS) == 51
     assert not _BASELINE_FUNCTIONS & _required(UsageCategory.FUNCTION)
 
 
-def test_every_schema_function_and_literal_type_is_baseline_or_required() -> None:
-    """A function or literal type added to the schema without a requirement fails here."""
+def test_every_schema_function_is_baseline_or_required() -> None:
+    """A function added to the schema without a requirement fails here."""
     functions = {
         member.value for enum in (Operation, OperationAgg, RankOverOperation) for member in enum
     }
+
+    _assert_baseline_or_required(functions, _BASELINE_FUNCTIONS, UsageCategory.FUNCTION)
+
+
+def test_every_schema_literal_type_is_baseline_or_required() -> None:
+    """A literal type added to the schema without a requirement fails here."""
     literal_types = {member.value for member in LiteralValueType}
 
-    missing_functions = functions - _BASELINE_FUNCTIONS - _required(UsageCategory.FUNCTION)
-    assert missing_functions == set(), (
-        f"{missing_functions} added to the schema without a requirement: declare in"
-        " `querycompat._REQUIREMENTS` the backend versions supporting it, or add it to the"
-        " minimum version baseline here if the endpoint always had it."
-    )
-    missing_literal_type = (
-        literal_types - _BASELINE_LITERAL_TYPES - _required(UsageCategory.LITERAL_TYPE)
-    )
-    assert missing_literal_type == set(), (
-        f"{missing_literal_type} added to the schema without a requirement: declare in"
-        " `querycompat._REQUIREMENTS` the backend versions supporting it, or add it to the"
-        " minimum version baseline here if the endpoint always had it."
-    )
+    _assert_baseline_or_required(literal_types, _BASELINE_LITERAL_TYPES, UsageCategory.LITERAL_TYPE)
