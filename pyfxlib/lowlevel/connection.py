@@ -107,7 +107,7 @@ class ConnectionAsync(ABC):
         """
         pass
 
-    async def backend_version(self) -> dict[str, Optional[int]]:
+    async def backend_version(self) -> dict[str, int]:
         """Fetch the backend version information.
 
         Returns:
@@ -1988,7 +1988,7 @@ class ConnectionSync:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn._fetch_backend_version())
 
-    def backend_version(self) -> dict[str, Optional[int]]:
+    def backend_version(self) -> dict[str, int]:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.backend_version())
 

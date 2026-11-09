@@ -39,8 +39,15 @@ Aligns the Query API schema with the backend `QueryApiDTO`.
   connection. Connections to several backends each keep their own.
 
 ### Changed
-- `BackendVersion` equality treats a missing minor or patch as 0: `BackendVersion(major=15)`
-  now equals `BackendVersion(major=15, minor=0, patch=0)`, as their string forms already did.
+- **Breaking:** `BackendVersion.minor` and `BackendVersion.patch` are `int`, defaulting to 0,
+  instead of `Optional[int]` defaulting to `None`. A missing or null minor or patch is now 0, so
+  code checking them against `None` must check against 0. `BackendVersion(major=15)` now equals
+  `BackendVersion(major=15, minor=0, patch=0)` and dumps the same, as their string forms already
+  did. Likewise, `backend_version()` returns a `dict[str, int]` instead of a
+  `dict[str, Optional[int]]`: its minor and patch are 0 instead of `None`.
+- **Breaking:** `BackendVersion` is immutable: assigning a field raises a `ValidationError`.
+  Use `model_copy(update=...)` for a changed copy. Versions are hashable, so they can be set
+  members and dict keys.
 - **Breaking:** `UnboundedBound` is split into `UnboundedPreceding` and `UnboundedFollowing`,
   and `Bound` into `StartBound` and `EndBound`. A frame can no longer start at the end of the
   partition or end at its start, which the backend rejects.

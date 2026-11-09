@@ -19,9 +19,9 @@ from dataclasses import dataclass
 from enum import Enum, StrEnum, unique
 from functools import total_ordering
 from types import MappingProxyType
-from typing import Final, Optional
+from typing import Any, Final, Optional
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from typing_extensions import override, Self
 
 from pyfxlib.schema.base import PfxCamelCaseModel
@@ -40,13 +40,18 @@ class JobStatus(Enum):
 class BackendVersion(PfxCamelCaseModel):
     """Backend version information.
 
-    Versions compare by major, minor then patch, a missing minor or patch counting as 0: 15 and
-    15.0.0 are equal.
+    Versions compare by major, minor then patch. A missing or null minor or patch is 0: 15 and
+    15.0.0 are the same version.
     """
 
     major: int
-    minor: Optional[int] = None
-    patch: Optional[int] = None
+    minor: int = 0
+    patch: int = 0
+
+    @field_validator("minor", "patch", mode="before")
+    @classmethod
+    def _none_is_0(cls, value: Any) -> Any:
+        return 0 if value is None else value
 
     @classmethod
     def parse(cls, version: str) -> Self:
@@ -64,20 +69,13 @@ class BackendVersion(PfxCamelCaseModel):
     @override
     def __str__(self) -> str:
         """Return a string representation of the version."""
-        return f"{self.major}.{self.minor or 0}.{self.patch or 0}"
+        return f"{self.major}.{self.minor}.{self.patch}"
 
-    def _key(self) -> tuple[int, int, int]:
-        return self.major, self.minor or 0, self.patch or 0
-
-    # The ordering derives `<=` and `>=` from it: the pydantic one would tell 15 and 15.0.0 apart.
-    @override
-    def __eq__(self, other: object) -> bool:
+    # With the pydantic equality, the ordering derives `<=`, `>` and `>=` from it.
+    def __lt__(self, other: object) -> bool:
         if not isinstance(other, BackendVersion):
             return NotImplemented
-        return self._key() == other._key()
-
-    def __lt__(self, other: "BackendVersion") -> bool:
-        return self._key() < other._key()
+        return (self.major, self.minor, self.patch) < (other.major, other.minor, other.patch)
 
 
 @dataclass(frozen=True, init=False)

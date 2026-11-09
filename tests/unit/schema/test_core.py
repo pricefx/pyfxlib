@@ -60,6 +60,23 @@ def test_a_version_equals_no_other_type() -> None:
     assert version != {"major": 15, "minor": 0, "patch": 0}
 
 
+@pytest.mark.parametrize("other", ["15.0.0", (15, 0, 0), None])
+def test_a_version_orders_against_no_other_type(other: object) -> None:
+    version = BackendVersion.parse("15.0.0")
+
+    with pytest.raises(TypeError):
+        _ = version < other  # type: ignore[operator]
+    with pytest.raises(TypeError):
+        _ = version >= other  # type: ignore[operator]
+
+
+def test_a_null_minor_or_patch_is_0() -> None:
+    version = BackendVersion.model_validate({"major": 15, "minor": None, "patch": None})
+
+    assert (version.minor, version.patch) == (0, 0)
+    assert version.model_dump() == BackendVersion(major=15).model_dump()
+
+
 def test_versions_sort() -> None:
     versions = [BackendVersion.parse(v) for v in ["17.0.2", "15", "16.3.11", "15.2"]]
 
