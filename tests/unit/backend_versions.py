@@ -23,7 +23,7 @@ def supported_by_every_backend_from(oldest: BackendVersion, since: VersionBounds
     Versions are monotonic within a major, so `oldest` and the first release of each newer
     major up to the last bound are enough to check.
     """
-    newer_majors = range(oldest.major + 1, max(since.by_major) + 1)
+    newer_majors = range(oldest.major + 1, since.bounds[-1].major + 1)
     return since.supports(oldest) and all(
         since.supports(BackendVersion(major=major, minor=0, patch=0)) for major in newer_majors
     )
