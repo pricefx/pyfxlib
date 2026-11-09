@@ -690,13 +690,18 @@ class ConnectionRemote(ConnectionAsync):
         self.session = pfxsession
         # Fetched on the first call needing it, then kept: see `_fetch_backend_version`.
         self._backend_version: Optional[BackendVersion] = None
+        # Built from that version on the first query needing it, then kept likewise.
+        self._query_compatibility: Optional[QueryCompatibility] = None
 
     def __repr__(self) -> str:
         return f"ConnectionRemote({self.endpoint})"
 
     async def _get_query_compatibility(self) -> QueryCompatibility:
         """What the backend Query API accepts, from the version kept for this connection."""
-        return QueryCompatibility.for_backend(await self._fetch_backend_version())
+        if self._query_compatibility is None:
+            version = await self._fetch_backend_version()
+            self._query_compatibility = QueryCompatibility.for_backend(version)
+        return self._query_compatibility
 
     def _model_logic_url(
         self, command: str, model_typedid: str, step_name: str, logic_name: str
@@ -1243,7 +1248,7 @@ class ConnectionRemote(ConnectionAsync):
 
     async def _check_query_meta_tables_supported(self, endpoint: str) -> None:
         """Raise if the backend predates the `queryapi.meta` table endpoints."""
-        version = (await self._get_query_compatibility()).version
+        version = await self._fetch_backend_version()
         if not _QUERY_META_TABLES_SINCE.supports(version):
             raise RuntimeError(
                 f"{endpoint} is not supported by backend versions below"

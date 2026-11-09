@@ -28,9 +28,10 @@ from pyfxlib.lowlevel.connection import (
     ConnectionRemote,
 )
 from pyfxlib.lowlevel.constants import _DEFAULT_STREAM_CHUNK_SIZE
-from pyfxlib.lowlevel.querycompat import UnsupportedQueryError
+from pyfxlib.lowlevel.querycompat import QueryCompatibility, UnsupportedQueryError
 from pyfxlib.lowlevel.session import PfxSession
 from pyfxlib.schema import (
+    BackendVersion,
     MIN_DEPRECATED_BACKEND_VERSION,
     MIN_SUPPORTED_BACKEND_VERSION,
     Notification,
@@ -175,6 +176,28 @@ async def test_the_version_is_fetched_once_per_connection() -> None:
 
     assert session.version_fetches() == 1
     assert len(session.sent_queries()) == 3
+
+
+@pytest.mark.asyncio
+async def test_the_query_compatibility_is_built_once_per_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builds: list[BackendVersion] = []
+    for_backend = QueryCompatibility.for_backend
+
+    def counting_for_backend(version: BackendVersion) -> QueryCompatibility:
+        builds.append(version)
+        return for_backend(version)
+
+    monkeypatch.setattr(QueryCompatibility, "for_backend", counting_for_backend)
+    connection = ConnectionRemote(_ENDPOINT, _FakeSession("17.0.7"))
+
+    await connection.query_meta(_query(_DATA_FEED))
+    await connection.query_execute(_query(_DATA_FEED))
+    await connection.query_meta_tables("dataFeed")
+    await connection.query_meta_table(dict(_DATA_FEED))
+
+    assert builds == [BackendVersion.parse("17.0.7")]
 
 
 @pytest.mark.asyncio
