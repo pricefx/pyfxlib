@@ -173,6 +173,20 @@ async def test_connections_to_different_backends_each_adapt_to_their_own() -> No
 
 
 @pytest.mark.asyncio
+async def test_every_call_needing_the_backend_version_shares_one_fetch() -> None:
+    session = _FakeSession("17.0.2")
+    connection = ConnectionRemote(_ENDPOINT, session)
+
+    first = await connection.backend_version()
+    await connection.query_execute(_query(_DATA_FEED))
+    await connection.send_notification(_NOTIFICATION)
+    await connection.send_notification(_NOTIFICATION)
+
+    assert await connection.backend_version() == first == {"major": 17, "minor": 0, "patch": 2}
+    assert session.version_fetches() == 1
+
+
+@pytest.mark.asyncio
 @_QUERY_METHODS
 async def test_an_unsupported_query_is_rejected_before_being_sent(method: QueryMethod) -> None:
     session = _FakeSession("16.3.15")

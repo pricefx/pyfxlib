@@ -34,9 +34,11 @@ Aligns the Query API schema with the backend `QueryApiDTO`.
 - `BackendVersion` instances are ordered (`<`, `<=`, `>`, `>=`), by major, minor then patch.
 - `VersionBounds` (exported from `pyfxlib.schema`), the backend versions a change is available
   from, as one lower bound per major: e.g. `VersionBounds("16.3.11", "17.0.2")`.
-- What a backend supports is fetched once per connection, on the first query that needs it, and
-  kept for the connection lifetime: a backend upgraded meanwhile is only seen by a new
-  connection. Connections to several backends each keep their own.
+- A remote connection fetches the backend version once, on the first call needing it, and
+  keeps it for its lifetime: `backend_version()`, queries, notifications and pushes of
+  version-gated field types all share it, instead of each sending its own `login/extended`.
+  A backend upgraded meanwhile is only seen by a new connection. Connections to several
+  backends each keep their own.
 
 ### Changed
 - **Breaking:** `BackendVersion.minor` and `BackendVersion.patch` are `int`, defaulting to 0,

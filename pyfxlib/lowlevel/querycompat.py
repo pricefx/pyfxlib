@@ -24,8 +24,8 @@ before sending, with an `UnsupportedQueryError` listing every such use. The requ
 declared from 15.0.0, the first release of the endpoint: the 15.0.0 baseline itself has no
 entry. Older backends pyfxlib still keeps the code for, deprecated, have no endpoint.
 
-What a backend accepts is captured once per connection as a `QueryCompatibility`, built from
-the backend version on the first query that needs it, and kept for the connection lifetime: a
+What a backend accepts is a `QueryCompatibility`, built from the backend version the
+connection keeps: fetched on the first call needing it, and kept for the connection lifetime. A
 backend upgraded meanwhile is only seen by a new connection.
 
 Only queries sent through a connection are adapted: a `Pipeline` dumped and posted by other
