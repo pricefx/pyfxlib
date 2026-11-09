@@ -73,8 +73,11 @@ _QUERY_META_TABLES_SINCE = VersionBounds("16.3.16", "17.0.7")
 
 
 def _meta_entries(response: Response, key: str) -> list[dict[str, Any]]:
-    """The entries under `key` in every block of a `queryapi.meta` answer."""
-    return response.json()["response"]["data"][0][key]
+    """The entries under `key` in every block of a `queryapi.meta` answer.
+
+    Only single-block answers have been observed (on seeddata), but `data` is a list of blocks.
+    """
+    return [entry for block in response.json()["response"]["data"] for entry in block[key]]
 
 
 class ConnectionAsync(ABC):

@@ -44,10 +44,14 @@ _COLUMN_ENTRY = {"name": "sku", "type": "STRING"}
 
 
 class _FakeSession(PfxSession):
-    """Session recording the requests posted, and answering as a backend at `release`."""
+    """Session recording the requests posted, and answering as a backend at `release`.
 
-    def __init__(self, release: str) -> None:
+    The `queryapi.meta` table endpoints answer with `meta_blocks` blocks of one entry each.
+    """
+
+    def __init__(self, release: str, meta_blocks: int = 2) -> None:
         self.release = release
+        self.meta_blocks = meta_blocks
         self.posted: list[tuple[str, Any]] = []
 
     async def post(self, url: str, **kwargs: Any) -> Response:
@@ -57,9 +61,9 @@ class _FakeSession(PfxSession):
         elif url.endswith("/queryapi.meta"):
             data = [{"columns": []}]
         elif url.endswith("/queryapi.meta/tables"):
-            data = [{"tables": [_TABLE_ENTRY]}, {"tables": [_TABLE_ENTRY]}]
+            data = [{"tables": [_TABLE_ENTRY]}] * self.meta_blocks
         elif url.endswith("/queryapi.meta/table"):
-            data = [{"columns": [_COLUMN_ENTRY]}, {"columns": [_COLUMN_ENTRY]}]
+            data = [{"columns": [_COLUMN_ENTRY]}] * self.meta_blocks
         else:
             data = []
         return Response(200, json={"response": {"data": data}})
@@ -357,6 +361,15 @@ async def test_table_columns_are_listed(release: str) -> None:
     assert session.sent_data("/queryapi.meta/table") == [{"table": _DATA_FEED}]
     assert columns == [_COLUMN_ENTRY, _COLUMN_ENTRY]
     assert table == _DATA_FEED
+
+
+@pytest.mark.asyncio
+@_META_TABLES_RELEASES
+async def test_an_answer_without_blocks_lists_nothing(release: str) -> None:
+    connection = ConnectionRemote(_ENDPOINT, _FakeSession(release, meta_blocks=0))
+
+    assert await connection.query_meta_tables("dataFeed") == []
+    assert await connection.query_meta_table(dict(_DATA_FEED)) == []
 
 
 @pytest.mark.asyncio
