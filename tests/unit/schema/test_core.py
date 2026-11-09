@@ -15,6 +15,7 @@
 from dataclasses import FrozenInstanceError
 
 import pytest
+from pydantic import ValidationError
 
 from tests.unit.backend_versions import supported_by_every_backend_from
 
@@ -68,6 +69,20 @@ def test_a_version_orders_against_no_other_type(other: object) -> None:
         _ = version < other  # type: ignore[operator]
     with pytest.raises(TypeError):
         _ = version >= other  # type: ignore[operator]
+
+
+def test_a_version_is_immutable() -> None:
+    version = BackendVersion.parse("15.0.0")
+
+    with pytest.raises(ValidationError):
+        version.major = 16  # type: ignore[misc]
+    assert version == BackendVersion.parse("15.0.0")
+
+
+def test_equal_versions_hash_alike() -> None:
+    assert {BackendVersion.parse("15"), BackendVersion.parse("15.0.0")} == {
+        BackendVersion(major=15)
+    }
 
 
 def test_a_null_minor_or_patch_is_0() -> None:

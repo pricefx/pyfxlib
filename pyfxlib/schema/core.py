@@ -21,7 +21,7 @@ from functools import total_ordering
 from types import MappingProxyType
 from typing import Any, Final, Optional
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 from typing_extensions import override, Self
 
 from pyfxlib.schema.base import PfxCamelCaseModel
@@ -41,8 +41,10 @@ class BackendVersion(PfxCamelCaseModel):
     """Backend version information.
 
     Versions compare by major, minor then patch. A missing or null minor or patch is 0: 15 and
-    15.0.0 are the same version.
+    15.0.0 are the same version. Versions are immutable, so hashable.
     """
+
+    model_config = ConfigDict(frozen=True)
 
     major: int
     minor: int = 0
