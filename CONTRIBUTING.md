@@ -56,8 +56,8 @@ replaces loses its code. Then:
    meet, listing them:
    - `test_no_requirement_is_met_by_every_handled_backend`: drop each listed requirement from
      `_REQUIREMENTS`, and add it to the baseline of the matching
-     `test_every_schema_*_is_baseline_*` test in `tests/unit/test_querycompat.py`, as the oldest
-     deprecated backend now has it. Update the tests of those requirements accordingly.
+     `test_every_schema_*_is_baseline_*` test in `tests/unit/lowlevel/test_querycompat.py`, as
+     the oldest deprecated backend now has it. Update the tests of those requirements accordingly.
    - `test_no_table_kind_rename_is_known_by_every_handled_backend`: drop each listed rename
      from `_TABLE_KIND_RENAMES`, and the old spelling from the schema (e.g. `datafeed` from
      `PADataFeed`). This is a breaking change for queries posted without a connection.
