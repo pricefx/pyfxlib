@@ -49,16 +49,22 @@ from pyfxlib.schema import (
     JobStatus,
     LogicParameters,
     LPGProduct,
+    MIN_DEPRECATED_BACKEND_VERSION,
+    MIN_SUPPORTED_BACKEND_VERSION,
     Notification,
     Operator,
     QueryAnswerMeta,
     UserInfo,
+    VersionBounds,
 )
 
 T = TypeVar("T")
 
 
 LOGGER = logging.getLogger(__name__)
+
+# Backend versions with notifications.
+_NOTIFICATIONS_SINCE = VersionBounds("15.2.0")
 
 
 class ConnectionAsync(ABC):
@@ -101,12 +107,14 @@ class ConnectionAsync(ABC):
         """
         pass
 
-    async def backend_version(self) -> dict[str, Optional[int]]:
+    async def backend_version(self) -> dict[str, int]:
         """Fetch the backend version information.
 
+        A remote connection fetches it on the first call needing it, and keeps it for its
+        lifetime: a backend upgraded meanwhile is only seen by a new connection.
+
         Returns:
-            A dict containing at least the major version,
-            optionally the minor and the patch values,
+            A dict of the major, minor and patch versions, a missing minor or patch being 0,
              e.g. {"major": 15, "minor": 2, "patch": 0}.
         """
         return (await self._fetch_backend_version()).model_dump()
@@ -130,7 +138,7 @@ class ConnectionAsync(ABC):
         for details on allowed values in the request body.
 
         Returns the backend response as a dictionary.
-        Notifications are not supported by the BE versions < 15.2 (raises an error)
+        Notifications are not supported by the BE versions < 15.2.0 (raises an error)
         """
         pass
 
@@ -629,22 +637,15 @@ class ConnectionRemote(ConnectionAsync):
     def __init__(self, endpoint: str, pfxsession: PfxSession) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.session = pfxsession
-        # Built on the first query needing it, then kept: see `_get_query_compatibility`.
-        self._query_compatibility: Optional[QueryCompatibility] = None
+        # Fetched on the first call needing it, then kept: see `_fetch_backend_version`.
+        self._backend_version: Optional[BackendVersion] = None
 
     def __repr__(self) -> str:
         return f"ConnectionRemote({self.endpoint})"
 
     async def _get_query_compatibility(self) -> QueryCompatibility:
-        """What the backend Query API accepts, fetched once and kept for this connection.
-
-        Per connection, so that connections to several backends each check against their
-        own. A backend upgraded meanwhile is only seen by a new connection.
-        """
-        if self._query_compatibility is None:
-            version = await self._fetch_backend_version()
-            self._query_compatibility = QueryCompatibility.for_backend(version)
-        return self._query_compatibility
+        """What the backend Query API accepts, from the version kept for this connection."""
+        return QueryCompatibility.for_backend(await self._fetch_backend_version())
 
     def _model_logic_url(
         self, command: str, model_typedid: str, step_name: str, logic_name: str
@@ -689,20 +690,46 @@ class ConnectionRemote(ConnectionAsync):
         `backend_version()` exposes this as a plain dict for backward compatibility with
         existing consumers of the Connection interface (e.g. genfx, python-engine); internally
         pyfxlib should circulate the validated `BackendVersion` model instead.
+
+        Fetched on the first call, then kept for the connection lifetime: per connection, so
+        that connections to several backends each keep their own. A backend upgraded meanwhile
+        is only seen by a new connection.
         """
-        response = await self.login_extended()
-        release = str(response["response"]["data"][0]["extendedData"]["Release"])
-        return BackendVersion.parse(release)
+        if self._backend_version is None:
+            response = await self.login_extended()
+            release = str(response["response"]["data"][0]["extendedData"]["Release"])
+            self._backend_version = BackendVersion.parse(release)
+            self._warn_if_unsupported(self._backend_version)
+        return self._backend_version
+
+    def _warn_if_unsupported(self, version: BackendVersion) -> None:
+        """Warn about a backend pyfxlib does not support: once, as the version is fetched once."""
+        if version >= MIN_SUPPORTED_BACKEND_VERSION:
+            return
+        if version >= MIN_DEPRECATED_BACKEND_VERSION:
+            LOGGER.warning(
+                "Backend %s at %s is deprecated: pyfxlib no longer supports backends older than"
+                " %s, and will drop the code for it in a future release.",
+                version,
+                self.endpoint,
+                MIN_SUPPORTED_BACKEND_VERSION,
+            )
+        else:
+            LOGGER.warning(
+                "Backend %s at %s is not supported: pyfxlib supports backends from %s, and some"
+                " calls may fail.",
+                version,
+                self.endpoint,
+                MIN_SUPPORTED_BACKEND_VERSION,
+            )
 
     async def send_notification(self, notification: Notification) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
         backend_version = await self._fetch_backend_version()
-        if (backend_version.major < 15) or (
-            backend_version.major == 15 and (backend_version.minor or 0) < 2
-        ):
+        if not _NOTIFICATIONS_SINCE.supports(backend_version):
             raise RuntimeError(
-                "Notifications are not supported by backend versions below 15.2. "
-                f"Current backend version: {backend_version}"
+                f"Notifications are not supported by backend versions below {_NOTIFICATIONS_SINCE}."
+                f" Current backend version: {backend_version}"
             )
         response = await self.session.post(
             f"{self.endpoint}/notification.send",
@@ -1957,7 +1984,7 @@ class ConnectionSync:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn._fetch_backend_version())
 
-    def backend_version(self) -> dict[str, Optional[int]]:
+    def backend_version(self) -> dict[str, int]:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.backend_version())
 

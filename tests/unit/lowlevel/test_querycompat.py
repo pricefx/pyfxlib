@@ -20,6 +20,8 @@ from typing import Any, get_args
 from pydantic import BaseModel
 import pytest
 
+from tests.unit.backend_versions import supported_by_every_backend_from
+
 from pyfxlib.lowlevel.querycompat import (
     _REQUIREMENTS,
     _TABLE_KIND_RENAMES,
@@ -29,11 +31,11 @@ from pyfxlib.lowlevel.querycompat import (
     UnsupportedQueryError,
     Usage,
     UsageCategory,
-    VersionBounds,
 )
 from pyfxlib.schema import (
     BackendVersion,
     LiteralValueType,
+    MIN_DEPRECATED_BACKEND_VERSION,
     Operation,
     OperationAgg,
     RankOverOperation,
@@ -221,48 +223,43 @@ async def test_the_compatibility_is_not_asked_for_a_15_0_0_query() -> None:
     assert await adapt_query_to_backend(query, never) == query
 
 
-_BOUNDS = VersionBounds({17: (17, 0, 2), 16: (16, 3, 11)})
+# The first release of the Query API: older backends pyfxlib handles have no endpoint.
+_QUERY_API_RELEASE = BackendVersion(major=15, minor=0, patch=0)
 
 
-@pytest.mark.parametrize(
-    "version,supported",
-    [
-        ("15.9.9", False),  # older major than every bound
-        ("16.3.10", False),
-        ("16.3.11", True),
-        ("16.4", True),
-        # numerically higher than 16.3.11, but on the 17 major
-        ("17.0.1", False),
-        ("17.0.2", True),
-        ("18.0.0", True),  # newer major than every bound
-    ],
-)
-def test_version_bounds_compare_within_the_major_only(version: str, supported: bool) -> None:
-    assert _BOUNDS.supports(BackendVersion.parse(version)) is supported
+def _oldest_handled_query_backend() -> BackendVersion:
+    """The oldest backend with the Query API pyfxlib keeps the code for, deprecated or not."""
+    return max(MIN_DEPRECATED_BACKEND_VERSION, _QUERY_API_RELEASE)
 
 
-def test_version_bounds_are_kept_lowest_major_first() -> None:
-    assert list(_BOUNDS.by_major) == [16, 17]
-    assert str(_BOUNDS) == "16.3.11 or 17.0.2"
+def test_no_requirement_is_met_by_every_handled_backend() -> None:
+    """Fails once the minimum backend rises past a requirement: see CONTRIBUTING.md."""
+    oldest = _oldest_handled_query_backend()
+    met = [
+        usage
+        for usage, requirement in _REQUIREMENTS.items()
+        if supported_by_every_backend_from(oldest, requirement.since)
+    ]
+
+    assert met == [], (
+        f"Every backend from {oldest} meets these: drop them from"
+        " `querycompat._REQUIREMENTS`, and add them to the baselines of these tests."
+    )
 
 
-@pytest.mark.parametrize(
-    "by_major", [{}, {16: (17, 0, 2)}], ids=["no bound", "bound on another major"]
-)
-def test_version_bounds_require_one_bound_per_major_keyed_by_it(
-    by_major: dict[int, tuple[int, int, int]],
-) -> None:
-    with pytest.raises(ValueError, match="one lower bound per major"):
-        VersionBounds(by_major)
+def test_no_table_kind_rename_is_known_by_every_handled_backend() -> None:
+    """Fails once the minimum backend rises past a rename: see CONTRIBUTING.md."""
+    oldest = _oldest_handled_query_backend()
+    known = [
+        rename.new
+        for rename in _TABLE_KIND_RENAMES
+        if supported_by_every_backend_from(oldest, rename.since)
+    ]
 
-
-def test_version_bounds_do_not_follow_changes_to_the_mapping_they_were_built_from() -> None:
-    by_major = {16: (16, 3, 11)}
-    bounds = VersionBounds(by_major)
-
-    by_major[16] = (16, 0, 0)
-
-    assert not bounds.supports(BackendVersion.parse("16.2.0"))
+    assert known == [], (
+        f"Every backend from {oldest} knows these: drop their rename"
+        " from `querycompat._TABLE_KIND_RENAMES`, and their old spelling from the schema."
+    )
 
 
 # The QueryApiDTO version history, written out independently of `_REQUIREMENTS`: for each

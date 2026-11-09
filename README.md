@@ -15,6 +15,22 @@ Or with Poetry:
 poetry add pyfxlib
 ```
 
+## Supported Pricefx versions
+
+pyfxlib supports Pricefx backends from **15.0.0**: the current major version (17) and the two
+before it.
+
+Backends of the major before them (14.x) are deprecated: pyfxlib keeps working with them as it
+did, but no longer supports them, and will drop the code for them when the next major is
+released. They have no Query API. Older backends are not supported, and some calls may fail. In
+both cases, a connection logs a warning the first time it fetches their version.
+
+Some features need a more recent backend:
+- notifications, from 15.2.0;
+- pushing `LOB` fields, from 16.3.13 or 17.0.4;
+- some tables, functions and other features of the Query API (`query_meta`, `query_execute`),
+  whose use raises `UnsupportedQueryError` on an older backend.
+
 ## Quick Start
 
 To connect to  a Pricefx partition:

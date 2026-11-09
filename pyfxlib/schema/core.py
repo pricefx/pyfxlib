@@ -14,10 +14,14 @@
 
 """Core Pricefx domain objects: backend, users, notifications, jobs."""
 
+from collections.abc import Mapping
+from dataclasses import dataclass
 from enum import Enum, StrEnum, unique
-from typing import Optional
+from functools import total_ordering
+from types import MappingProxyType
+from typing import Any, Final, Optional
 
-from pydantic import Field, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 from typing_extensions import override, Self
 
 from pyfxlib.schema.base import PfxCamelCaseModel
@@ -32,12 +36,24 @@ class JobStatus(Enum):
     FAILED = "FAILED"
 
 
+@total_ordering
 class BackendVersion(PfxCamelCaseModel):
-    """Backend version information."""
+    """Backend version information.
+
+    Versions compare by major, minor then patch. A missing or null minor or patch is 0: 15 and
+    15.0.0 are the same version. Versions are immutable, so hashable.
+    """
+
+    model_config = ConfigDict(frozen=True)
 
     major: int
-    minor: Optional[int] = None
-    patch: Optional[int] = None
+    minor: int = 0
+    patch: int = 0
+
+    @field_validator("minor", "patch", mode="before")
+    @classmethod
+    def _none_is_0(cls, value: Any) -> Any:
+        return 0 if value is None else value
 
     @classmethod
     def parse(cls, version: str) -> Self:
@@ -55,7 +71,56 @@ class BackendVersion(PfxCamelCaseModel):
     @override
     def __str__(self) -> str:
         """Return a string representation of the version."""
-        return f"{self.major}.{self.minor or 0}.{self.patch or 0}"
+        return f"{self.major}.{self.minor}.{self.patch}"
+
+    # With the pydantic equality, the ordering derives `<=`, `>` and `>=` from it.
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, BackendVersion):
+            return NotImplemented
+        return (self.major, self.minor, self.patch) < (other.major, other.minor, other.patch)
+
+
+@dataclass(frozen=True, init=False)
+class VersionBounds:
+    """Backend versions a change is available from: one lower bound per major.
+
+    Changes are backported per major, so versions are not monotonic across majors (17.0.1 is
+    numerically higher than 16.3.11 yet may predate a change backported to both), but they are
+    within one. A backend on a major newer than every bound is assumed to have the change, as
+    cut from a develop that had it, and one on an older major not to.
+    """
+
+    by_major: Mapping[int, BackendVersion]
+
+    def __init__(self, *bounds: str) -> None:
+        """Bounds from one version per major, e.g. `VersionBounds("16.3.11", "17.0.2")`."""
+        versions = sorted(BackendVersion.parse(bound) for bound in bounds)
+        majors = [version.major for version in versions]
+        if not versions or len(set(majors)) != len(majors):
+            raise ValueError(f"Expected one lower bound per major, got {bounds}")
+        # Read-only, as the dataclass is frozen, and lowest major first.
+        by_major = MappingProxyType({version.major: version for version in versions})
+        object.__setattr__(self, "by_major", by_major)
+
+    def supports(self, version: BackendVersion) -> bool:
+        """Whether a backend at `version` has the change."""
+        bound = self.by_major.get(version.major)
+        if bound is None:
+            return version.major > max(self.by_major)
+        return version >= bound
+
+    def __str__(self) -> str:
+        """The bounds as "X.Y.Z or A.B.C"."""
+        return " or ".join(map(str, self.by_major.values()))
+
+
+# The oldest backend pyfxlib supports: the current major minus 2. See CONTRIBUTING.md to raise it.
+MIN_SUPPORTED_BACKEND_VERSION: Final = BackendVersion(major=15, minor=0, patch=0)
+# The oldest backend pyfxlib keeps the code for, without supporting it: the major before the
+# oldest supported one. Older backends have none left, and may fail.
+MIN_DEPRECATED_BACKEND_VERSION: Final = BackendVersion(
+    major=MIN_SUPPORTED_BACKEND_VERSION.major - 1, minor=0, patch=0
+)
 
 
 class UserInfo(PfxCamelCaseModel):
