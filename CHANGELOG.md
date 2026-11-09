@@ -18,8 +18,17 @@ Aligns the Query API schema with the backend `QueryApiDTO`.
   version first (`pyfxlib.lowlevel.querycompat`), on a copy: the caller's query is left
   untouched. `dataFeed` and `datafeed`, and `dataSource` for older backends, are rewritten to the
   kind the backend knows, and each rewrite is logged at debug level. So is sending the deprecated
-  `datasource` to a backend that knows `dataSource`. A query using a data feed or a data source
-  costs one extra `login/extended` request, as the backend version is not cached yet.
+  `datasource` to a backend that knows `dataSource`.
+- Queries sent through a connection are also checked against every Query API change since
+  15.0.0, pyfxlib's minimum backend: tables, stages, expressions, fields, functions and literal
+  types, each bounded by the releases it was backported to. A query using anything the backend
+  does not support raises `UnsupportedQueryError` (exported from `pyfxlib.lowlevel`) before
+  being sent, listing every such use with the versions supporting it and its ticket. `safeDiv`,
+  `percentRankOver` and `cumeDistOver` are accepted from 17.2.0 only: the few earlier releases
+  that briefly had them (16.3.16, 17.0.7, 17.0.8, PFUN-35990) are rejected as well.
+- What a backend supports is fetched once per connection, on the first query that needs it, and
+  kept for the connection lifetime: a backend upgraded meanwhile is only seen by a new
+  connection. Connections to several backends each keep their own.
 
 ### Changed
 - **Breaking:** `UnboundedBound` is split into `UnboundedPreceding` and `UnboundedFollowing`,
