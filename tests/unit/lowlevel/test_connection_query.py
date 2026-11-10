@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 import copy
 import logging
@@ -23,9 +24,9 @@ import pytest
 from tests.unit.backend_versions import supported_by_every_backend_from
 
 from pyfxlib.lowlevel.connection import (
-    _NOTIFICATIONS_SINCE,
-    _QUERY_META_TABLES_SINCE,
     ConnectionRemote,
+    NOTIFICATIONS_SINCE,
+    QUERY_META_TABLES_SINCE,
 )
 from pyfxlib.lowlevel.constants import _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.querycompat import QueryCompatibility, UnsupportedQueryError
@@ -47,24 +48,27 @@ _COLUMN_ENTRY = {"name": "sku", "type": "STRING"}
 class _FakeSession(PfxSession):
     """Session recording the requests posted, and answering as a backend at `release`.
 
-    The `queryapi.meta` table endpoints answer with `meta_blocks` blocks of one entry each.
+    The `queryapi.meta` table endpoints answer, as the backend does, with a single block, here
+    holding `meta_entries` entries.
     """
 
-    def __init__(self, release: str, meta_blocks: int = 2) -> None:
+    def __init__(self, release: str, meta_entries: int = 2) -> None:
         self.release = release
-        self.meta_blocks = meta_blocks
+        self.meta_entries = meta_entries
         self.posted: list[tuple[str, Any]] = []
 
     async def post(self, url: str, **kwargs: Any) -> Response:
         self.posted.append((url.removeprefix(_ENDPOINT), kwargs.get("json")))
+        # Yields to the event loop, as a real request does, so concurrent calls interleave.
+        await asyncio.sleep(0)
         if url.endswith("/login/extended"):
             data: list[Any] = [{"extendedData": {"Release": self.release}}]
         elif url.endswith("/queryapi.meta"):
             data = [{"columns": []}]
         elif url.endswith("/queryapi.meta/tables"):
-            data = [{"tables": [_TABLE_ENTRY]}] * self.meta_blocks
+            data = [{"tables": [_TABLE_ENTRY] * self.meta_entries}]
         elif url.endswith("/queryapi.meta/table"):
-            data = [{"columns": [_COLUMN_ENTRY]}] * self.meta_blocks
+            data = [{"columns": [_COLUMN_ENTRY] * self.meta_entries}]
         else:
             data = []
         return Response(200, json={"response": {"data": data}})
@@ -231,6 +235,25 @@ async def test_every_call_needing_the_backend_version_shares_one_fetch() -> None
 
 
 @pytest.mark.asyncio
+async def test_concurrent_first_calls_share_one_fetch_and_one_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    release = f"{MIN_SUPPORTED_BACKEND_VERSION.major - 1}.0.0"
+    session = _FakeSession(release)
+    connection = ConnectionRemote(_ENDPOINT, session)
+
+    with caplog.at_level(logging.WARNING, logger="pyfxlib.lowlevel.connection"):
+        await asyncio.gather(
+            connection.backend_version(),
+            connection.query_execute(_query(_DATA_FEED)),
+            connection.query_meta(_query(_DATA_FEED)),
+        )
+
+    assert session.version_fetches() == 1
+    assert len(caplog.messages) == 1
+
+
+@pytest.mark.asyncio
 @_QUERY_METHODS
 async def test_an_unsupported_query_is_rejected_before_being_sent(method: QueryMethod) -> None:
     session = _FakeSession("16.3.15")
@@ -338,8 +361,8 @@ def test_the_notification_gate_is_not_met_by_every_handled_backend() -> None:
     """Fails once the oldest handled backend rises past the gate: see CONTRIBUTING.md."""
     oldest = MIN_DEPRECATED_BACKEND_VERSION
 
-    assert not supported_by_every_backend_from(oldest, _NOTIFICATIONS_SINCE), (
-        f"Every backend from {oldest} supports notifications: drop `_NOTIFICATIONS_SINCE` and"
+    assert not supported_by_every_backend_from(oldest, NOTIFICATIONS_SINCE), (
+        f"Every backend from {oldest} supports notifications: drop `NOTIFICATIONS_SINCE` and"
         " its check from `ConnectionRemote.send_notification`."
     )
 
@@ -348,9 +371,9 @@ def test_the_query_meta_tables_gate_is_not_met_by_every_handled_backend() -> Non
     """Fails once the oldest handled backend rises past the gate: see CONTRIBUTING.md."""
     oldest = MIN_DEPRECATED_BACKEND_VERSION
 
-    assert not supported_by_every_backend_from(oldest, _QUERY_META_TABLES_SINCE), (
+    assert not supported_by_every_backend_from(oldest, QUERY_META_TABLES_SINCE), (
         f"Every backend from {oldest} supports the queryapi.meta table endpoints: drop"
-        " `_QUERY_META_TABLES_SINCE` and its check from `ConnectionRemote.query_meta_tables`"
+        " `QUERY_META_TABLES_SINCE` and its check from `ConnectionRemote.query_meta_tables`"
         " and `ConnectionRemote.query_meta_table`."
     )
 
@@ -388,8 +411,8 @@ async def test_table_columns_are_listed(release: str) -> None:
 
 @pytest.mark.asyncio
 @_META_TABLES_RELEASES
-async def test_an_answer_without_blocks_lists_nothing(release: str) -> None:
-    connection = ConnectionRemote(_ENDPOINT, _FakeSession(release, meta_blocks=0))
+async def test_an_answer_without_entries_lists_nothing(release: str) -> None:
+    connection = ConnectionRemote(_ENDPOINT, _FakeSession(release, meta_entries=0))
 
     assert await connection.query_meta_tables("dataFeed") == []
     assert await connection.query_meta_table(dict(_DATA_FEED)) == []

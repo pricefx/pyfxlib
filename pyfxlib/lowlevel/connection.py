@@ -67,17 +67,22 @@ T = TypeVar("T")
 
 LOGGER = logging.getLogger(__name__)
 
-# Backend versions with notifications.
-_NOTIFICATIONS_SINCE = VersionBounds("15.2.0")
-_QUERY_META_TABLES_SINCE = VersionBounds("16.3.16", "17.0.7")
+# Public, for callers to check a backend before offering what needs these: see
+# `VersionBounds.supports`.
+# Backend versions with notifications: `send_notification`.
+NOTIFICATIONS_SINCE = VersionBounds("15.2.0")
+# Backend versions with the queryapi.meta/tables and queryapi.meta/table endpoints (PFUN-31636):
+# `query_meta_tables` and `query_meta_table`.
+QUERY_META_TABLES_SINCE = VersionBounds("16.3.16", "17.0.7")
 
 
 def _meta_entries(response: Response, key: str) -> list[dict[str, Any]]:
-    """The entries under `key` in every block of a `queryapi.meta` answer.
+    """The entries under `key` in a `queryapi.meta` answer.
 
-    Only single-block answers have been observed (on seeddata), but `data` is a list of blocks.
+    The backend answers a success with a single block holding `key`, and anything else with an
+    error status, which the session raises on.
     """
-    return [entry for block in response.json()["response"]["data"] for entry in block[key]]
+    return response.json()["response"]["data"][0][key]
 
 
 class ConnectionAsync(ABC):
@@ -690,6 +695,8 @@ class ConnectionRemote(ConnectionAsync):
         self.session = pfxsession
         # Fetched on the first call needing it, then kept: see `_fetch_backend_version`.
         self._backend_version: Optional[BackendVersion] = None
+        # So that concurrent first calls share one fetch, and one unsupported-backend warning.
+        self._backend_version_lock = asyncio.Lock()
         # Built from that version on the first query needing it, then kept likewise.
         self._query_compatibility: Optional[QueryCompatibility] = None
 
@@ -749,13 +756,16 @@ class ConnectionRemote(ConnectionAsync):
 
         Fetched on the first call, then kept for the connection lifetime: per connection, so
         that connections to several backends each keep their own. A backend upgraded meanwhile
-        is only seen by a new connection.
+        is only seen by a new connection. Concurrent first calls wait for a single fetch; a
+        failed fetch is not kept, so the next call retries it.
         """
         if self._backend_version is None:
-            response = await self.login_extended()
-            release = str(response["response"]["data"][0]["extendedData"]["Release"])
-            self._backend_version = BackendVersion.parse(release)
-            self._warn_if_unsupported(self._backend_version)
+            async with self._backend_version_lock:
+                if self._backend_version is None:
+                    response = await self.login_extended()
+                    release = str(response["response"]["data"][0]["extendedData"]["Release"])
+                    self._backend_version = BackendVersion.parse(release)
+                    self._warn_if_unsupported(self._backend_version)
         return self._backend_version
 
     def _warn_if_unsupported(self, version: BackendVersion) -> None:
@@ -779,14 +789,18 @@ class ConnectionRemote(ConnectionAsync):
                 MIN_SUPPORTED_BACKEND_VERSION,
             )
 
+    async def _require_backend(self, since: VersionBounds, feature: str) -> None:
+        """Raise, before anything is sent, if the backend predates `feature`."""
+        version = await self._fetch_backend_version()
+        if not since.supports(version):
+            raise RuntimeError(
+                f"{feature} is not supported by backend versions below {since}."
+                f" Current backend version: {version}"
+            )
+
     async def send_notification(self, notification: Notification) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        backend_version = await self._fetch_backend_version()
-        if not _NOTIFICATIONS_SINCE.supports(backend_version):
-            raise RuntimeError(
-                f"Notifications are not supported by backend versions below {_NOTIFICATIONS_SINCE}."
-                f" Current backend version: {backend_version}"
-            )
+        await self._require_backend(NOTIFICATIONS_SINCE, "notification.send")
         response = await self.session.post(
             f"{self.endpoint}/notification.send",
             json={"data": {"notification": notification.model_dump(exclude_none=True)}},
@@ -1246,18 +1260,9 @@ class ConnectionRemote(ConnectionAsync):
         )
         return response.json()["response"]["data"]
 
-    async def _check_query_meta_tables_supported(self, endpoint: str) -> None:
-        """Raise if the backend predates the `queryapi.meta` table endpoints."""
-        version = await self._fetch_backend_version()
-        if not _QUERY_META_TABLES_SINCE.supports(version):
-            raise RuntimeError(
-                f"{endpoint} is not supported by backend versions below"
-                f" {_QUERY_META_TABLES_SINCE}. Current backend version: {version}"
-            )
-
     async def query_meta_tables(self, kind: str) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        await self._check_query_meta_tables_supported("queryapi.meta/tables")
+        await self._require_backend(QUERY_META_TABLES_SINCE, "queryapi.meta/tables")
         adapted = await adapt_table_to_backend({"kind": kind}, self._get_query_compatibility)
         response = await self.session.post(
             f"{self.endpoint}/queryapi.meta/tables",
@@ -1267,7 +1272,7 @@ class ConnectionRemote(ConnectionAsync):
 
     async def query_meta_table(self, table: dict[str, Any]) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        await self._check_query_meta_tables_supported("queryapi.meta/table")
+        await self._require_backend(QUERY_META_TABLES_SINCE, "queryapi.meta/table")
         adapted = await adapt_table_to_backend(table, self._get_query_compatibility)
         response = await self.session.post(
             f"{self.endpoint}/queryapi.meta/table",

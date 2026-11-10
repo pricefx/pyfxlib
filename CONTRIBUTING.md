@@ -41,9 +41,10 @@ backend one. Such a change is declared with the backend versions it is available
   function or literal type is added to the schema with no requirement nor in their baseline;
 - for pushed field types, in `_FIELD_TYPE_MIN_BACKEND_VERSION` of
   `pyfxlib/lowlevel/pandasutil.py`;
-- elsewhere, as a constant the method checks, e.g. `_NOTIFICATIONS_SINCE` for
+- elsewhere, as a constant the method checks, e.g. `NOTIFICATIONS_SINCE` for
   `send_notification`, with a test failing once every backend pyfxlib keeps the code for has
-  the change.
+  the change. Export it from `pyfxlib.lowlevel`, so that callers can check a backend before
+  offering what needs the change.
 
 ### When a new major version is released
 
@@ -64,9 +65,11 @@ replaces loses its code. Then:
    - `test_no_field_type_gate_is_met_by_every_handled_backend`: drop each listed field type
      from `_FIELD_TYPE_MIN_BACKEND_VERSION`, and the whole gate once it is empty.
    - `test_the_notification_gate_is_not_met_by_every_handled_backend`: drop
-     `_NOTIFICATIONS_SINCE` and its check from `send_notification`.
+     `NOTIFICATIONS_SINCE` and its check from `send_notification`.
    - `test_the_query_meta_tables_gate_is_not_met_by_every_handled_backend`: drop
-     `_QUERY_META_TABLES_SINCE` and its check from `query_meta_tables` and `query_meta_table`.
+     `QUERY_META_TABLES_SINCE` and its check from `query_meta_tables` and `query_meta_table`.
+
+   These constants are public: dropping one is a breaking change for the callers checking it.
 3. Search the code for version-specific code no test covers, which every deprecated backend
    no longer needs, and drop it: e.g. the `core < 15.0.0` payload of `import_files`.
 

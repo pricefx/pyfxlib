@@ -26,10 +26,10 @@ released. They have no Query API. Older backends are not supported, and some cal
 both cases, a connection logs a warning the first time it fetches their version.
 
 Some features need a more recent backend:
-- notifications, from 15.2.0;
+- notifications, from 15.2.0 (`NOTIFICATIONS_SINCE`);
 - pushing `LOB` fields, from 16.3.13 or 17.0.4;
 - listing tables and their columns (`query_meta_tables`, `query_meta_table`), from 16.3.16 or
-  17.0.7;
+  17.0.7 (`QUERY_META_TABLES_SINCE`);
 - some tables, functions and other features of the Query API (`query_meta`, `query_execute`),
   whose use raises `UnsupportedQueryError` on an older backend.
 
