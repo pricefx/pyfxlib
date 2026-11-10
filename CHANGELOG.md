@@ -59,6 +59,10 @@ Aligns the Query API schema with the backend `QueryApiDTO`.
 - **Breaking:** `UnboundedBound` is split into `UnboundedPreceding` and `UnboundedFollowing`,
   and `Bound` into `StartBound` and `EndBound`. A frame can no longer start at the end of the
   partition or end at its start, which the backend rejects.
+- **Breaking:** aggregate columns take `AggregateScalarFunction` instead of `PreviousStageFunction`
+  for scalar functions: replace `PreviousStageFunction(...)` with `AggregateScalarFunction(...)`
+  inside `PreviousStageSelectableAgg`. The JSON sent is the same, and queries parsed from JSON are
+  unaffected.
 - `PADataFeed` now sends `dataFeed`: backends from 16.3.11 / 17.0.2 renamed `datafeed` to
   `dataFeed` (PFUN-35498). Queries sent through a connection still reach older backends as
   `datafeed` (see above). A query posted by other means needs `kind="datafeed"` for an older
@@ -75,6 +79,9 @@ Aligns the Query API schema with the backend `QueryApiDTO`.
   major version. It typed both literal values and result columns, though the backend spells
   datetime differently in each (`DATETIME` against `DATE_TIME`), so every datetime literal was
   rejected. Use `ResultColumnType` for result columns and `LiteralValueType` for literal values.
+  In a `LiteralValue` it still works at runtime for the types the backend accepts, though type
+  checkers flag it; `DATE_TIME` and `OTHER`, which the backend never accepted there, now fail
+  when the literal is built instead of when the query is sent.
 
 ## [1.4.0] - 2026-09-28
 
