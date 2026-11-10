@@ -67,10 +67,13 @@ T = TypeVar("T")
 
 LOGGER = logging.getLogger(__name__)
 
-# Backend versions with notifications.
-_NOTIFICATIONS_SINCE = VersionBounds("15.2.0")
-# Backend versions with the queryapi.meta/tables and queryapi.meta/table endpoints (PFUN-31636).
-_QUERY_META_TABLES_SINCE = VersionBounds("16.3.16", "17.0.7")
+# Public, for callers to check a backend before offering what needs these: see
+# `VersionBounds.supports`.
+# Backend versions with notifications: `send_notification`.
+NOTIFICATIONS_SINCE = VersionBounds("15.2.0")
+# Backend versions with the queryapi.meta/tables and queryapi.meta/table endpoints (PFUN-31636):
+# `query_meta_tables` and `query_meta_table`.
+QUERY_META_TABLES_SINCE = VersionBounds("16.3.16", "17.0.7")
 
 
 def _meta_entries(response: Response, key: str) -> list[dict[str, Any]]:
@@ -797,7 +800,7 @@ class ConnectionRemote(ConnectionAsync):
 
     async def send_notification(self, notification: Notification) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        await self._require_backend(_NOTIFICATIONS_SINCE, "notification.send")
+        await self._require_backend(NOTIFICATIONS_SINCE, "notification.send")
         response = await self.session.post(
             f"{self.endpoint}/notification.send",
             json={"data": {"notification": notification.model_dump(exclude_none=True)}},
@@ -1259,7 +1262,7 @@ class ConnectionRemote(ConnectionAsync):
 
     async def query_meta_tables(self, kind: str) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        await self._require_backend(_QUERY_META_TABLES_SINCE, "queryapi.meta/tables")
+        await self._require_backend(QUERY_META_TABLES_SINCE, "queryapi.meta/tables")
         adapted = await adapt_table_to_backend({"kind": kind}, self._get_query_compatibility)
         response = await self.session.post(
             f"{self.endpoint}/queryapi.meta/tables",
@@ -1269,7 +1272,7 @@ class ConnectionRemote(ConnectionAsync):
 
     async def query_meta_table(self, table: dict[str, Any]) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        await self._require_backend(_QUERY_META_TABLES_SINCE, "queryapi.meta/table")
+        await self._require_backend(QUERY_META_TABLES_SINCE, "queryapi.meta/table")
         adapted = await adapt_table_to_backend(table, self._get_query_compatibility)
         response = await self.session.post(
             f"{self.endpoint}/queryapi.meta/table",

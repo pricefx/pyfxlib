@@ -45,6 +45,9 @@ Aligns the Query API schema with the backend `QueryApiDTO`.
   query, on backends from 16.3.16 or 17.0.7 (older ones raise before sending). The table kind
   or table they send is adapted and checked as in a query (see above). They return the entries
   as the backend answers them.
+- `NOTIFICATIONS_SINCE` and `QUERY_META_TABLES_SINCE` (exported from `pyfxlib.lowlevel`), the
+  `VersionBounds` of the backends with notifications and with the `queryapi.meta` table
+  endpoints, so that callers can check a backend version before offering what needs them.
 
 ### Changed
 - **Breaking:** `BackendVersion.minor` and `BackendVersion.patch` are `int`, defaulting to 0,

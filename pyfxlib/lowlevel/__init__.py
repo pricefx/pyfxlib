@@ -20,6 +20,8 @@ from pyfxlib.lowlevel.connection import (
     ConnectionLocal,
     ConnectionRemote,
     ConnectionSync,
+    NOTIFICATIONS_SINCE,
+    QUERY_META_TABLES_SINCE,
 )
 from pyfxlib.lowlevel.querycompat import UnsupportedQueryError
 
@@ -29,5 +31,7 @@ __all__: list[str] = [
     "ConnectionLocal",
     "ConnectionComposed",
     "ConnectionSync",
+    "NOTIFICATIONS_SINCE",
+    "QUERY_META_TABLES_SINCE",
     "UnsupportedQueryError",
 ]

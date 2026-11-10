@@ -24,9 +24,9 @@ import pytest
 from tests.unit.backend_versions import supported_by_every_backend_from
 
 from pyfxlib.lowlevel.connection import (
-    _NOTIFICATIONS_SINCE,
-    _QUERY_META_TABLES_SINCE,
     ConnectionRemote,
+    NOTIFICATIONS_SINCE,
+    QUERY_META_TABLES_SINCE,
 )
 from pyfxlib.lowlevel.constants import _DEFAULT_STREAM_CHUNK_SIZE
 from pyfxlib.lowlevel.querycompat import QueryCompatibility, UnsupportedQueryError
@@ -361,8 +361,8 @@ def test_the_notification_gate_is_not_met_by_every_handled_backend() -> None:
     """Fails once the oldest handled backend rises past the gate: see CONTRIBUTING.md."""
     oldest = MIN_DEPRECATED_BACKEND_VERSION
 
-    assert not supported_by_every_backend_from(oldest, _NOTIFICATIONS_SINCE), (
-        f"Every backend from {oldest} supports notifications: drop `_NOTIFICATIONS_SINCE` and"
+    assert not supported_by_every_backend_from(oldest, NOTIFICATIONS_SINCE), (
+        f"Every backend from {oldest} supports notifications: drop `NOTIFICATIONS_SINCE` and"
         " its check from `ConnectionRemote.send_notification`."
     )
 
@@ -371,9 +371,9 @@ def test_the_query_meta_tables_gate_is_not_met_by_every_handled_backend() -> Non
     """Fails once the oldest handled backend rises past the gate: see CONTRIBUTING.md."""
     oldest = MIN_DEPRECATED_BACKEND_VERSION
 
-    assert not supported_by_every_backend_from(oldest, _QUERY_META_TABLES_SINCE), (
+    assert not supported_by_every_backend_from(oldest, QUERY_META_TABLES_SINCE), (
         f"Every backend from {oldest} supports the queryapi.meta table endpoints: drop"
-        " `_QUERY_META_TABLES_SINCE` and its check from `ConnectionRemote.query_meta_tables`"
+        " `QUERY_META_TABLES_SINCE` and its check from `ConnectionRemote.query_meta_tables`"
         " and `ConnectionRemote.query_meta_table`."
     )
 
