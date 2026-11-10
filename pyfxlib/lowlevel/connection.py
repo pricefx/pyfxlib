@@ -69,6 +69,7 @@ LOGGER = logging.getLogger(__name__)
 
 # Backend versions with notifications.
 _NOTIFICATIONS_SINCE = VersionBounds("15.2.0")
+# Backend versions with the queryapi.meta/tables and queryapi.meta/table endpoints (PFUN-31636).
 _QUERY_META_TABLES_SINCE = VersionBounds("16.3.16", "17.0.7")
 
 
@@ -785,14 +786,18 @@ class ConnectionRemote(ConnectionAsync):
                 MIN_SUPPORTED_BACKEND_VERSION,
             )
 
+    async def _require_backend(self, since: VersionBounds, feature: str) -> None:
+        """Raise, before anything is sent, if the backend predates `feature`."""
+        version = await self._fetch_backend_version()
+        if not since.supports(version):
+            raise RuntimeError(
+                f"{feature} is not supported by backend versions below {since}."
+                f" Current backend version: {version}"
+            )
+
     async def send_notification(self, notification: Notification) -> dict[str, Any]:
         """See `ConnectionAsync` corresponding method."""
-        backend_version = await self._fetch_backend_version()
-        if not _NOTIFICATIONS_SINCE.supports(backend_version):
-            raise RuntimeError(
-                f"Notifications are not supported by backend versions below {_NOTIFICATIONS_SINCE}."
-                f" Current backend version: {backend_version}"
-            )
+        await self._require_backend(_NOTIFICATIONS_SINCE, "notification.send")
         response = await self.session.post(
             f"{self.endpoint}/notification.send",
             json={"data": {"notification": notification.model_dump(exclude_none=True)}},
@@ -1252,18 +1257,9 @@ class ConnectionRemote(ConnectionAsync):
         )
         return response.json()["response"]["data"]
 
-    async def _check_query_meta_tables_supported(self, endpoint: str) -> None:
-        """Raise if the backend predates the `queryapi.meta` table endpoints."""
-        version = await self._fetch_backend_version()
-        if not _QUERY_META_TABLES_SINCE.supports(version):
-            raise RuntimeError(
-                f"{endpoint} is not supported by backend versions below"
-                f" {_QUERY_META_TABLES_SINCE}. Current backend version: {version}"
-            )
-
     async def query_meta_tables(self, kind: str) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        await self._check_query_meta_tables_supported("queryapi.meta/tables")
+        await self._require_backend(_QUERY_META_TABLES_SINCE, "queryapi.meta/tables")
         adapted = await adapt_table_to_backend({"kind": kind}, self._get_query_compatibility)
         response = await self.session.post(
             f"{self.endpoint}/queryapi.meta/tables",
@@ -1273,7 +1269,7 @@ class ConnectionRemote(ConnectionAsync):
 
     async def query_meta_table(self, table: dict[str, Any]) -> list[dict[str, Any]]:
         """See `ConnectionAsync` corresponding method."""
-        await self._check_query_meta_tables_supported("queryapi.meta/table")
+        await self._require_backend(_QUERY_META_TABLES_SINCE, "queryapi.meta/table")
         adapted = await adapt_table_to_backend(table, self._get_query_compatibility)
         response = await self.session.post(
             f"{self.endpoint}/queryapi.meta/table",
