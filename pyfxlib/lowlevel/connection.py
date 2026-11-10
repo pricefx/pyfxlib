@@ -73,11 +73,12 @@ _QUERY_META_TABLES_SINCE = VersionBounds("16.3.16", "17.0.7")
 
 
 def _meta_entries(response: Response, key: str) -> list[dict[str, Any]]:
-    """The entries under `key` in every block of a `queryapi.meta` answer.
+    """The entries under `key` in a `queryapi.meta` answer.
 
-    Only single-block answers have been observed (on seeddata), but `data` is a list of blocks.
+    The backend answers a success with a single block holding `key`, and anything else with an
+    error status, which the session raises on.
     """
-    return [entry for block in response.json()["response"]["data"] for entry in block[key]]
+    return response.json()["response"]["data"][0][key]
 
 
 class ConnectionAsync(ABC):
