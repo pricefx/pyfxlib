@@ -33,12 +33,16 @@ import re
 import threading
 from typing import Any, cast, IO, Optional, TypeVar
 
-from httpx import HTTPStatusError
+from httpx import HTTPStatusError, Response
 import pandas as pd
 
 from pyfxlib.lowlevel.avro import AvroStream
 from pyfxlib.lowlevel.constants import _DEFAULT_PAGE_SIZE, _DEFAULT_STREAM_CHUNK_SIZE
-from pyfxlib.lowlevel.querycompat import adapt_query_to_backend, QueryCompatibility
+from pyfxlib.lowlevel.querycompat import (
+    adapt_query_to_backend,
+    adapt_table_to_backend,
+    QueryCompatibility,
+)
 from pyfxlib.lowlevel.session import PfxSession
 from pyfxlib.schema import (
     AdvancedCriteria,
@@ -65,6 +69,15 @@ LOGGER = logging.getLogger(__name__)
 
 # Backend versions with notifications.
 _NOTIFICATIONS_SINCE = VersionBounds("15.2.0")
+_QUERY_META_TABLES_SINCE = VersionBounds("16.3.16", "17.0.7")
+
+
+def _meta_entries(response: Response, key: str) -> list[dict[str, Any]]:
+    """The entries under `key` in every block of a `queryapi.meta` answer.
+
+    Only single-block answers have been observed (on seeddata), but `data` is a list of blocks.
+    """
+    return [entry for block in response.json()["response"]["data"] for entry in block[key]]
 
 
 class ConnectionAsync(ABC):
@@ -597,6 +610,44 @@ class ConnectionAsync(ABC):
         pass
 
     @abstractmethod
+    async def query_meta_tables(self, kind: str) -> list[dict[str, Any]]:
+        """Lists the tables of one kind that the caller may query.
+
+        The kind is first adapted to the backend version, and checked against it: see
+        `pyfxlib.lowlevel.querycompat`.
+
+        Args:
+            kind: The Query API table kind, e.g. "datamart".
+        Returns:
+            The table entries as returned by the backend, each with the `table` to query.
+        Raises:
+            RuntimeError: if the backend predates `queryapi.meta/tables`, in which case nothing
+                is sent.
+            UnsupportedQueryError: if the backend does not support the kind, in which case
+                nothing is sent.
+        """
+        pass
+
+    @abstractmethod
+    async def query_meta_table(self, table: dict[str, Any]) -> list[dict[str, Any]]:
+        """Lists the columns of one table that the caller may query.
+
+        A copy of the table is first adapted to the backend version, `table` itself is left
+        untouched, and checked against it: see `pyfxlib.lowlevel.querycompat`.
+
+        Args:
+            table: The Query API table, as in a query.
+        Returns:
+            The column entries as returned by the backend.
+        Raises:
+            RuntimeError: if the backend predates `queryapi.meta/table`, in which case nothing
+                is sent.
+            UnsupportedQueryError: if the table uses anything the backend does not support,
+                in which case nothing is sent.
+        """
+        pass
+
+    @abstractmethod
     async def create_action(
         self,
         title: str,
@@ -639,13 +690,18 @@ class ConnectionRemote(ConnectionAsync):
         self.session = pfxsession
         # Fetched on the first call needing it, then kept: see `_fetch_backend_version`.
         self._backend_version: Optional[BackendVersion] = None
+        # Built from that version on the first query needing it, then kept likewise.
+        self._query_compatibility: Optional[QueryCompatibility] = None
 
     def __repr__(self) -> str:
         return f"ConnectionRemote({self.endpoint})"
 
     async def _get_query_compatibility(self) -> QueryCompatibility:
         """What the backend Query API accepts, from the version kept for this connection."""
-        return QueryCompatibility.for_backend(await self._fetch_backend_version())
+        if self._query_compatibility is None:
+            version = await self._fetch_backend_version()
+            self._query_compatibility = QueryCompatibility.for_backend(version)
+        return self._query_compatibility
 
     def _model_logic_url(
         self, command: str, model_typedid: str, step_name: str, logic_name: str
@@ -1190,6 +1246,35 @@ class ConnectionRemote(ConnectionAsync):
         )
         return response.json()["response"]["data"]
 
+    async def _check_query_meta_tables_supported(self, endpoint: str) -> None:
+        """Raise if the backend predates the `queryapi.meta` table endpoints."""
+        version = await self._fetch_backend_version()
+        if not _QUERY_META_TABLES_SINCE.supports(version):
+            raise RuntimeError(
+                f"{endpoint} is not supported by backend versions below"
+                f" {_QUERY_META_TABLES_SINCE}. Current backend version: {version}"
+            )
+
+    async def query_meta_tables(self, kind: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        await self._check_query_meta_tables_supported("queryapi.meta/tables")
+        adapted = await adapt_table_to_backend({"kind": kind}, self._get_query_compatibility)
+        response = await self.session.post(
+            f"{self.endpoint}/queryapi.meta/tables",
+            json={"data": {"kind": adapted["kind"]}},
+        )
+        return _meta_entries(response, "tables")
+
+    async def query_meta_table(self, table: dict[str, Any]) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        await self._check_query_meta_tables_supported("queryapi.meta/table")
+        adapted = await adapt_table_to_backend(table, self._get_query_compatibility)
+        response = await self.session.post(
+            f"{self.endpoint}/queryapi.meta/table",
+            json={"data": {"table": adapted}},
+        )
+        return _meta_entries(response, "columns")
+
     async def create_action(
         self,
         title: str,
@@ -1622,6 +1707,14 @@ class ConnectionLocal(ConnectionAsync):
         """See `ConnectionAsync` corresponding method."""
         return []
 
+    async def query_meta_tables(self, kind: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return []
+
+    async def query_meta_table(self, table: dict[str, Any]) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return []
+
     async def create_action(
         self,
         title: str,
@@ -1897,6 +1990,14 @@ class ConnectionComposed(ConnectionAsync):
     async def query_execute(self, query: dict[str, Any]) -> list[list[Any]]:
         """See `ConnectionAsync` corresponding method."""
         return await self._default.query_execute(query)
+
+    async def query_meta_tables(self, kind: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.query_meta_tables(kind)
+
+    async def query_meta_table(self, table: dict[str, Any]) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return await self._default.query_meta_table(table)
 
     async def create_action(
         self,
@@ -2216,6 +2317,14 @@ class ConnectionSync:
     def query_execute(self, query: dict[str, Any]) -> list[list[Any]]:
         """See `ConnectionAsync` corresponding method."""
         return self._run_sync(self._conn.query_execute(query))
+
+    def query_meta_tables(self, kind: str) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return self._run_sync(self._conn.query_meta_tables(kind))
+
+    def query_meta_table(self, table: dict[str, Any]) -> list[dict[str, Any]]:
+        """See `ConnectionAsync` corresponding method."""
+        return self._run_sync(self._conn.query_meta_table(table))
 
     def create_action(
         self,

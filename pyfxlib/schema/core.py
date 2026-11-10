@@ -14,11 +14,9 @@
 
 """Core Pricefx domain objects: backend, users, notifications, jobs."""
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum, StrEnum, unique
 from functools import total_ordering
-from types import MappingProxyType
 from typing import Any, Final, Optional
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
@@ -90,28 +88,28 @@ class VersionBounds:
     cut from a develop that had it, and one on an older major not to.
     """
 
-    by_major: Mapping[int, BackendVersion]
+    # One per major, lowest first. A tuple, so that bounds are hashable as well as equal
+    # whatever the order they are given in.
+    bounds: tuple[BackendVersion, ...]
 
     def __init__(self, *bounds: str) -> None:
         """Bounds from one version per major, e.g. `VersionBounds("16.3.11", "17.0.2")`."""
-        versions = sorted(BackendVersion.parse(bound) for bound in bounds)
+        versions = tuple(sorted(BackendVersion.parse(bound) for bound in bounds))
         majors = [version.major for version in versions]
         if not versions or len(set(majors)) != len(majors):
             raise ValueError(f"Expected one lower bound per major, got {bounds}")
-        # Read-only, as the dataclass is frozen, and lowest major first.
-        by_major = MappingProxyType({version.major: version for version in versions})
-        object.__setattr__(self, "by_major", by_major)
+        object.__setattr__(self, "bounds", versions)
 
     def supports(self, version: BackendVersion) -> bool:
         """Whether a backend at `version` has the change."""
-        bound = self.by_major.get(version.major)
-        if bound is None:
-            return version.major > max(self.by_major)
-        return version >= bound
+        for bound in self.bounds:
+            if bound.major == version.major:
+                return version >= bound
+        return version.major > self.bounds[-1].major
 
     def __str__(self) -> str:
         """The bounds as "X.Y.Z or A.B.C"."""
-        return " or ".join(map(str, self.by_major.values()))
+        return " or ".join(map(str, self.bounds))
 
 
 # The oldest backend pyfxlib supports: the current major minus 2. See CONTRIBUTING.md to raise it.

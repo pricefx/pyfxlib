@@ -131,7 +131,7 @@ def test_version_bounds_compare_within_the_major_only(version: str, supported: b
 
 
 def test_version_bounds_are_kept_lowest_major_first() -> None:
-    assert list(_BOUNDS.by_major) == [16, 17]
+    assert [bound.major for bound in _BOUNDS.bounds] == [16, 17]
     assert str(_BOUNDS) == "16.3.11 or 17.0.2"
 
 
@@ -145,14 +145,16 @@ def test_version_bounds_require_one_bound_per_major(bounds: tuple[str, ...]) -> 
 
 def test_version_bounds_are_read_only() -> None:
     with pytest.raises(FrozenInstanceError):
-        _BOUNDS.by_major = {}  # type: ignore[misc]
-    with pytest.raises(TypeError):
-        _BOUNDS.by_major[16] = BackendVersion(major=16)  # type: ignore[index]
+        _BOUNDS.bounds = ()  # type: ignore[misc]
 
 
 def test_version_bounds_equal_whatever_the_order_they_are_given_in() -> None:
     assert VersionBounds("16.3.11", "17.0.2") == _BOUNDS
     assert VersionBounds("16.3.11") != _BOUNDS
+
+
+def test_equal_version_bounds_hash_the_same() -> None:
+    assert {VersionBounds("16.3.11", "17.0.2"), _BOUNDS} == {_BOUNDS}
 
 
 @pytest.mark.parametrize(

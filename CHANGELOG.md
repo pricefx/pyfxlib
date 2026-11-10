@@ -39,6 +39,12 @@ Aligns the Query API schema with the backend `QueryApiDTO`.
   version-gated field types all share it, instead of each sending its own `login/extended`.
   A backend upgraded meanwhile is only seen by a new connection. Connections to several
   backends each keep their own.
+- `query_meta_tables` and `query_meta_table` on the connections (`ConnectionAsync`,
+  `ConnectionSync` and their implementations), listing through `queryapi.meta/tables` and
+  `queryapi.meta/table` the tables of a kind and the columns of a table that the caller may
+  query, on backends from 16.3.16 or 17.0.7 (older ones raise before sending). The table kind
+  or table they send is adapted and checked as in a query (see above). They return the entries
+  as the backend answers them.
 
 ### Changed
 - **Breaking:** `BackendVersion.minor` and `BackendVersion.patch` are `int`, defaulting to 0,

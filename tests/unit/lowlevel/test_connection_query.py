@@ -22,11 +22,16 @@ import pytest
 
 from tests.unit.backend_versions import supported_by_every_backend_from
 
-from pyfxlib.lowlevel.connection import _NOTIFICATIONS_SINCE, ConnectionRemote
+from pyfxlib.lowlevel.connection import (
+    _NOTIFICATIONS_SINCE,
+    _QUERY_META_TABLES_SINCE,
+    ConnectionRemote,
+)
 from pyfxlib.lowlevel.constants import _DEFAULT_STREAM_CHUNK_SIZE
-from pyfxlib.lowlevel.querycompat import UnsupportedQueryError
+from pyfxlib.lowlevel.querycompat import QueryCompatibility, UnsupportedQueryError
 from pyfxlib.lowlevel.session import PfxSession
 from pyfxlib.schema import (
+    BackendVersion,
     MIN_DEPRECATED_BACKEND_VERSION,
     MIN_SUPPORTED_BACKEND_VERSION,
     Notification,
@@ -35,13 +40,19 @@ from pyfxlib.schema import (
 )
 
 _ENDPOINT = "https://pfx.test/pricefx/partition"
+_TABLE_ENTRY = {"table": {"kind": "datafeed", "dataFeedUniqueName": "DF"}, "description": "Feed"}
+_COLUMN_ENTRY = {"name": "sku", "type": "STRING"}
 
 
 class _FakeSession(PfxSession):
-    """Session recording the requests posted, and answering as a backend at `release`."""
+    """Session recording the requests posted, and answering as a backend at `release`.
 
-    def __init__(self, release: str) -> None:
+    The `queryapi.meta` table endpoints answer with `meta_blocks` blocks of one entry each.
+    """
+
+    def __init__(self, release: str, meta_blocks: int = 2) -> None:
         self.release = release
+        self.meta_blocks = meta_blocks
         self.posted: list[tuple[str, Any]] = []
 
     async def post(self, url: str, **kwargs: Any) -> Response:
@@ -50,12 +61,23 @@ class _FakeSession(PfxSession):
             data: list[Any] = [{"extendedData": {"Release": self.release}}]
         elif url.endswith("/queryapi.meta"):
             data = [{"columns": []}]
+        elif url.endswith("/queryapi.meta/tables"):
+            data = [{"tables": [_TABLE_ENTRY]}] * self.meta_blocks
+        elif url.endswith("/queryapi.meta/table"):
+            data = [{"columns": [_COLUMN_ENTRY]}] * self.meta_blocks
         else:
             data = []
         return Response(200, json={"response": {"data": data}})
 
     def sent_queries(self) -> list[Any]:
-        return [body["data"]["query"] for url, body in self.posted if url.startswith("/queryapi.")]
+        return [
+            body["data"]["query"]
+            for url, body in self.posted
+            if url in ("/queryapi.meta", "/queryapi.execute")
+        ]
+
+    def sent_data(self, url: str) -> list[Any]:
+        return [body["data"] for posted_url, body in self.posted if posted_url == url]
 
     def version_fetches(self) -> int:
         return sum(url == "/login/extended" for url, _ in self.posted)
@@ -154,6 +176,28 @@ async def test_the_version_is_fetched_once_per_connection() -> None:
 
     assert session.version_fetches() == 1
     assert len(session.sent_queries()) == 3
+
+
+@pytest.mark.asyncio
+async def test_the_query_compatibility_is_built_once_per_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builds: list[BackendVersion] = []
+    for_backend = QueryCompatibility.for_backend
+
+    def counting_for_backend(version: BackendVersion) -> QueryCompatibility:
+        builds.append(version)
+        return for_backend(version)
+
+    monkeypatch.setattr(QueryCompatibility, "for_backend", counting_for_backend)
+    connection = ConnectionRemote(_ENDPOINT, _FakeSession("17.0.7"))
+
+    await connection.query_meta(_query(_DATA_FEED))
+    await connection.query_execute(_query(_DATA_FEED))
+    await connection.query_meta_tables("dataFeed")
+    await connection.query_meta_table(dict(_DATA_FEED))
+
+    assert builds == [BackendVersion.parse("17.0.7")]
 
 
 @pytest.mark.asyncio
@@ -298,3 +342,71 @@ def test_the_notification_gate_is_not_met_by_every_handled_backend() -> None:
         f"Every backend from {oldest} supports notifications: drop `_NOTIFICATIONS_SINCE` and"
         " its check from `ConnectionRemote.send_notification`."
     )
+
+
+def test_the_query_meta_tables_gate_is_not_met_by_every_handled_backend() -> None:
+    """Fails once the oldest handled backend rises past the gate: see CONTRIBUTING.md."""
+    oldest = MIN_DEPRECATED_BACKEND_VERSION
+
+    assert not supported_by_every_backend_from(oldest, _QUERY_META_TABLES_SINCE), (
+        f"Every backend from {oldest} supports the queryapi.meta table endpoints: drop"
+        " `_QUERY_META_TABLES_SINCE` and its check from `ConnectionRemote.query_meta_tables`"
+        " and `ConnectionRemote.query_meta_table`."
+    )
+
+
+# Every backend with the queryapi.meta table endpoints knows `dataFeed`: the kind is sent as
+# is. Its adaptation to older backends is tested on `adapt_table_to_backend`.
+_META_TABLES_RELEASES = pytest.mark.parametrize("release", ["16.3.16", "17.0.7"])
+
+
+@pytest.mark.asyncio
+@_META_TABLES_RELEASES
+async def test_tables_are_listed(release: str) -> None:
+    session = _FakeSession(release)
+    connection = ConnectionRemote(_ENDPOINT, session)
+
+    entries = await connection.query_meta_tables("dataFeed")
+
+    assert session.sent_data("/queryapi.meta/tables") == [{"kind": "dataFeed"}]
+    assert entries == [_TABLE_ENTRY, _TABLE_ENTRY]
+
+
+@pytest.mark.asyncio
+@_META_TABLES_RELEASES
+async def test_table_columns_are_listed(release: str) -> None:
+    session = _FakeSession(release)
+    connection = ConnectionRemote(_ENDPOINT, session)
+    table = dict(_DATA_FEED)
+
+    columns = await connection.query_meta_table(table)
+
+    assert session.sent_data("/queryapi.meta/table") == [{"table": _DATA_FEED}]
+    assert columns == [_COLUMN_ENTRY, _COLUMN_ENTRY]
+    assert table == _DATA_FEED
+
+
+@pytest.mark.asyncio
+@_META_TABLES_RELEASES
+async def test_an_answer_without_blocks_lists_nothing(release: str) -> None:
+    connection = ConnectionRemote(_ENDPOINT, _FakeSession(release, meta_blocks=0))
+
+    assert await connection.query_meta_tables("dataFeed") == []
+    assert await connection.query_meta_table(dict(_DATA_FEED)) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("release", ["16.3.15", "17.0.6"])
+async def test_a_backend_without_the_meta_table_endpoints_is_rejected_before_sending(
+    release: str,
+) -> None:
+    session = _FakeSession(release)
+    connection = ConnectionRemote(_ENDPOINT, session)
+
+    with pytest.raises(RuntimeError, match="queryapi.meta/tables is not supported"):
+        await connection.query_meta_tables("dataFeed")
+    with pytest.raises(RuntimeError, match="queryapi.meta/table is not supported"):
+        await connection.query_meta_table(dict(_DATA_FEED))
+
+    assert session.sent_data("/queryapi.meta/tables") == []
+    assert session.sent_data("/queryapi.meta/table") == []
