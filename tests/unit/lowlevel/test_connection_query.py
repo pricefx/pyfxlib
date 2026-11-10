@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 import copy
 import logging
@@ -57,6 +58,8 @@ class _FakeSession(PfxSession):
 
     async def post(self, url: str, **kwargs: Any) -> Response:
         self.posted.append((url.removeprefix(_ENDPOINT), kwargs.get("json")))
+        # Yields to the event loop, as a real request does, so concurrent calls interleave.
+        await asyncio.sleep(0)
         if url.endswith("/login/extended"):
             data: list[Any] = [{"extendedData": {"Release": self.release}}]
         elif url.endswith("/queryapi.meta"):
@@ -228,6 +231,25 @@ async def test_every_call_needing_the_backend_version_shares_one_fetch() -> None
 
     assert await connection.backend_version() == first == {"major": 17, "minor": 0, "patch": 2}
     assert session.version_fetches() == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_first_calls_share_one_fetch_and_one_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    release = f"{MIN_SUPPORTED_BACKEND_VERSION.major - 1}.0.0"
+    session = _FakeSession(release)
+    connection = ConnectionRemote(_ENDPOINT, session)
+
+    with caplog.at_level(logging.WARNING, logger="pyfxlib.lowlevel.connection"):
+        await asyncio.gather(
+            connection.backend_version(),
+            connection.query_execute(_query(_DATA_FEED)),
+            connection.query_meta(_query(_DATA_FEED)),
+        )
+
+    assert session.version_fetches() == 1
+    assert len(caplog.messages) == 1
 
 
 @pytest.mark.asyncio

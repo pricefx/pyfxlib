@@ -690,6 +690,8 @@ class ConnectionRemote(ConnectionAsync):
         self.session = pfxsession
         # Fetched on the first call needing it, then kept: see `_fetch_backend_version`.
         self._backend_version: Optional[BackendVersion] = None
+        # So that concurrent first calls share one fetch, and one unsupported-backend warning.
+        self._backend_version_lock = asyncio.Lock()
         # Built from that version on the first query needing it, then kept likewise.
         self._query_compatibility: Optional[QueryCompatibility] = None
 
@@ -749,13 +751,16 @@ class ConnectionRemote(ConnectionAsync):
 
         Fetched on the first call, then kept for the connection lifetime: per connection, so
         that connections to several backends each keep their own. A backend upgraded meanwhile
-        is only seen by a new connection.
+        is only seen by a new connection. Concurrent first calls wait for a single fetch; a
+        failed fetch is not kept, so the next call retries it.
         """
         if self._backend_version is None:
-            response = await self.login_extended()
-            release = str(response["response"]["data"][0]["extendedData"]["Release"])
-            self._backend_version = BackendVersion.parse(release)
-            self._warn_if_unsupported(self._backend_version)
+            async with self._backend_version_lock:
+                if self._backend_version is None:
+                    response = await self.login_extended()
+                    release = str(response["response"]["data"][0]["extendedData"]["Release"])
+                    self._backend_version = BackendVersion.parse(release)
+                    self._warn_if_unsupported(self._backend_version)
         return self._backend_version
 
     def _warn_if_unsupported(self, version: BackendVersion) -> None:
