@@ -28,6 +28,9 @@ What a backend accepts is a `QueryCompatibility`, built from the backend version
 connection keeps: fetched on the first call needing it, and kept for the connection lifetime. A
 backend upgraded meanwhile is only seen by a new connection.
 
+Callers can also ask before building a query: `QueryCompatibility.for_backend(version)` tells
+whether a backend supports a table model (`supports_table`).
+
 Only queries sent through a connection are adapted, and so are the tables and table kinds its
 `queryapi.meta` methods send: a `Pipeline` dumped and posted by other means is sent as is.
 
@@ -47,7 +50,9 @@ import logging
 from types import MappingProxyType
 from typing import Any
 
-from pyfxlib.schema import BackendVersion, VersionBounds
+from pydantic.fields import FieldInfo
+
+from pyfxlib.schema import BackendVersion, QueryTable, VersionBounds
 
 LOGGER = logging.getLogger(__name__)
 
@@ -92,7 +97,7 @@ _RENAMES_BY_KIND: dict[str, TableKindRename] = {
 
 @unique
 class UsageCategory(StrEnum):
-    """What part of the Query API a query uses."""
+    """What part of the Query API a query uses: see `UnsupportedQueryError`."""
 
     TABLE = "table"
     # A stage or expression kind.
@@ -300,6 +305,11 @@ _REQUIREMENTS = _declare(
 )
 
 
+def _field_usage(kind: str, name: str, field: FieldInfo) -> Usage:
+    """The usage of the field `name` of a `kind` model, named as the DTO sends it."""
+    return Usage(UsageCategory.FIELD, f"{kind}.{field.serialization_alias or field.alias or name}")
+
+
 class UnsupportedQueryError(RuntimeError):
     """A query uses what the backend it is sent to does not support."""
 
@@ -380,6 +390,30 @@ class QueryCompatibility:
             if not requirement.since.supports(version)
         }
         return cls(version, MappingProxyType(unsupported))
+
+    def supports_table(self, table: type[QueryTable], *fields: str) -> bool:
+        """Whether the backend can query tables of the `table` model, with `fields` set.
+
+        The fields always sent always count: the required ones, and the optional ones whose
+        default is not None. Any other optional field counts only when named in `fields`, by its
+        model attribute name, e.g. `supports_table(CompanyParameterRows, "target_date")`.
+
+        Raises:
+            ValueError: if a name of `fields` is not a field of `table`.
+        """
+        kind = table.default_kind()
+        unknown = [name for name in fields if name not in table.model_fields or name == "kind"]
+        if unknown:
+            raise ValueError(f"{table.__name__} has no field {', '.join(map(repr, unknown))}")
+        used = [
+            _field_usage(kind, name, field)
+            for name, field in table.model_fields.items()
+            if name != "kind"
+            and (field.is_required() or field.default is not None or name in fields)
+        ]
+        return not any(
+            usage in self.unsupported for usage in (Usage(UsageCategory.TABLE, kind), *used)
+        )
 
     def check(self, usages: Iterable[Usage]) -> None:
         """Raise `UnsupportedQueryError` listing every usage the backend does not support."""

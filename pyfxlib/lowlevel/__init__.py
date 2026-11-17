@@ -23,7 +23,13 @@ from pyfxlib.lowlevel.connection import (
     NOTIFICATIONS_SINCE,
     QUERY_META_TABLES_SINCE,
 )
-from pyfxlib.lowlevel.querycompat import UnsupportedQueryError
+from pyfxlib.lowlevel.querycompat import (
+    QueryCompatibility,
+    Requirement,
+    UnsupportedQueryError,
+    Usage,
+    UsageCategory,
+)
 
 __all__: list[str] = [
     "ConnectionAsync",
@@ -33,5 +39,9 @@ __all__: list[str] = [
     "ConnectionSync",
     "NOTIFICATIONS_SINCE",
     "QUERY_META_TABLES_SINCE",
+    "QueryCompatibility",
+    "Requirement",
     "UnsupportedQueryError",
+    "Usage",
+    "UsageCategory",
 ]

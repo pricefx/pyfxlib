@@ -13,7 +13,8 @@
 # limitations under the License.
 
 from types import ModuleType
-from typing import Any, Sequence
+from typing import Any, get_args, Literal, Sequence
+import warnings
 
 import pandas as pd
 from pydantic import ValidationError
@@ -24,6 +25,7 @@ from pyfxlib.schema import (
     AddColumns,
     Aggregate,
     AggregateScalarFunction,
+    CompanyParameterRows,
     Filter,
     Frame,
     HistoricalConditionRecords,
@@ -31,14 +33,19 @@ from pyfxlib.schema import (
     LiteralValue,
     LiteralValueType,
     PADataFeed,
+    PADatamart,
     PADataSource,
+    PAModelTable,
+    PARollup,
     Pipeline,
     PreviousStageFunctionAgg,
     PreviousStageRankOverFunction,
     QueryAnswer,
+    QueryTable,
     ResultColumnType,
     Source,
     Table,
+    TableGroup,
     Users,
 )
 import pyfxlib.schema.query
@@ -541,6 +548,73 @@ def test_literal_type_is_a_deprecated_alias_of_result_column_type(module: Module
         literal_type = module.LiteralType
 
     assert literal_type is ResultColumnType
+
+
+@pytest.mark.parametrize("module", [pyfxlib.schema, pyfxlib.schema.query])
+def test_company_parameters_rows_is_a_deprecated_alias_of_company_parameter_rows(
+    module: ModuleType,
+) -> None:
+    with pytest.warns(DeprecationWarning, match="CompanyParameterRows"):
+        company_parameters_rows = module.CompanyParametersRows
+
+    assert company_parameters_rows is CompanyParameterRows
+
+
+def test_every_table_is_a_query_table_with_a_group() -> None:
+    for model in get_args(Table):
+        assert issubclass(model, QueryTable)
+        assert isinstance(model.group, TableGroup)
+
+
+def test_only_price_analyzer_tables_are_in_the_pa_group() -> None:
+    pa = {model for model in get_args(Table) if model.group is TableGroup.PA}
+
+    assert pa == {PADatamart, PADataSource, PADataFeed, PAModelTable, PARollup}
+
+
+@pytest.mark.parametrize(
+    "model,kind",
+    [
+        (PADataFeed, "dataFeed"),
+        (PADataSource, "dataSource"),
+        (CompanyParameterRows, "companyParameterRows"),
+        (Users, "users"),
+    ],
+)
+def test_default_kind_is_the_kind_a_table_dumps_with(model: type[QueryTable], kind: str) -> None:
+    assert model.default_kind() == kind
+
+
+def test_a_star_import_of_the_schema_does_not_warn() -> None:
+    """Deprecated names are left out of `__all__`, so only their explicit use warns."""
+    namespace: dict[str, Any] = {}
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        exec("from pyfxlib.schema import *", namespace)  # noqa: S102
+
+    assert namespace["CompanyParameterRows"] is CompanyParameterRows
+    assert "CompanyParametersRows" not in namespace
+
+
+def test_query_table_itself_has_no_default_kind() -> None:
+    with pytest.raises(TypeError, match="QueryTable is not a Query API table"):
+        QueryTable.default_kind()
+
+
+def test_a_table_model_without_a_default_kind_is_rejected_when_defined() -> None:
+    with pytest.raises(TypeError, match="NoDefault is not a Query API table"):
+
+        class NoDefault(QueryTable):
+            group = TableGroup.PB
+
+            kind: Literal["noDefault"]
+
+
+def test_a_table_model_without_a_group_is_rejected_when_defined() -> None:
+    with pytest.raises(TypeError, match="NoGroup is not a Query API table: it has no group"):
+
+        class NoGroup(QueryTable):
+            kind: Literal["noGroup"] = "noGroup"
 
 
 def test_unknown_schema_attribute_still_raises() -> None:

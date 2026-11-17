@@ -56,7 +56,7 @@ from pyfxlib.schema.query import (
     CalculationResultColumnReference,
     ClaimLineItems,
     Claims,
-    CompanyParametersRows,
+    CompanyParameterRows,
     CompanyParameterTables,
     CompensationLineItems,
     CompensationRecords,
@@ -128,6 +128,7 @@ from pyfxlib.schema.query import (
     QueryAnswer,
     QueryAnswerMeta,
     QueryAnswerMetaColumn,
+    QueryTable,
     QuoteLineItems,
     RankOverOperation,
     RebateLineItems,
@@ -148,6 +149,7 @@ from pyfxlib.schema.query import (
     StartBound,
     STRING_FILTERS,
     Table,
+    TableGroup,
     Take,
     UnboundedFollowing,
     UnboundedPreceding,
@@ -194,7 +196,7 @@ __all__ = [
     "CalculationResultColumnReference",
     "ClaimLineItems",
     "Claims",
-    "CompanyParametersRows",
+    "CompanyParameterRows",
     "CompanyParameterTables",
     "CompensationLineItems",
     "CompensationRecords",
@@ -266,6 +268,7 @@ __all__ = [
     "QueryAnswer",
     "QueryAnswerMeta",
     "QueryAnswerMetaColumn",
+    "QueryTable",
     "QuoteLineItems",
     "RankOverOperation",
     "RebateLineItems",
@@ -286,6 +289,7 @@ __all__ = [
     "StartBound",
     "STRING_FILTERS",
     "Table",
+    "TableGroup",
     "Take",
     "UnboundedFollowing",
     "UnboundedPreceding",
@@ -297,6 +301,8 @@ if TYPE_CHECKING:
     # Deprecated: use ResultColumnType. Defined for type checkers only, so that at runtime the
     # name goes through __getattr__ below and warns.
     LiteralType = ResultColumnType
+    # Deprecated: use CompanyParameterRows.
+    CompanyParametersRows = CompanyParameterRows
 
 
 def __getattr__(name: str) -> Any:
