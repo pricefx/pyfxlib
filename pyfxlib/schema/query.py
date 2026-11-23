@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date, datetime
 from enum import StrEnum, unique
-from typing import Any, Literal, Optional, Self, TYPE_CHECKING, TypeAlias
+from typing import Any, ClassVar, Literal, Optional, Self, TYPE_CHECKING, TypeAlias
 import warnings
 
 import pandas as pd
@@ -404,6 +404,14 @@ def _resolve_deprecated_attribute(module: str, name: str) -> Any:
             stacklevel=3,
         )
         return ResultColumnType
+    if name == "CompanyParametersRows":
+        warnings.warn(
+            "CompanyParametersRows is deprecated and will be removed in the next major version:"
+            " use CompanyParameterRows.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return CompanyParameterRows
     raise AttributeError(f"module {module!r} has no attribute {name!r}")
 
 
@@ -412,198 +420,300 @@ def __getattr__(name: str) -> Any:
     return _resolve_deprecated_attribute(__name__, name)
 
 
-class CompanyParameterTables(PfxCamelCaseModel):
+@unique
+class TableGroup(StrEnum):
+    """The database a table lives in: a query cannot join tables of different groups."""
+
+    # Price Analyzer: datamarts, data sources, data feeds, rollups and model tables.
+    PA = "PA"
+    # Price Builder: master data, pricing and documents.
+    PB = "PB"
+
+
+class QueryTable(PfxCamelCaseModel):
+    """Base of the Query API tables, which each set `kind` as a literal with a default."""
+
+    group: ClassVar[TableGroup]
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        """Reject a table model without a default kind or a group when defined, not when used."""
+        super().__pydantic_init_subclass__(**kwargs)
+        cls.default_kind()
+        try:
+            cls.group
+        except AttributeError:
+            raise TypeError(f"{cls.__name__} is not a Query API table: it has no group") from None
+
+    @classmethod
+    def default_kind(cls) -> str:
+        """The kind a table of this model is sent with, unless set otherwise.
+
+        Raises:
+            TypeError: on a model with no default kind, such as `QueryTable` itself.
+        """
+        field = cls.model_fields.get("kind")
+        if field is None or not isinstance(field.default, str):
+            raise TypeError(f"{cls.__name__} is not a Query API table: it has no default kind")
+        return field.default
+
+
+class CompanyParameterTables(QueryTable):
     """Company parameter tables table."""
+
+    group = TableGroup.PB
 
     kind: Literal["companyParameterTables"] = "companyParameterTables"
 
 
-class CompanyParametersRows(PfxCamelCaseModel):
+class CompanyParameterRows(QueryTable):
     """Company parameters rows table."""
+
+    group = TableGroup.PB
 
     kind: Literal["companyParameterRows"] = "companyParameterRows"
     company_parameter_unique_name: str
     target_date: Optional[date] = None
 
 
-class Customers(PfxCamelCaseModel):
+if TYPE_CHECKING:
+    # Deprecated: use CompanyParameterRows, named after its kind. Defined for type checkers
+    # only, so that at runtime the name goes through __getattr__ above and warns.
+    CompanyParametersRows = CompanyParameterRows
+
+
+class Customers(QueryTable):
     """Customers table."""
+
+    group = TableGroup.PB
 
     kind: Literal["customers"] = "customers"
 
 
-class Sellers(PfxCamelCaseModel):
+class Sellers(QueryTable):
     """Sellers table."""
+
+    group = TableGroup.PB
 
     kind: Literal["sellers"] = "sellers"
 
 
-class ActionItems(PfxCamelCaseModel):
+class ActionItems(QueryTable):
     """Action items table."""
+
+    group = TableGroup.PB
 
     kind: Literal["actionItems"] = "actionItems"
 
 
-class Products(PfxCamelCaseModel):
+class Products(QueryTable):
     """Products table."""
+
+    group = TableGroup.PB
 
     kind: Literal["products"] = "products"
 
 
-class ProductCompetitions(PfxCamelCaseModel):
+class ProductCompetitions(QueryTable):
     """Product competitions table."""
+
+    group = TableGroup.PB
 
     kind: Literal["productCompetitions"] = "productCompetitions"
 
 
-class ProductReferences(PfxCamelCaseModel):
+class ProductReferences(QueryTable):
     """Product references table."""
+
+    group = TableGroup.PB
 
     kind: Literal["productReferences"] = "productReferences"
 
 
-class ProductBillOfMaterials(PfxCamelCaseModel):
+class ProductBillOfMaterials(QueryTable):
     """Product bill of materials table."""
+
+    group = TableGroup.PB
 
     kind: Literal["productBillOfMaterials"] = "productBillOfMaterials"
 
 
-class JobStatusTrackers(PfxCamelCaseModel):
+class JobStatusTrackers(QueryTable):
     """Job status trackers table."""
+
+    group = TableGroup.PB
 
     kind: Literal["jobStatusTrackers"] = "jobStatusTrackers"
 
 
-class ProductExtensionRows(PfxCamelCaseModel):
+class ProductExtensionRows(QueryTable):
     """Product extension rows table."""
+
+    group = TableGroup.PB
 
     kind: Literal["productExtensionRows"] = "productExtensionRows"
     product_extension_name: str
 
 
-class CustomerExtensionRows(PfxCamelCaseModel):
+class CustomerExtensionRows(QueryTable):
     """Customer extension rows table."""
+
+    group = TableGroup.PB
 
     kind: Literal["customerExtensionRows"] = "customerExtensionRows"
     customer_extension_name: str
 
 
-class SellerExtensionRows(PfxCamelCaseModel):
+class SellerExtensionRows(QueryTable):
     """Seller extension rows table."""
+
+    group = TableGroup.PB
 
     kind: Literal["sellerExtensionRows"] = "sellerExtensionRows"
     seller_extension_name: str
 
 
-class ConditionRecords(PfxCamelCaseModel):
+class ConditionRecords(QueryTable):
     """Condition records table."""
+
+    group = TableGroup.PB
 
     kind: Literal["conditionRecords"] = "conditionRecords"
     condition_record_set_unique_name: str
 
 
-class HistoricalConditionRecords(PfxCamelCaseModel):
+class HistoricalConditionRecords(QueryTable):
     """Historical condition records table."""
+
+    group = TableGroup.PB
 
     kind: Literal["historicalConditionRecords"] = "historicalConditionRecords"
     condition_record_set_unique_name: str
 
 
-class QuoteLineItems(PfxCamelCaseModel):
+class QuoteLineItems(QueryTable):
     """Quote line items table."""
+
+    group = TableGroup.PB
 
     kind: Literal["quoteLineItems"] = "quoteLineItems"
     quote_unique_name: str
 
 
-class RebateLineItems(PfxCamelCaseModel):
+class RebateLineItems(QueryTable):
     """Rebate line items table."""
+
+    group = TableGroup.PB
 
     kind: Literal["rebateLineItems"] = "rebateLineItems"
     rebate_unique_name: str
 
 
-class ContractLineItems(PfxCamelCaseModel):
+class ContractLineItems(QueryTable):
     """Contract line items table."""
+
+    group = TableGroup.PB
 
     kind: Literal["contractLineItems"] = "contractLineItems"
     contract_unique_name: str
 
 
-class CompensationLineItems(PfxCamelCaseModel):
+class CompensationLineItems(QueryTable):
     """Compensation line items table."""
+
+    group = TableGroup.PB
 
     kind: Literal["compensationLineItems"] = "compensationLineItems"
     compensation_unique_name: str
 
 
-class Claims(PfxCamelCaseModel):
+class Claims(QueryTable):
     """Claims table."""
+
+    group = TableGroup.PB
 
     kind: Literal["claims"] = "claims"
 
 
-class ClaimLineItems(PfxCamelCaseModel):
+class ClaimLineItems(QueryTable):
     """Claim line items table."""
+
+    group = TableGroup.PB
 
     kind: Literal["claimLineItems"] = "claimLineItems"
     claim_unique_name: str
 
 
-class CalculationGrids(PfxCamelCaseModel):
+class CalculationGrids(QueryTable):
     """Calculation grids table."""
+
+    group = TableGroup.PB
 
     kind: Literal["calculationGrids"] = "calculationGrids"
 
 
-class CalculationGridLineItems(PfxCamelCaseModel):
+class CalculationGridLineItems(QueryTable):
     """Calculation grid line items table."""
+
+    group = TableGroup.PB
 
     kind: Literal["calculationGridLineItems"] = "calculationGridLineItems"
     calculation_grid_id: int
 
 
-class PriceLists(PfxCamelCaseModel):
+class PriceLists(QueryTable):
     """Price lists table."""
+
+    group = TableGroup.PB
 
     kind: Literal["priceLists"] = "priceLists"
 
 
-class PriceListLineItems(PfxCamelCaseModel):
+class PriceListLineItems(QueryTable):
     """Price list items table."""
+
+    group = TableGroup.PB
 
     kind: Literal["priceListLineItems"] = "priceListLineItems"
     price_list_id: int
 
 
-class PriceGrids(PfxCamelCaseModel):
+class PriceGrids(QueryTable):
     """Price grids table."""
+
+    group = TableGroup.PB
 
     kind: Literal["priceGrids"] = "priceGrids"
 
 
-class PriceGridLineItems(PfxCamelCaseModel):
+class PriceGridLineItems(QueryTable):
     """Price grid line items table."""
+
+    group = TableGroup.PB
 
     kind: Literal["priceGridLineItems"] = "priceGridLineItems"
     price_grid_id: int
 
 
-class RebateRecords(PfxCamelCaseModel):
+class RebateRecords(QueryTable):
     """Rebate records table."""
+
+    group = TableGroup.PB
 
     kind: Literal["rebateRecords"] = "rebateRecords"
     rebate_record_set_id: int
 
 
-class CompensationRecords(PfxCamelCaseModel):
+class CompensationRecords(QueryTable):
     """Compensation records table."""
+
+    group = TableGroup.PB
 
     kind: Literal["compensationRecords"] = "compensationRecords"
     compensation_record_set_id: int
 
 
-class PADataSource(PfxCamelCaseModel):
+class PADataSource(QueryTable):
     """Data source table.
 
     Backends from 16.3.11 / 17.0.2 added `dataSource`, deprecating `datasource` which they still
@@ -614,12 +724,16 @@ class PADataSource(PfxCamelCaseModel):
     reaches older backends as `datasource`: see `pyfxlib.lowlevel.querycompat`.
     """
 
+    group = TableGroup.PA
+
     kind: Literal["dataSource", "datasource"] = "dataSource"
     data_source_unique_name: str
 
 
-class PADatamart(PfxCamelCaseModel):
+class PADatamart(QueryTable):
     """Datamart table."""
+
+    group = TableGroup.PA
 
     kind: Literal["datamart"] = "datamart"
     datamart_unique_name: str
@@ -627,7 +741,7 @@ class PADatamart(PfxCamelCaseModel):
     uom: Optional[str] = None
 
 
-class PADataFeed(PfxCamelCaseModel):
+class PADataFeed(QueryTable):
     """Data feed table.
 
     Backends from 16.3.11 / 17.0.2 renamed `datafeed` to `dataFeed` (PFUN-35498). Both are
@@ -637,41 +751,51 @@ class PADataFeed(PfxCamelCaseModel):
     reaches older backends as `datafeed`: see `pyfxlib.lowlevel.querycompat`.
     """
 
+    group = TableGroup.PA
+
     kind: Literal["dataFeed", "datafeed"] = "dataFeed"
     data_feed_unique_name: str
 
 
-class PAModelTable(PfxCamelCaseModel):
+class PAModelTable(QueryTable):
     """PA Model table."""
+
+    group = TableGroup.PA
 
     kind: Literal["modelTable"] = "modelTable"
     model_unique_name: str
     table_name: str
 
 
-class PARollup(PfxCamelCaseModel):
+class PARollup(QueryTable):
     """PA Rollup table."""
+
+    group = TableGroup.PA
 
     kind: Literal["rollup"] = "rollup"
     rollup_label: str
 
 
-class CustomForms(PfxCamelCaseModel):
+class CustomForms(QueryTable):
     """Custom forms table."""
+
+    group = TableGroup.PB
 
     kind: Literal["customForms"] = "customForms"
     custom_form_type_unique_name: str
 
 
-class Users(PfxCamelCaseModel):
+class Users(QueryTable):
     """Users table."""
+
+    group = TableGroup.PB
 
     kind: Literal["users"] = "users"
 
 
 Table: TypeAlias = (
     CompanyParameterTables
-    | CompanyParametersRows
+    | CompanyParameterRows
     | Products
     | ProductCompetitions
     | ProductReferences

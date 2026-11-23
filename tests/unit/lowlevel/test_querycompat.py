@@ -15,7 +15,7 @@
 from collections.abc import Iterator, Set
 import copy
 import logging
-from typing import Any, get_args
+from typing import Any, get_args, Literal
 
 from pydantic import BaseModel
 import pytest
@@ -23,24 +23,36 @@ import pytest
 from tests.unit.backend_versions import supported_by_every_backend_from
 
 from pyfxlib.lowlevel.querycompat import (
+    _field_usage,
     _REQUIREMENTS,
     _TABLE_KIND_RENAMES,
+    _usages,
     adapt_query_to_backend,
     adapt_table_to_backend,
     QueryCompatibility,
     QueryCompatibilityProvider,
+    Requirement,
     UnsupportedQueryError,
     Usage,
     UsageCategory,
 )
 from pyfxlib.schema import (
     BackendVersion,
+    CompanyParameterRows,
+    HistoricalConditionRecords,
     LiteralValueType,
     MIN_DEPRECATED_BACKEND_VERSION,
     Operation,
     OperationAgg,
+    PADataFeed,
+    PADataSource,
+    Products,
+    QueryTable,
     RankOverOperation,
     Table,
+    TableGroup,
+    Users,
+    VersionBounds,
 )
 import pyfxlib.schema.query as query_schema
 
@@ -397,6 +409,107 @@ async def test_a_table_field_on_its_own_is_rejected_by_backends_predating_it() -
     ]
 
 
+@pytest.mark.parametrize(
+    "version,table,supported",
+    [
+        ("15.0.0", Products, True),
+        ("17.0.6", Users, False),
+        ("17.0.7", Users, True),
+        ("16.3.11", HistoricalConditionRecords, False),
+        ("16.3.12", HistoricalConditionRecords, True),
+        ("17.0.2", HistoricalConditionRecords, False),
+        ("17.0.3", HistoricalConditionRecords, True),
+        # Renamed kinds are rewritten for any backend.
+        ("15.0.0", PADataFeed, True),
+        ("15.0.0", PADataSource, True),
+    ],
+)
+def test_supports_table_follows_the_table_requirement(
+    version: str, table: type[QueryTable], supported: bool
+) -> None:
+    compatibility = QueryCompatibility.for_backend(BackendVersion.parse(version))
+
+    assert compatibility.supports_table(table) is supported
+
+
+_16_3_5 = QueryCompatibility.for_backend(BackendVersion.parse("16.3.5"))
+
+
+def _schema_usages() -> frozenset[Usage]:
+    """Every usage the query schema can produce, named as the DTO sends it."""
+    table_kinds = {
+        kind
+        for model in get_args(Table)
+        for kind in get_args(model.model_fields["kind"].annotation)
+    }
+    usages = {Usage(UsageCategory.TABLE, kind) for kind in table_kinds}
+    for model in vars(query_schema).values():
+        if not (isinstance(model, type) and issubclass(model, BaseModel)):
+            continue
+        kind_field = model.model_fields.get("kind")
+        if kind_field is None:
+            continue
+        # Checking a list only because of the breaking change on datasource and datafeed
+        # TODO: once the braking change is not covered anymore, jsut check the value
+        for kind in get_args(kind_field.annotation):
+            if kind not in table_kinds:
+                usages.add(Usage(UsageCategory.KIND, kind))
+            usages.update(
+                _field_usage(kind, name, field)
+                for name, field in model.model_fields.items()
+                if name != "kind"
+            )
+    usages.update(
+        Usage(UsageCategory.FUNCTION, member.value)
+        for enum in (Operation, OperationAgg, RankOverOperation)
+        for member in enum
+    )
+    usages.update(Usage(UsageCategory.LITERAL_TYPE, member.value) for member in LiteralValueType)
+    return frozenset(usages)
+
+
+def test_every_requirement_is_a_usage_of_the_schema() -> None:
+    """A requirement misspelled in `_REQUIREMENTS` would never be checked."""
+    assert not set(_REQUIREMENTS) - _schema_usages()
+
+
+def test_supports_table_counts_optional_fields_only_when_named() -> None:
+    assert _16_3_5.supports_table(CompanyParameterRows)
+    assert not _16_3_5.supports_table(CompanyParameterRows, "target_date")
+    assert QueryCompatibility.for_backend(BackendVersion.parse("16.3.6")).supports_table(
+        CompanyParameterRows, "target_date"
+    )
+
+
+@pytest.mark.parametrize("field", ["targetDate", "kind", "nope"])
+def test_supports_table_rejects_what_is_not_a_field_of_the_table(field: str) -> None:
+    with pytest.raises(ValueError, match="CompanyParameterRows has no field"):
+        _16_3_5.supports_table(CompanyParameterRows, field)
+
+
+def test_supports_table_counts_the_optional_fields_always_sent() -> None:
+    """A field whose default is not None is sent anyway, so `check` would see it too."""
+
+    class WithFlag(QueryTable):
+        group = TableGroup.PB
+
+        kind: Literal["withFlag"] = "withFlag"
+        include_inactive: bool = False
+
+    usage = Usage(UsageCategory.FIELD, "withFlag.includeInactive")
+    compatibility = QueryCompatibility(
+        _16_3_5.version, {usage: Requirement(VersionBounds("99.0.0"), "PFUN-0")}
+    )
+
+    assert not compatibility.supports_table(WithFlag)
+    assert usage in set(_usages(WithFlag().model_dump(by_alias=True), is_table=True))
+
+
+def test_supports_table_rejects_the_query_table_base() -> None:
+    with pytest.raises(TypeError, match="QueryTable is not a Query API table"):
+        _16_3_5.supports_table(QueryTable)
+
+
 def test_renamed_table_kinds_carry_no_requirement() -> None:
     """Rewriting them must not change what the query is checked against."""
     renamed = {kind for rename in _TABLE_KIND_RENAMES for kind in (rename.old, rename.new)}
@@ -506,7 +619,7 @@ def test_every_schema_field_is_baseline_or_required() -> None:
     """
     gated = _required(UsageCategory.TABLE) | _required(UsageCategory.KIND)
     fields = {
-        f"{kind}.{field.serialization_alias or field.alias or name}"
+        _field_usage(kind, name, field).name
         for kind, model in _schema_kinds()
         if kind not in gated
         for name, field in model.model_fields.items()

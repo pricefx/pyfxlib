@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.1.0] - 2026-11-23
+
+### Added
+- `QueryTable`, the base of every Query API table model. Its `default_kind()` returns the
+  kind a table of the model is sent with, and its `group` class variable, a `TableGroup`
+  (exported from `pyfxlib.schema`), the database it lives in: `PA` for datamarts, data sources,
+  data feeds, rollups and model tables, `PB` for everything else. A query cannot join tables of
+  different groups. A model without a default kind or a group is rejected when defined.
+- `QueryCompatibility`, `Usage`, `UsageCategory` and `Requirement` are exported from
+  `pyfxlib.lowlevel`, to check what a backend supports before building a query:
+  `QueryCompatibility.for_backend(version).supports_table(model, *fields)` tells whether a
+  backend supports a table model with its required fields and the optional `fields` named,
+  e.g. to hide tables the backend lacks.
+
+### Deprecated
+- `CompanyParametersRows`, an alias of `CompanyParameterRows` that warns on use, will be
+  removed in the next major version: the model is now named after its kind,
+  `companyParameterRows`. Like `LiteralType`, it is no longer star-imported from
+  `pyfxlib.schema`, so that a star import does not warn. The alias only covers the name: the
+  model's repr and its JSON-schema title and `$defs` key (e.g. in
+  `Pipeline.model_json_schema()`) are now `CompanyParameterRows`.
+
 ## [2.0.0] - 2026-10-13
 
 Aligns the Query API schema with the backend `QueryApiDTO`.
